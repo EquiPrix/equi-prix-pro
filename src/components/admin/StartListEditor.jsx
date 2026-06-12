@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { EVENTS_2026, GCL_TEAMS_2026 } from '@/lib/equiprix-data';
+import { EVENTS_2026, GCL_TEAMS_2026, sbFetch } from '@/lib/equiprix-data';
 import { GCL_TEAM_ROSTERS } from '@/components/admin/TeamsEditor';
 import { loadStartLists, saveStartList } from '@/lib/startListStore';
 import { Plus, X, Save } from 'lucide-react';
-import { EVENTS_2026, GCL_TEAMS_2026, sbFetch } from '@/lib/equiprix-data';
 
 const HORSES_KEY = 'equiprix_horse_db';
 
@@ -20,14 +19,23 @@ function HorseInput({ riderName, value, onChange }) {
     setHorses(loadHorseDB()[riderName] || []);
   }, [riderName]);
 
-  const saveHorse = (h) => {
+  const saveHorse = async (h) => {
     if (!h) return;
     const db = loadHorseDB();
     if (!db[riderName]) db[riderName] = [];
     if (!db[riderName].includes(h)) {
       db[riderName] = [...db[riderName], h];
       localStorage.setItem(HORSES_KEY, JSON.stringify(db));
-      setHorses(db[riderName]);
+      setHorses([...db[riderName]]);
+      // Persist horse DB to Supabase so it survives across devices
+      await sbFetch('results', {
+        method: 'POST',
+        body: JSON.stringify({
+          event: 'horse_registry',
+          rider_results: db,
+          updated_at: new Date().toISOString()
+        })
+      });
     }
     onChange(h);
     setAdding(false);
@@ -174,23 +182,23 @@ export default function StartListEditor() {
   }, [selectedEventId]);
 
   const save = async () => {
-  if (!event) return;
-  saveStartList(selectedEventId, { gp: gpRiders, teamPairs });
+    if (!event) return;
+    saveStartList(selectedEventId, { gp: gpRiders, teamPairs });
 
-  // Also persist to Supabase so horses survive across devices
-  await sbFetch('start_lists', {
-    method: 'POST',
-    body: JSON.stringify({
-      event: selectedEventId,
-      gp: gpRiders,
-      team_pairs: teamPairs,
-      updated_at: new Date().toISOString()
-    })
-  });
+    // Persist to Supabase so start lists survive across devices
+    await sbFetch('start_lists', {
+      method: 'POST',
+      body: JSON.stringify({
+        event: selectedEventId,
+        gp: gpRiders,
+        team_pairs: teamPairs,
+        updated_at: new Date().toISOString()
+      })
+    });
 
-  setSaved(true);
-  setTimeout(() => setSaved(false), 2500);
-};
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  };
 
   const SECTIONS = [
     { id: 'r1', label: 'Team R1' },
