@@ -294,7 +294,7 @@ export const EVENTS_2026 = [
     ],
     teams: GCL_TEAMS_2026
   },
-  { id: 'st_tropez_2026', city: 'St. Tropez', flag: '🇫🇷', dates: '11–13 Jun', dateLabel: '11–13 June 2026', status: 'future', supabaseKey: 'st_tropez_2026_r1', teamLockISO: '2026-06-11T14:00:00Z', gpLockISO: '2026-06-13T14:00:00Z', gpRiders: [], teams: [] },
+  { id: 'st_tropez_2026', city: 'St. Tropez', flag: '🇫🇷', dates: '11–13 Jun', dateLabel: '11–13 June 2026', status: 'riders', supabaseKey: 'st_tropez_2026_r1', teamLockISO: '2026-06-11T14:00:00Z', gpLockISO: '2026-06-13T14:00:00Z', gpRiders: [], teams: [] },
   { id: 'paris_2026', city: 'Paris', flag: '🇫🇷', dates: '19–21 Jun', dateLabel: '19–21 June 2026', status: 'future', supabaseKey: 'paris_2026_r1', teamLockISO: '2026-06-19T14:00:00Z', gpLockISO: '2026-06-21T14:00:00Z', gpRiders: [], teams: [] },
   { id: 'monaco_2026', city: 'Monaco', flag: '🇲🇨', dates: '2–4 Jul', dateLabel: '2–4 July 2026', status: 'future', supabaseKey: 'monaco_2026_r1', teamLockISO: '2026-07-02T14:00:00Z', gpLockISO: '2026-07-04T14:00:00Z', gpRiders: [], teams: [] },
   { id: 'riesenbeck_2026', city: 'Riesenbeck', flag: '🇩🇪', dates: '16–19 Jul', dateLabel: '16–19 July 2026', status: 'future', supabaseKey: 'riesenbeck_2026_r1', teamLockISO: '2026-07-16T14:00:00Z', gpLockISO: '2026-07-19T14:00:00Z', gpRiders: [], teams: [] },
