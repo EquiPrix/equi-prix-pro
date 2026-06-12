@@ -7,8 +7,8 @@ export function EquiPrixProvider({ children }) {
   const [events, setEvents] = useState(() => EVENTS_2026.map(e => ({ ...e })));
   const [currentEvent, setCurrentEventState] = useState(null);
   const [userCode, setUserCode] = useState(() => localStorage.getItem('ep_code') || null);
-  const [team, setTeam] = useState([]); // [{rider, slotId, isCpt}]
-  const [teamPicks, setTeamPicks] = useState([]); // [{...team, slotId}]
+  const [team, setTeam] = useState([]);
+  const [teamPicks, setTeamPicks] = useState([]);
   const [riders, setRiders] = useState([]);
   const [teams, setTeams] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -21,6 +21,18 @@ export function EquiPrixProvider({ children }) {
     setTimeout(() => setToast(null), 2200);
   }, []);
 
+  const getRiderList = (ev) => {
+    const st = ev.status;
+    return st === 'riders' ? (
+      ev.gpRiders?.length ? ev.gpRiders :
+      ev.previewRiders?.length ? ev.previewRiders :
+      ev.riders || []
+    ) :
+    st === 'teams' ? [] :
+    st === 'past' ? (ev.riders || []) :
+    (ev.previewRiders?.length ? ev.previewRiders : ev.riders || []);
+  };
+
   // Load event data from Supabase
   const loadEventData = useCallback(async () => {
     try {
@@ -28,7 +40,6 @@ export function EquiPrixProvider({ children }) {
       const salRows = await sbFetch('results?event=eq.team_salaries&limit=1');
       if (salRows && salRows.length && salRows[0].gp_riders) {
         const saved = salRows[0].gp_riders;
-        setEvents(prev => prev.map(ev => ({ ...ev })));
         saved.forEach(sv => {
           const t = GCL_TEAMS_2026.find(x => x.id === sv.id);
           if (t && sv.salary) t.salary = sv.salary;
@@ -44,21 +55,34 @@ export function EquiPrixProvider({ children }) {
         });
       }
 
-      // Load all result rows for statuses
+      // Load all result rows for statuses and rider lists
       const rows = await sbFetch('results?select=event,event_status,gp_riders,preview_riders,team_lock_iso,gp_lock_iso');
       if (rows && rows.length) {
-        setEvents(prev => prev.map(ev => {
-          const row = rows.find(r => r.event === ev.supabaseKey);
-          if (!row) return ev;
-          return {
-            ...ev,
-            ...(row.event_status ? { status: row.event_status } : {}),
-            ...(row.team_lock_iso ? { teamLockISO: row.team_lock_iso } : {}),
-            ...(row.gp_lock_iso ? { gpLockISO: row.gp_lock_iso } : {}),
-            ...(row.gp_riders && row.gp_riders.length ? { gpRiders: row.gp_riders } : {}),
-            ...(row.preview_riders && row.preview_riders.length ? { previewRiders: row.preview_riders } : {}),
-          };
-        }));
+        setEvents(prev => {
+          const updated = prev.map(ev => {
+            const row = rows.find(r => r.event === ev.supabaseKey);
+            if (!row) return ev;
+            return {
+              ...ev,
+              ...(row.event_status ? { status: row.event_status } : {}),
+              ...(row.team_lock_iso ? { teamLockISO: row.team_lock_iso } : {}),
+              ...(row.gp_lock_iso ? { gpLockISO: row.gp_lock_iso } : {}),
+              ...(row.gp_riders && row.gp_riders.length ? { gpRiders: row.gp_riders } : {}),
+              ...(row.preview_riders && row.preview_riders.length ? { previewRiders: row.preview_riders } : {}),
+            };
+          });
+
+          // Update riders for the currently selected event now that data is loaded
+          setCurrentEventState(cur => {
+            if (!cur) return cur;
+            const ev = updated.find(e => e.id === cur.id) || cur;
+            setRiders(getRiderList(ev));
+            setTeams(ev.teams?.length ? ev.teams : GCL_TEAMS_2026);
+            return cur;
+          });
+
+          return updated;
+        });
       }
     } catch (e) {
       console.error('loadEventData error:', e);
@@ -76,40 +100,13 @@ export function EquiPrixProvider({ children }) {
       const ev = prev.find(e => e.id === id);
       if (!ev) return prev;
       setCurrentEventState(ev);
+      setRiders(getRiderList(ev));
+      setTeams(ev.teams?.length ? ev.teams : GCL_TEAMS_2026);
       setTeam([]);
       setTeamPicks([]);
       return prev;
     });
   }, []);
-
-  // Reactively derive riders/teams whenever currentEvent or events changes
-  useEffect(() => {
-    if (!currentEvent) return;
-    setEvents(prev => {
-      const ev = prev.find(e => e.id === currentEvent.id) || currentEvent;
-      const st = ev.status;
-
-      // Pick the best available rider list based on status
-      // 'riders' = GP draft open: use gpRiders, fall back to previewRiders, then hardcoded riders
-      // 'teams'  = only team picks open, no GP riders yet
-      // 'preview'= practice mode: use previewRiders
-      // 'past'   = use hardcoded event riders for results display
-      const riderList =
-        st === 'riders' ? (
-          ev.gpRiders?.length ? ev.gpRiders :
-          ev.previewRiders?.length ? ev.previewRiders :
-          ev.riders || []
-        ) :
-        st === 'teams' ? [] :
-        st === 'past' ? (ev.riders || []) :
-        (ev.previewRiders?.length ? ev.previewRiders : ev.riders || []);
-
-      setRiders(riderList);
-      const teamList = ev.teams?.length ? ev.teams : GCL_TEAMS_2026;
-      setTeams(teamList);
-      return prev;
-    });
-  }, [currentEvent, events]);
 
   // Auto-select best event once after loading completes
   const hasAutoSelected = React.useRef(false);
