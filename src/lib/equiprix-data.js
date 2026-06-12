@@ -12,7 +12,7 @@ export const NAMES = {
 
 export const VALID_CODES = Object.keys(NAMES);
 
-export const CAP = 35000;
+export const CAP = 40000;
 export const CPT_PREMIUM = 1000;
 export const GP_CLEAR_BONUS = 20;
 export const CAPTAIN_MULT = 1.5;
