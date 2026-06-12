@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { EVENTS_2026, GCL_TEAMS_2026, PREVIEW_RIDERS_2026, sbFetch, NAMES, VALID_CODES } from './equiprix-data';
 
 const EquiPrixContext = createContext(null);
@@ -13,6 +13,7 @@ export function EquiPrixProvider({ children }) {
   const [teams, setTeams] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [toast, setToast] = useState(null);
+  const hasAutoSelected = useRef(false);
 
   const userName = userCode ? (NAMES[userCode] || (userCode === 'EQUIPRIX' || userCode === 'BETA2026' ? 'Beta User' : userCode)) : null;
 
@@ -23,24 +24,36 @@ export function EquiPrixProvider({ children }) {
 
   const getRiderList = (ev) => {
     const st = ev.status;
-    return st === 'riders' ? (
-      ev.gpRiders?.length ? ev.gpRiders :
+    if (st === 'teams') return [];
+    if (st === 'past') return ev.riders || [];
+    return ev.gpRiders?.length ? ev.gpRiders :
       ev.previewRiders?.length ? ev.previewRiders :
-      ev.riders || []
-    ) :
-    st === 'teams' ? [] :
-    st === 'past' ? (ev.riders || []) :
-    (ev.previewRiders?.length ? ev.previewRiders : ev.riders || []);
+      ev.riders || [];
   };
 
-  // Load event data from Supabase
+  const doSelectEvent = useCallback((ev) => {
+    setCurrentEventState(ev);
+    setRiders(getRiderList(ev));
+    setTeams(ev.teams?.length ? ev.teams : GCL_TEAMS_2026);
+    setTeam([]);
+    setTeamPicks([]);
+  }, []);
+
+  const selectEvent = useCallback((id) => {
+    setEvents(prev => {
+      const ev = prev.find(e => e.id === id);
+      if (ev) doSelectEvent(ev);
+      return prev;
+    });
+  }, [doSelectEvent]);
+
+  // Load event data from Supabase — auto-select AFTER data arrives
   const loadEventData = useCallback(async () => {
     try {
       // Load team salaries
       const salRows = await sbFetch('results?event=eq.team_salaries&limit=1');
       if (salRows && salRows.length && salRows[0].gp_riders) {
-        const saved = salRows[0].gp_riders;
-        saved.forEach(sv => {
+        salRows[0].gp_riders.forEach(sv => {
           const t = GCL_TEAMS_2026.find(x => x.id === sv.id);
           if (t && sv.salary) t.salary = sv.salary;
         });
@@ -57,74 +70,61 @@ export function EquiPrixProvider({ children }) {
 
       // Load all result rows for statuses and rider lists
       const rows = await sbFetch('results?select=event,event_status,gp_riders,preview_riders,team_lock_iso,gp_lock_iso');
+
+      let updatedEvents = EVENTS_2026.map(e => ({ ...e }));
+
       if (rows && rows.length) {
-        setEvents(prev => {
-          const updated = prev.map(ev => {
-            const row = rows.find(r => r.event === ev.supabaseKey);
-            if (!row) return ev;
-            return {
-              ...ev,
-              ...(row.event_status ? { status: row.event_status } : {}),
-              ...(row.team_lock_iso ? { teamLockISO: row.team_lock_iso } : {}),
-              ...(row.gp_lock_iso ? { gpLockISO: row.gp_lock_iso } : {}),
-              ...(row.gp_riders && row.gp_riders.length ? { gpRiders: row.gp_riders } : {}),
-              ...(row.preview_riders && row.preview_riders.length ? { previewRiders: row.preview_riders } : {}),
-            };
-          });
-
-          // Update riders for the currently selected event now that data is loaded
-          setCurrentEventState(cur => {
-            if (!cur) return cur;
-            const ev = updated.find(e => e.id === cur.id) || cur;
-            setRiders(getRiderList(ev));
-            setTeams(ev.teams?.length ? ev.teams : GCL_TEAMS_2026);
-            return cur;
-          });
-
-          return updated;
+        updatedEvents = updatedEvents.map(ev => {
+          const row = rows.find(r => r.event === ev.supabaseKey);
+          if (!row) return ev;
+          return {
+            ...ev,
+            ...(row.event_status ? { status: row.event_status } : {}),
+            ...(row.team_lock_iso ? { teamLockISO: row.team_lock_iso } : {}),
+            ...(row.gp_lock_iso ? { gpLockISO: row.gp_lock_iso } : {}),
+            ...(row.gp_riders && row.gp_riders.length ? { gpRiders: row.gp_riders } : {}),
+            ...(row.preview_riders && row.preview_riders.length ? { previewRiders: row.preview_riders } : {}),
+          };
         });
       }
+
+      setEvents(updatedEvents);
+
+      // Auto-select best event NOW that we have fresh data with rider lists
+      if (!hasAutoSelected.current) {
+        hasAutoSelected.current = true;
+        const priority = ['live', 'riders', 'teams', 'preview', 'future'];
+        let best = null;
+        for (const s of priority) {
+          best = updatedEvents.find(e => e.status === s);
+          if (best) break;
+        }
+        if (!best) {
+          const pastEvents = updatedEvents.filter(e => e.status === 'past');
+          best = pastEvents[pastEvents.length - 1];
+        }
+        if (best) doSelectEvent(best);
+      } else {
+        // Already selected — just refresh riders for current event
+        setCurrentEventState(cur => {
+          if (!cur) return cur;
+          const ev = updatedEvents.find(e => e.id === cur.id) || cur;
+          setRiders(getRiderList(ev));
+          setTeams(ev.teams?.length ? ev.teams : GCL_TEAMS_2026);
+          return ev;
+        });
+      }
+
     } catch (e) {
       console.error('loadEventData error:', e);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [doSelectEvent]);
 
   useEffect(() => {
     loadEventData();
   }, [loadEventData]);
-
-  const selectEvent = useCallback((id) => {
-    setEvents(prev => {
-      const ev = prev.find(e => e.id === id);
-      if (!ev) return prev;
-      setCurrentEventState(ev);
-      setRiders(getRiderList(ev));
-      setTeams(ev.teams?.length ? ev.teams : GCL_TEAMS_2026);
-      setTeam([]);
-      setTeamPicks([]);
-      return prev;
-    });
-  }, []);
-
-  // Auto-select best event once after loading completes
-  const hasAutoSelected = React.useRef(false);
-  useEffect(() => {
-    if (isLoading || hasAutoSelected.current) return;
-    hasAutoSelected.current = true;
-    const priority = ['live', 'riders', 'teams', 'preview', 'future'];
-    let best = null;
-    for (const s of priority) {
-      best = events.find(e => e.status === s);
-      if (best) break;
-    }
-    if (!best) {
-      const pastEvents = events.filter(e => e.status === 'past');
-      best = pastEvents[pastEvents.length - 1];
-    }
-    if (best) selectEvent(best.id);
-  }, [isLoading]);
 
   // Load saved picks
   const loadSavedPicks = useCallback(async (code, ev) => {
