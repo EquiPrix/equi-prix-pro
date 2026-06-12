@@ -1,0 +1,238 @@
+import React, { useState, useEffect } from 'react';
+import { EVENTS_2026, GCL_TEAMS_2026 } from '@/lib/equiprix-data';
+import { GCL_TEAM_ROSTERS } from '@/components/admin/TeamsEditor';
+import { loadStartLists, saveStartList } from '@/lib/startListStore';
+import { Plus, X, Save } from 'lucide-react';
+
+const HORSES_KEY = 'equiprix_horse_db';
+
+function loadHorseDB() {
+  try { return JSON.parse(localStorage.getItem(HORSES_KEY) || '{}'); } catch { return {}; }
+}
+
+function HorseInput({ riderName, value, onChange }) {
+  const [adding, setAdding] = useState(false);
+  const [newHorse, setNewHorse] = useState('');
+  const [horses, setHorses] = useState(() => loadHorseDB()[riderName] || []);
+
+  useEffect(() => {
+    setHorses(loadHorseDB()[riderName] || []);
+  }, [riderName]);
+
+  const saveHorse = (h) => {
+    if (!h) return;
+    const db = loadHorseDB();
+    if (!db[riderName]) db[riderName] = [];
+    if (!db[riderName].includes(h)) {
+      db[riderName] = [...db[riderName], h];
+      localStorage.setItem(HORSES_KEY, JSON.stringify(db));
+      setHorses(db[riderName]);
+    }
+    onChange(h);
+    setAdding(false);
+    setNewHorse('');
+  };
+
+  return (
+    <div className="flex items-center gap-1 flex-1 min-w-0">
+      <select value={value || ''} onChange={e => onChange(e.target.value)}
+        className="flex-1 rounded px-2 py-1 text-xs outline-none min-w-0"
+        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--ep-border)', color: value ? 'var(--gold-lt)' : 'var(--mid)', fontStyle: value ? 'italic' : 'normal' }}>
+        <option value="">— horse —</option>
+        {horses.map(h => <option key={h} value={h}>{h}</option>)}
+      </select>
+      {adding ? (
+        <div className="flex gap-1">
+          <input autoFocus value={newHorse} onChange={e => setNewHorse(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') saveHorse(newHorse.trim()); if (e.key === 'Escape') setAdding(false); }}
+            placeholder="Horse" className="rounded px-2 py-1 text-xs outline-none"
+            style={{ background: 'rgba(180,149,48,0.08)', border: '1px solid rgba(180,149,48,0.3)', color: 'var(--ep-text)', width: 100 }} />
+          <button onClick={() => saveHorse(newHorse.trim())} className="text-xs px-1.5 py-1 rounded" style={{ background: 'rgba(180,149,48,0.15)', color: 'var(--gold)' }}>✓</button>
+          <button onClick={() => setAdding(false)} style={{ color: 'var(--mid)' }}><X size={11} /></button>
+        </div>
+      ) : (
+        <button onClick={() => setAdding(true)} className="p-1 rounded flex-shrink-0"
+          style={{ color: 'var(--mid)', border: '1px solid var(--ep-border)' }}>
+          <Plus size={10} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function GPStartList({ riders, setRiders }) {
+  const setHorse = (id, horse) => setRiders(prev => prev.map(r => r.id === id ? { ...r, horse } : r));
+  const sorted = [...riders].sort((a, b) => a.rank - b.rank);
+
+  return (
+    <div>
+      <div className="font-cinzel text-xs tracking-widest mb-1" style={{ color: 'var(--gold)', fontSize: 9 }}>
+        GRAND PRIX START LIST · {riders.length} RIDERS
+      </div>
+      <p className="font-cormorant text-sm italic mb-3" style={{ color: 'var(--mid)' }}>
+        Riders are set via the Riders tab (GP checkboxes). Add horses here.
+      </p>
+      {sorted.length === 0 ? (
+        <div className="rounded-lg p-6 text-center" style={{ border: '1px dashed var(--ep-border)' }}>
+          <p className="font-cormorant italic text-sm" style={{ color: 'var(--mid)' }}>No GP riders selected yet — go to the Riders tab and check the GP boxes</p>
+        </div>
+      ) : (
+        <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--ep-border)', maxHeight: 420, overflowY: 'auto' }}>
+          <div className="grid grid-cols-12 gap-1 px-3 py-1.5 text-xs font-cinzel" style={{ background: '#0a0907', color: 'var(--mid)', fontSize: 9, borderBottom: '1px solid var(--ep-border)' }}>
+            <div className="col-span-1 text-right">#</div>
+            <div className="col-span-4">RIDER</div>
+            <div className="col-span-7">HORSE</div>
+          </div>
+          {sorted.map((r, i) => (
+            <div key={r.id} className="grid grid-cols-12 items-center gap-1 px-3 py-1.5" style={{
+              borderBottom: i < sorted.length - 1 ? '1px solid rgba(42,40,32,0.4)' : 'none',
+              background: i % 2 === 0 ? 'rgba(255,255,255,0.01)' : 'transparent'
+            }}>
+              <div className="col-span-1 text-xs text-right" style={{ color: 'var(--gold)' }}>{r.rank}</div>
+              <div className="col-span-4 font-cormorant text-sm truncate" style={{ color: 'var(--cream)' }}>{r.name}</div>
+              <div className="col-span-7">
+                <HorseInput riderName={r.name} value={r.horse} onChange={h => setHorse(r.id, h)} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TeamRoundStartList({ round, teamPairs, setTeamPairs, teams }) {
+  const color = round === 'r1' ? 'var(--gold)' : '#6aad8a';
+  const bg = round === 'r1' ? 'rgba(180,149,48,0.03)' : 'rgba(61,90,76,0.04)';
+  const border = round === 'r1' ? 'rgba(180,149,48,0.15)' : 'rgba(61,90,76,0.2)';
+
+  const getPair = (teamId) => teamPairs[teamId]?.[round] || [{ name: '', horse: '' }, { name: '', horse: '' }];
+
+  const setSlot = (teamId, idx, field, value) => {
+    setTeamPairs(prev => {
+      const base = prev[teamId]?.[round] || [{ name: '', horse: '' }, { name: '', horse: '' }];
+      const arr = base.map((r, i) => i === idx ? { ...r, [field]: value } : r);
+      return { ...prev, [teamId]: { ...(prev[teamId] || {}), [round]: arr } };
+    });
+  };
+
+  return (
+    <div>
+      <div className="font-cinzel text-xs tracking-widest mb-2" style={{ color, fontSize: 9 }}>
+        TEAM {round === 'r1' ? 'ROUND 1' : 'ROUND 2'} — 2 RIDERS PER TEAM
+      </div>
+      <div className="space-y-1.5">
+        {teams.map(team => {
+          const pair = getPair(team.id);
+          const roster = GCL_TEAM_ROSTERS[team.id] || [];
+          return (
+            <div key={team.id} className="rounded-lg px-3 py-2" style={{ background: bg, border: `1px solid ${border}` }}>
+              <div className="font-cormorant text-sm font-semibold mb-1.5" style={{ color: 'var(--cream)' }}>{team.name}</div>
+              {[0, 1].map(idx => (
+                <div key={idx} className="flex items-center gap-2 mb-1">
+                  <span className="font-cinzel text-xs flex-shrink-0 w-3" style={{ color: 'var(--mid)', fontSize: 9 }}>{idx === 0 ? 'A' : 'B'}</span>
+                  <select value={pair[idx]?.name || ''} onChange={e => { setSlot(team.id, idx, 'name', e.target.value); setSlot(team.id, idx, 'horse', ''); }}
+                    className="rounded px-2 py-1 text-xs outline-none flex-shrink-0"
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--ep-border)', color: 'var(--ep-text)', width: 160 }}>
+                    <option value="">— rider —</option>
+                    {roster.map(r => <option key={r.name} value={r.name}>{r.name}</option>)}
+                  </select>
+                  {pair[idx]?.name && (
+                    <HorseInput riderName={pair[idx].name} value={pair[idx].horse} onChange={h => setSlot(team.id, idx, 'horse', h)} />
+                  )}
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+export default function StartListEditor() {
+  const [selectedEventId, setSelectedEventId] = useState('');
+  const [activeSection, setActiveSection] = useState('r1');
+  const [gpRiders, setGpRiders] = useState([]);
+  const [teamPairs, setTeamPairs] = useState({});
+  const [saved, setSaved] = useState(false);
+
+  const event = EVENTS_2026.find(e => e.id === selectedEventId);
+  const teams = event?.teams?.length ? event.teams : GCL_TEAMS_2026;
+
+  useEffect(() => {
+    if (!selectedEventId) return;
+    const existing = loadStartLists()[selectedEventId];
+    if (existing) {
+      setGpRiders(existing.gp || []);
+      setTeamPairs(existing.teamPairs || {});
+    } else {
+      setGpRiders([]);
+      setTeamPairs({});
+    }
+  }, [selectedEventId]);
+
+  const save = () => {
+    if (!event) return;
+    saveStartList(selectedEventId, { gp: gpRiders, teamPairs });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  };
+
+  const SECTIONS = [
+    { id: 'r1', label: 'Team R1' },
+    { id: 'r2', label: 'Team R2' },
+    { id: 'gp', label: 'Grand Prix' },
+  ];
+
+  return (
+    <div className="max-w-2xl">
+      <h2 className="font-cinzel text-sm tracking-widest mb-1" style={{ color: 'var(--gold)' }}>START LISTS</h2>
+      <p className="font-cormorant text-base italic mb-4" style={{ color: 'var(--mid)' }}>
+        Set Team R1, R2 and GP start lists. These auto-populate into Results entry.
+      </p>
+
+      <select value={selectedEventId} onChange={e => setSelectedEventId(e.target.value)}
+        className="w-full rounded px-3 py-2 mb-4 text-sm outline-none"
+        style={{ background: 'var(--ep-card)', border: '1px solid var(--ep-border)', color: 'var(--ep-text)' }}>
+        <option value="">— Select Event —</option>
+        {EVENTS_2026.map(ev => (
+          <option key={ev.id} value={ev.id}>{ev.flag} {ev.city} · {ev.dates}</option>
+        ))}
+      </select>
+
+      {event && (
+        <>
+          <div className="flex gap-1 mb-4">
+            {SECTIONS.map(s => (
+              <button key={s.id} onClick={() => setActiveSection(s.id)}
+                className="px-3 py-1.5 rounded font-cinzel text-xs transition-all"
+                style={{
+                  background: activeSection === s.id ? 'rgba(180,149,48,0.12)' : 'none',
+                  border: `1px solid ${activeSection === s.id ? 'rgba(180,149,48,0.4)' : 'var(--ep-border)'}`,
+                  color: activeSection === s.id ? 'var(--gold)' : 'var(--mid)',
+                  letterSpacing: '0.08em',
+                }}>
+                {s.label.toUpperCase()}
+              </button>
+            ))}
+          </div>
+
+          <div className="mb-4">
+            {activeSection === 'gp' && <GPStartList riders={gpRiders} setRiders={setGpRiders} />}
+            {(activeSection === 'r1' || activeSection === 'r2') && (
+              <TeamRoundStartList round={activeSection} teamPairs={teamPairs} setTeamPairs={setTeamPairs} teams={teams} />
+            )}
+          </div>
+
+          <button onClick={save}
+            className="w-full py-3 rounded font-cinzel text-xs tracking-widest flex items-center justify-center gap-2 sticky bottom-4"
+            style={{ background: saved ? 'rgba(76,175,125,0.2)' : 'var(--gold)', color: saved ? '#4caf7d' : 'var(--ink)', border: saved ? '1px solid #4caf7d' : 'none' }}>
+            <Save size={13} />
+            {saved ? 'SAVED ✓' : 'SAVE START LISTS'}
+          </button>
+        </>
+      )}
+    </div>
+  );
+}

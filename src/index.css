@@ -1,0 +1,158 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&family=Cinzel:wght@400;500;600&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 30 10% 5%;
+    --foreground: 40 30% 92%;
+    --card: 30 10% 8%;
+    --card-foreground: 40 30% 92%;
+    --popover: 30 10% 8%;
+    --popover-foreground: 40 30% 92%;
+    --primary: 43 60% 45%;
+    --primary-foreground: 30 10% 5%;
+    --secondary: 30 8% 15%;
+    --secondary-foreground: 40 20% 75%;
+    --muted: 30 8% 12%;
+    --muted-foreground: 40 10% 55%;
+    --accent: 43 55% 55%;
+    --accent-foreground: 30 10% 5%;
+    --destructive: 0 65% 45%;
+    --destructive-foreground: 40 30% 92%;
+    --border: 30 10% 18%;
+    --input: 30 10% 18%;
+    --ring: 43 60% 45%;
+    --radius: 0.5rem;
+
+    /* EquiPrix custom tokens */
+    --ink: #0f0e0a;
+    --gold: #b49530;
+    --gold-lt: #c9a84c;
+    --gold-pale: #f5edd6;
+    --cream: #f2ede2;
+    --sage: #3d5a4c;
+    --sage-lt: #d4e4dc;
+    --crimson: #8b1a1a;
+    --ep-border: #2a2820;
+    --ep-card: #161410;
+    --mid: #7a7060;
+    --ep-text: #e8e4d8;
+
+    --font-heading: 'Cinzel', serif;
+    --font-body: 'DM Sans', sans-serif;
+    --font-display: 'Cormorant Garamond', serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+    --sidebar-background: 30 10% 6%;
+    --sidebar-foreground: 40 20% 75%;
+    --sidebar-primary: 43 60% 45%;
+    --sidebar-primary-foreground: 30 10% 5%;
+    --sidebar-accent: 30 8% 12%;
+    --sidebar-accent-foreground: 40 20% 75%;
+    --sidebar-border: 30 10% 18%;
+    --sidebar-ring: 43 60% 45%;
+  }
+
+  .dark {
+    --background: 30 10% 5%;
+    --foreground: 40 30% 92%;
+    --card: 30 10% 8%;
+    --card-foreground: 40 30% 92%;
+    --popover: 30 10% 8%;
+    --popover-foreground: 40 30% 92%;
+    --primary: 43 60% 45%;
+    --primary-foreground: 30 10% 5%;
+    --secondary: 30 8% 15%;
+    --secondary-foreground: 40 20% 75%;
+    --muted: 30 8% 12%;
+    --muted-foreground: 40 10% 55%;
+    --accent: 43 55% 55%;
+    --accent-foreground: 30 10% 5%;
+    --destructive: 0 65% 45%;
+    --destructive-foreground: 40 30% 92%;
+    --border: 30 10% 18%;
+    --input: 30 10% 18%;
+    --ring: 43 60% 45%;
+    --sidebar-background: 30 10% 6%;
+    --sidebar-foreground: 40 20% 75%;
+    --sidebar-primary: 43 60% 45%;
+    --sidebar-primary-foreground: 30 10% 5%;
+    --sidebar-accent: 30 8% 12%;
+    --sidebar-accent-foreground: 40 20% 75%;
+    --sidebar-border: 30 10% 18%;
+    --sidebar-ring: 43 60% 45%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground font-body;
+    background-color: var(--ink);
+    color: var(--ep-text);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Safe area for iOS */
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .safe-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+}
+
+/* EquiPrix Typography */
+.font-cinzel {
+  font-family: 'Cinzel', serif;
+}
+.font-cormorant {
+  font-family: 'Cormorant Garamond', serif;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: var(--ink);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--ep-border);
+  border-radius: 2px;
+}
+
+/* Gold shimmer animation */
+@keyframes goldShimmer {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
+.gold-shimmer {
+  animation: goldShimmer 2s ease-in-out infinite;
+}
+
+/* Shake animation */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+
+.shake {
+  animation: shake 0.3s ease;
+}
+
+/* Bottom nav safe area */
+.bottom-nav {
+  padding-bottom: max(env(safe-area-inset-bottom), 8px);
+}
