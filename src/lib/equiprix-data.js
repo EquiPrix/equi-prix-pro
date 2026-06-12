@@ -241,10 +241,10 @@ export const PREVIEW_RIDERS_2026 = [
   { id: 224, name: "Harry Charles", nat: "🇬🇧 UK", rank: 48, salary: 5000, region: "europe" },
   { id: 225, name: "Darragh Kenny", nat: "🇮🇪 Ireland", rank: 51, salary: 4500, region: "europe" },
   { id: 226, name: "Harry Allen", nat: "🇮🇪 Ireland", rank: 272, salary: 1000, region: "europe" },
-{ id: 227, name: "Julien Anquetin", nat: "🇫🇷 France", rank: 99, salary: 3000, region: "europe" },
-{ id: 228, name: "Arthur Le Vot", nat: "🇫🇷 France", rank: 999, salary: 1000, region: "europe" },
-{ id: 229, name: "Alexa Ferrer", nat: "🇫🇷 France", rank: 999, salary: 1000, region: "europe" },
-{ id: 230, name: "Jean-Luc Mourier", nat: "🇫🇷 France", rank: 999, salary: 1000, region: "europe" },
+  { id: 227, name: "Julien Anquetin", nat: "🇫🇷 France", rank: 99, salary: 3000, region: "europe" },
+  { id: 228, name: "Arthur Le Vot", nat: "🇫🇷 France", rank: 999, salary: 1000, region: "europe" },
+  { id: 229, name: "Alexa Ferrer", nat: "🇫🇷 France", rank: 999, salary: 1000, region: "europe" },
+  { id: 230, name: "Jean-Luc Mourier", nat: "🇫🇷 France", rank: 999, salary: 1000, region: "europe" },
 ];
 
 export const GCL_TEAMS_2026 = [
@@ -264,7 +264,7 @@ export const GCL_TEAMS_2026 = [
   { id: 't14', name: 'Scandinavian Vikings', pts: 44.5, rank: 14, salary: 4500, key: 'Vrieling · Vingralkova · Matte Capdevila' },
   { id: 't15', name: 'Mexico Amigos', pts: 42, rank: 15, salary: 4000, key: 'Hank Guerreiro · Hank Conter · Menezes' },
   { id: 't16', name: 'Riyadh Knights', pts: 36, rank: 16, salary: 3500, key: "O'Connor · Gaudiano · T. Wachman" },
-  { id: 't17', name: 'Rome Gladiators', pts: 28, rank: 17, salary: 3000, key: 'Hochstaedter · Grimaldi · Kass · Pezzoli' }
+  { id: 't17', name: 'Rome Gladiators', pts: 28, rank: 17, salary: 3000, key: 'Hochstaedter · Grimaldi · Kass · Pezzoli' },
 ];
 
 export const EVENTS_2026 = [
@@ -294,7 +294,9 @@ export const EVENTS_2026 = [
     ],
     teams: GCL_TEAMS_2026
   },
-{ id: 'st_tropez_2026', city: 'St. Tropez', flag: '🇫🇷', dates: '11–13 Jun', dateLabel: '11–13 June 2026', status: 'riders', supabaseKey: 'st_tropez_2026_r1', teamLockISO: '2026-06-11T14:00:00Z', gpLockISO: '2026-06-14T14:00:00Z',
+  {
+    id: 'st_tropez_2026', city: 'St. Tropez', flag: '🇫🇷', dates: '11–13 Jun', dateLabel: '11–13 June 2026', status: 'riders', supabaseKey: 'st_tropez_2026_r1',
+    teamLockISO: '2026-06-11T14:00:00Z', gpLockISO: '2026-06-14T14:00:00Z',
     gpRiders: [
       { id: 105, name: "Christian Kukuk", nat: "🇩🇪 Germany", rank: 8, salary: 10500, region: "europe", horse: "Checker 47" },
       { id: 202, name: "Abdel Saïd", nat: "🇧🇪 Belgium", rank: 19, salary: 7500, region: "europe", horse: "Wathnan Quaker Brimbelles Z" },
@@ -337,7 +339,10 @@ export const EVENTS_2026 = [
       { id: 229, name: "Alexa Ferrer", nat: "🇫🇷 France", rank: 999, salary: 1000, region: "europe", horse: "Vitalhorse Fleur D'Oz" },
       { id: 230, name: "Jean-Luc Mourier", nat: "🇫🇷 France", rank: 999, salary: 1000, region: "europe", horse: "New Libero One D'Asschaut" },
     ],
-    teams: GCL_TEAMS_2026 },  { id: 'monaco_2026', city: 'Monaco', flag: '🇲🇨', dates: '2–4 Jul', dateLabel: '2–4 July 2026', status: 'future', supabaseKey: 'monaco_2026_r1', teamLockISO: '2026-07-02T14:00:00Z', gpLockISO: '2026-07-04T14:00:00Z', gpRiders: [], teams: [] },
+    teams: GCL_TEAMS_2026,
+  },
+  { id: 'paris_2026', city: 'Paris', flag: '🇫🇷', dates: '19–21 Jun', dateLabel: '19–21 June 2026', status: 'future', supabaseKey: 'paris_2026_r1', teamLockISO: '2026-06-19T14:00:00Z', gpLockISO: '2026-06-21T14:00:00Z', gpRiders: [], teams: [] },
+  { id: 'monaco_2026', city: 'Monaco', flag: '🇲🇨', dates: '2–4 Jul', dateLabel: '2–4 July 2026', status: 'future', supabaseKey: 'monaco_2026_r1', teamLockISO: '2026-07-02T14:00:00Z', gpLockISO: '2026-07-04T14:00:00Z', gpRiders: [], teams: [] },
   { id: 'riesenbeck_2026', city: 'Riesenbeck', flag: '🇩🇪', dates: '16–19 Jul', dateLabel: '16–19 July 2026', status: 'future', supabaseKey: 'riesenbeck_2026_r1', teamLockISO: '2026-07-16T14:00:00Z', gpLockISO: '2026-07-19T14:00:00Z', gpRiders: [], teams: [] },
   { id: 'london_2026', city: 'London', flag: '🇬🇧', dates: '7–9 Aug', dateLabel: '7–9 August 2026', status: 'future', supabaseKey: 'london_2026_r1', teamLockISO: '2026-08-07T14:00:00Z', gpLockISO: '2026-08-09T14:00:00Z', gpRiders: [], teams: [] },
   { id: 'valkenswaard_2026', city: 'Valkenswaard', flag: '🇳🇱', dates: '4–6 Sep', dateLabel: '4–6 September 2026', status: 'future', supabaseKey: 'valkenswaard_2026_r1', teamLockISO: '2026-09-04T14:00:00Z', gpLockISO: '2026-09-06T14:00:00Z', gpRiders: [], teams: [] },
@@ -345,5 +350,5 @@ export const EVENTS_2026 = [
   { id: 'rome_2026', city: 'Rome', flag: '🇮🇹', dates: '9–11 Oct', dateLabel: '9–11 October 2026', status: 'future', supabaseKey: 'rome_2026_r1', teamLockISO: '2026-10-09T14:00:00Z', gpLockISO: '2026-10-11T14:00:00Z', gpRiders: [], teams: [] },
   { id: 'cairo_2026', city: 'Cairo', flag: '🇪🇬', dates: '22–24 Oct', dateLabel: '22–24 October 2026', status: 'future', supabaseKey: 'cairo_2026_r1', teamLockISO: '2026-10-22T14:00:00Z', gpLockISO: '2026-10-24T14:00:00Z', gpRiders: [], teams: [] },
   { id: 'rabat_2026', city: 'Rabat', flag: '🇲🇦', dates: '30 Oct–1 Nov', dateLabel: '30 Oct–1 Nov 2026', status: 'future', supabaseKey: 'rabat_2026_r1', teamLockISO: '2026-10-30T14:00:00Z', gpLockISO: '2026-11-01T14:00:00Z', gpRiders: [], teams: [] },
-  { id: 'riyadh_2026', city: 'Riyadh Playoffs', flag: '🇸🇦', dates: '18–21 Nov', dateLabel: '18–21 November 2026', status: 'future', supabaseKey: 'riyadh_2026_r1', teamLockISO: '2026-11-18T12:00:00Z', gpLockISO: '2026-11-21T12:00:00Z', gpRiders: [], teams: [] }
+  { id: 'riyadh_2026', city: 'Riyadh Playoffs', flag: '🇸🇦', dates: '18–21 Nov', dateLabel: '18–21 November 2026', status: 'future', supabaseKey: 'riyadh_2026_r1', teamLockISO: '2026-11-18T12:00:00Z', gpLockISO: '2026-11-21T12:00:00Z', gpRiders: [], teams: [] },
 ];
