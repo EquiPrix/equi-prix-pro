@@ -29,7 +29,6 @@ export function EquiPrixProvider({ children }) {
       if (salRows && salRows.length && salRows[0].gp_riders) {
         const saved = salRows[0].gp_riders;
         setEvents(prev => prev.map(ev => ({ ...ev })));
-        // Update GCL_TEAMS_2026 salaries in place
         saved.forEach(sv => {
           const t = GCL_TEAMS_2026.find(x => x.id === sv.id);
           if (t && sv.salary) t.salary = sv.salary;
@@ -72,7 +71,6 @@ export function EquiPrixProvider({ children }) {
     loadEventData();
   }, [loadEventData]);
 
-  // Select event — just sets currentEvent; riders/teams derived reactively below
   const selectEvent = useCallback((id) => {
     setEvents(prev => {
       const ev = prev.find(e => e.id === id);
@@ -84,19 +82,28 @@ export function EquiPrixProvider({ children }) {
     });
   }, []);
 
-  // Reactively derive riders/teams whenever currentEvent changes
-  // (also re-runs if events array updates with fresh previewRiders from Supabase)
+  // Reactively derive riders/teams whenever currentEvent or events changes
   useEffect(() => {
     if (!currentEvent) return;
-    // Re-read the event from the latest events array to pick up any async updates
     setEvents(prev => {
       const ev = prev.find(e => e.id === currentEvent.id) || currentEvent;
       const st = ev.status;
+
+      // Pick the best available rider list based on status
+      // 'riders' = GP draft open: use gpRiders, fall back to previewRiders, then hardcoded riders
+      // 'teams'  = only team picks open, no GP riders yet
+      // 'preview'= practice mode: use previewRiders
+      // 'past'   = use hardcoded event riders for results display
       const riderList =
-        st === 'riders' ? (ev.gpRiders?.length ? ev.gpRiders : ev.riders || []) :
-        st === 'teams'  ? [] :
-        st === 'past'   ? (ev.riders || []) :
+        st === 'riders' ? (
+          ev.gpRiders?.length ? ev.gpRiders :
+          ev.previewRiders?.length ? ev.previewRiders :
+          ev.riders || []
+        ) :
+        st === 'teams' ? [] :
+        st === 'past' ? (ev.riders || []) :
         (ev.previewRiders?.length ? ev.previewRiders : ev.riders || []);
+
       setRiders(riderList);
       const teamList = ev.teams?.length ? ev.teams : GCL_TEAMS_2026;
       setTeams(teamList);
@@ -130,7 +137,7 @@ export function EquiPrixProvider({ children }) {
       if (!rows || !rows.length) rows = await sbFetch('picks?access_code=eq.' + encodeURIComponent(code) + '&limit=1');
       if (rows && rows.length > 0) {
         const p = rows[0].picks_json;
-        const evRiders = ev.gpRiders || ev.riders || riders;
+        const evRiders = ev.gpRiders?.length ? ev.gpRiders : ev.previewRiders || ev.riders || riders;
         const evTeams = ev.teams && ev.teams.length ? ev.teams : GCL_TEAMS_2026;
         const SLOT_IDS = ['cpt', 'r1', 'r2', 'r3', 'r4'];
         const newTeam = [];
@@ -154,7 +161,6 @@ export function EquiPrixProvider({ children }) {
 
   const login = useCallback((code) => {
     const upper = code.trim().toUpperCase();
-    // Valid codes: specific named codes, EQPRIX01-99 pattern, or demo code
     const isNamedCode = VALID_CODES.includes(upper);
     const isEqprixCode = /^EQPRIX\d{2}$/.test(upper);
     const isDemoCode = upper === 'EQUIPRIX' || upper === 'BETA2026';
