@@ -26,9 +26,10 @@ export function EquiPrixProvider({ children }) {
     const st = ev.status;
     if (st === 'teams') return [];
     if (st === 'past') return ev.riders || [];
-    return ev.gpRiders?.length ? ev.gpRiders :
-      ev.previewRiders?.length ? ev.previewRiders :
-      ev.riders || [];
+    // Always prefer hardcoded gpRiders first, then Supabase previewRiders, then hardcoded riders
+    if (ev.gpRiders?.length) return ev.gpRiders;
+    if (ev.previewRiders?.length) return ev.previewRiders;
+    return ev.riders || [];
   };
 
   const doSelectEvent = useCallback((ev) => {
@@ -47,7 +48,6 @@ export function EquiPrixProvider({ children }) {
     });
   }, [doSelectEvent]);
 
-  // Load event data from Supabase — auto-select AFTER data arrives
   const loadEventData = useCallback(async () => {
     try {
       // Load team salaries
@@ -71,6 +71,7 @@ export function EquiPrixProvider({ children }) {
       // Load all result rows for statuses and rider lists
       const rows = await sbFetch('results?select=event,event_status,gp_riders,preview_riders,team_lock_iso,gp_lock_iso');
 
+      // Start from EVENTS_2026 to preserve hardcoded gpRiders
       let updatedEvents = EVENTS_2026.map(e => ({ ...e }));
 
       if (rows && rows.length) {
@@ -79,18 +80,21 @@ export function EquiPrixProvider({ children }) {
           if (!row) return ev;
           return {
             ...ev,
+            // Update status and lock times from Supabase
             ...(row.event_status ? { status: row.event_status } : {}),
             ...(row.team_lock_iso ? { teamLockISO: row.team_lock_iso } : {}),
             ...(row.gp_lock_iso ? { gpLockISO: row.gp_lock_iso } : {}),
-            ...(row.gp_riders && row.gp_riders.length ? { gpRiders: row.gp_riders } : {}),
-            ...(row.preview_riders && row.preview_riders.length ? { previewRiders: row.preview_riders } : {}),
+            // Only set gpRiders from Supabase if no hardcoded gpRiders exist
+            ...(!ev.gpRiders?.length && row.gp_riders?.length ? { gpRiders: row.gp_riders } : {}),
+            // previewRiders always from Supabase
+            ...(row.preview_riders?.length ? { previewRiders: row.preview_riders } : {}),
           };
         });
       }
 
       setEvents(updatedEvents);
 
-      // Auto-select best event NOW that we have fresh data with rider lists
+      // Auto-select best event after data loads
       if (!hasAutoSelected.current) {
         hasAutoSelected.current = true;
         const priority = ['live', 'riders', 'teams', 'preview', 'future'];
@@ -105,7 +109,6 @@ export function EquiPrixProvider({ children }) {
         }
         if (best) doSelectEvent(best);
       } else {
-        // Already selected — just refresh riders for current event
         setCurrentEventState(cur => {
           if (!cur) return cur;
           const ev = updatedEvents.find(e => e.id === cur.id) || cur;
@@ -126,7 +129,6 @@ export function EquiPrixProvider({ children }) {
     loadEventData();
   }, [loadEventData]);
 
-  // Load saved picks
   const loadSavedPicks = useCallback(async (code, ev) => {
     if (!ev || !['preview', 'teams', 'riders', 'open'].includes(ev.status)) return;
     try {
