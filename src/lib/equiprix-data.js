@@ -241,6 +241,10 @@ export const PREVIEW_RIDERS_2026 = [
   { id: 224, name: "Harry Charles", nat: "🇬🇧 UK", rank: 48, salary: 5000, region: "europe" },
   { id: 225, name: "Darragh Kenny", nat: "🇮🇪 Ireland", rank: 51, salary: 4500, region: "europe" },
   { id: 226, name: "Harry Allen", nat: "🇮🇪 Ireland", rank: 272, salary: 1000, region: "europe" },
+{ id: 227, name: "Julien Anquetin", nat: "🇫🇷 France", rank: 99, salary: 3000, region: "europe" },
+{ id: 228, name: "Arthur Le Vot", nat: "🇫🇷 France", rank: 999, salary: 1000, region: "europe" },
+{ id: 229, name: "Alexa Ferrer", nat: "🇫🇷 France", rank: 999, salary: 1000, region: "europe" },
+{ id: 230, name: "Jean-Luc Mourier", nat: "🇫🇷 France", rank: 999, salary: 1000, region: "europe" },
 ];
 
 export const GCL_TEAMS_2026 = [
