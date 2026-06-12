@@ -1,42 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { EVENTS_2026, GCL_TEAMS_2026, sbFetch } from '@/lib/equiprix-data';
+import { EVENTS_2026, GCL_TEAMS_2026 } from '@/lib/equiprix-data';
 import { GCL_TEAM_ROSTERS } from '@/components/admin/TeamsEditor';
-import { loadStartLists, saveStartList } from '@/lib/startListStore';
+import { loadStartListRemote, saveStartListRemote, loadHorseDBRemote, saveHorseDBRemote } from '@/lib/startListStore';
 import { Plus, X, Save } from 'lucide-react';
 
-const HORSES_KEY = 'equiprix_horse_db';
-
-function loadHorseDB() {
-  try { return JSON.parse(localStorage.getItem(HORSES_KEY) || '{}'); } catch { return {}; }
-}
-
-function HorseInput({ riderName, value, onChange }) {
+function HorseInput({ riderName, value, onChange, horseDB, onAddHorse }) {
   const [adding, setAdding] = useState(false);
   const [newHorse, setNewHorse] = useState('');
-  const [horses, setHorses] = useState(() => loadHorseDB()[riderName] || []);
-
-  useEffect(() => {
-    setHorses(loadHorseDB()[riderName] || []);
-  }, [riderName]);
+  const horses = horseDB[riderName] || [];
 
   const saveHorse = async (h) => {
     if (!h) return;
-    const db = loadHorseDB();
-    if (!db[riderName]) db[riderName] = [];
-    if (!db[riderName].includes(h)) {
-      db[riderName] = [...db[riderName], h];
-      localStorage.setItem(HORSES_KEY, JSON.stringify(db));
-      setHorses([...db[riderName]]);
-      // Persist horse DB to Supabase so it survives across devices
-      await sbFetch('results', {
-        method: 'POST',
-        body: JSON.stringify({
-          event: 'horse_registry',
-          rider_results: db,
-          updated_at: new Date().toISOString()
-        })
-      });
-    }
+    await onAddHorse(riderName, h);
     onChange(h);
     setAdding(false);
     setNewHorse('');
@@ -69,7 +44,7 @@ function HorseInput({ riderName, value, onChange }) {
   );
 }
 
-function GPStartList({ riders, setRiders }) {
+function GPStartList({ riders, setRiders, horseDB, onAddHorse }) {
   const setHorse = (id, horse) => setRiders(prev => prev.map(r => r.id === id ? { ...r, horse } : r));
   const sorted = [...riders].sort((a, b) => a.rank - b.rank);
 
@@ -79,7 +54,7 @@ function GPStartList({ riders, setRiders }) {
         GRAND PRIX START LIST · {riders.length} RIDERS
       </div>
       <p className="font-cormorant text-sm italic mb-3" style={{ color: 'var(--mid)' }}>
-        Riders are set via the Riders tab (GP checkboxes). Add horses here.
+        Riders are set via the Riders tab. Add horses here then hit Save.
       </p>
       {sorted.length === 0 ? (
         <div className="rounded-lg p-6 text-center" style={{ border: '1px dashed var(--ep-border)' }}>
@@ -100,7 +75,7 @@ function GPStartList({ riders, setRiders }) {
               <div className="col-span-1 text-xs text-right" style={{ color: 'var(--gold)' }}>{r.rank}</div>
               <div className="col-span-4 font-cormorant text-sm truncate" style={{ color: 'var(--cream)' }}>{r.name}</div>
               <div className="col-span-7">
-                <HorseInput riderName={r.name} value={r.horse} onChange={h => setHorse(r.id, h)} />
+                <HorseInput riderName={r.name} value={r.horse} onChange={h => setHorse(r.id, h)} horseDB={horseDB} onAddHorse={onAddHorse} />
               </div>
             </div>
           ))}
@@ -110,7 +85,7 @@ function GPStartList({ riders, setRiders }) {
   );
 }
 
-function TeamRoundStartList({ round, teamPairs, setTeamPairs, teams }) {
+function TeamRoundStartList({ round, teamPairs, setTeamPairs, teams, horseDB, onAddHorse }) {
   const color = round === 'r1' ? 'var(--gold)' : '#6aad8a';
   const bg = round === 'r1' ? 'rgba(180,149,48,0.03)' : 'rgba(61,90,76,0.04)';
   const border = round === 'r1' ? 'rgba(180,149,48,0.15)' : 'rgba(61,90,76,0.2)';
@@ -147,7 +122,7 @@ function TeamRoundStartList({ round, teamPairs, setTeamPairs, teams }) {
                     {roster.map(r => <option key={r.name} value={r.name}>{r.name}</option>)}
                   </select>
                   {pair[idx]?.name && (
-                    <HorseInput riderName={pair[idx].name} value={pair[idx].horse} onChange={h => setSlot(team.id, idx, 'horse', h)} />
+                    <HorseInput riderName={pair[idx].name} value={pair[idx].horse} onChange={h => setSlot(team.id, idx, 'horse', h)} horseDB={horseDB} onAddHorse={onAddHorse} />
                   )}
                 </div>
               ))}
@@ -164,38 +139,49 @@ export default function StartListEditor() {
   const [activeSection, setActiveSection] = useState('r1');
   const [gpRiders, setGpRiders] = useState([]);
   const [teamPairs, setTeamPairs] = useState({});
+  const [horseDB, setHorseDB] = useState({});
   const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const event = EVENTS_2026.find(e => e.id === selectedEventId);
   const teams = event?.teams?.length ? event.teams : GCL_TEAMS_2026;
 
+  // Load horse DB from Supabase on mount
+  useEffect(() => {
+    loadHorseDBRemote().then(db => setHorseDB(db));
+  }, []);
+
+  // Load start list from Supabase when event selected
   useEffect(() => {
     if (!selectedEventId) return;
-    const existing = loadStartLists()[selectedEventId];
-    if (existing) {
-      setGpRiders(existing.gp || []);
-      setTeamPairs(existing.teamPairs || {});
-    } else {
-      setGpRiders([]);
-      setTeamPairs({});
-    }
+    setLoading(true);
+    loadStartListRemote(selectedEventId).then(data => {
+      if (data) {
+        setGpRiders(data.gp || []);
+        setTeamPairs(data.teamPairs || {});
+      } else {
+        setGpRiders([]);
+        setTeamPairs({});
+      }
+      setLoading(false);
+    });
   }, [selectedEventId]);
+
+  // Add horse to DB and save to Supabase immediately
+  const addHorse = async (riderName, horse) => {
+    if (!riderName || !horse) return;
+    const db = { ...horseDB };
+    if (!db[riderName]) db[riderName] = [];
+    if (!db[riderName].includes(horse)) {
+      db[riderName] = [...db[riderName], horse];
+      setHorseDB(db);
+      await saveHorseDBRemote(db);
+    }
+  };
 
   const save = async () => {
     if (!event) return;
-    saveStartList(selectedEventId, { gp: gpRiders, teamPairs });
-
-    // Persist to Supabase so start lists survive across devices
-    await sbFetch('start_lists', {
-      method: 'POST',
-      body: JSON.stringify({
-        event: selectedEventId,
-        gp: gpRiders,
-        team_pairs: teamPairs,
-        updated_at: new Date().toISOString()
-      })
-    });
-
+    await saveStartListRemote(selectedEventId, { gp: gpRiders, teamPairs });
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
@@ -222,7 +208,13 @@ export default function StartListEditor() {
         ))}
       </select>
 
-      {event && (
+      {loading && (
+        <div className="text-center py-4 font-cormorant italic text-sm" style={{ color: 'var(--mid)' }}>
+          Loading…
+        </div>
+      )}
+
+      {event && !loading && (
         <>
           <div className="flex gap-1 mb-4">
             {SECTIONS.map(s => (
@@ -240,9 +232,11 @@ export default function StartListEditor() {
           </div>
 
           <div className="mb-4">
-            {activeSection === 'gp' && <GPStartList riders={gpRiders} setRiders={setGpRiders} />}
+            {activeSection === 'gp' && (
+              <GPStartList riders={gpRiders} setRiders={setGpRiders} horseDB={horseDB} onAddHorse={addHorse} />
+            )}
             {(activeSection === 'r1' || activeSection === 'r2') && (
-              <TeamRoundStartList round={activeSection} teamPairs={teamPairs} setTeamPairs={setTeamPairs} teams={teams} />
+              <TeamRoundStartList round={activeSection} teamPairs={teamPairs} setTeamPairs={setTeamPairs} teams={teams} horseDB={horseDB} onAddHorse={addHorse} />
             )}
           </div>
 
