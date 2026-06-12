@@ -1,7 +1,7 @@
 // EquiPrix 2026 Season Data
 
-export const SUPABASE_URL = 'https://tkqupuppxjuaxafocmsq.supabase.co';
-export const SUPABASE_KEY = 'sb_publishable_xJ8GhHRzehC2-BucvtDtKg_ZLVfAaua';
+export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://tkqupuppxjuaxafocmsq.supabase.co';
+export const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 export const ADMIN_PASSWORD = 'equiprix2026';
 
 export const NAMES = {
