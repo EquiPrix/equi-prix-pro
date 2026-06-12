@@ -3,6 +3,7 @@ import { EVENTS_2026, GCL_TEAMS_2026 } from '@/lib/equiprix-data';
 import { GCL_TEAM_ROSTERS } from '@/components/admin/TeamsEditor';
 import { loadStartLists, saveStartList } from '@/lib/startListStore';
 import { Plus, X, Save } from 'lucide-react';
+import { EVENTS_2026, GCL_TEAMS_2026, sbFetch } from '@/lib/equiprix-data';
 
 const HORSES_KEY = 'equiprix_horse_db';
 
@@ -172,12 +173,24 @@ export default function StartListEditor() {
     }
   }, [selectedEventId]);
 
-  const save = () => {
-    if (!event) return;
-    saveStartList(selectedEventId, { gp: gpRiders, teamPairs });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
-  };
+  const save = async () => {
+  if (!event) return;
+  saveStartList(selectedEventId, { gp: gpRiders, teamPairs });
+
+  // Also persist to Supabase so horses survive across devices
+  await sbFetch('start_lists', {
+    method: 'POST',
+    body: JSON.stringify({
+      event: selectedEventId,
+      gp: gpRiders,
+      team_pairs: teamPairs,
+      updated_at: new Date().toISOString()
+    })
+  });
+
+  setSaved(true);
+  setTimeout(() => setSaved(false), 2500);
+};
 
   const SECTIONS = [
     { id: 'r1', label: 'Team R1' },
