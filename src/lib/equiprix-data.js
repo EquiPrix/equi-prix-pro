@@ -12,7 +12,7 @@ export const NAMES = {
 
 export const VALID_CODES = Object.keys(NAMES);
 
-export const CAP = 40000;
+export const CAP = 50000;
 export const CPT_PREMIUM = 1000;
 export const GP_CLEAR_BONUS = 20;
 export const CAPTAIN_MULT = 1.5;
@@ -69,7 +69,41 @@ export function rankToSalary(rank) {
   if (rank <= 200) return 1500;
   return 1000;
 }
+// Add this function to equiprix-data.js after rankToSalary()
+// Replace the static salary on each rider with a dynamic one based on field strength
 
+export function calcEventRiderSalaries(gpRiders) {
+  if (!gpRiders || !gpRiders.length) return gpRiders;
+
+  // Sort by FEI rank within this event's field — rank 999/missing = worst
+  const sorted = [...gpRiders].sort((a, b) => {
+    const ra = (!a.rank || a.rank >= 999) ? 99999 : a.rank;
+    const rb = (!b.rank || b.rank >= 999) ? 99999 : b.rank;
+    return ra - rb;
+  });
+
+  return sorted.map((rider, i) => {
+    const fieldRank = i + 1; // 1 = best FEI rank in this event's GP field
+    let raw;
+
+    if (fieldRank <= 5) {
+      // Top 5: $11,000 → $9,000
+      raw = 11000 - (fieldRank - 1) * 500;
+    } else if (fieldRank <= 15) {
+      // Ranks 6–15: $9,000 → $7,000
+      raw = 9000 - (fieldRank - 6) * 200;
+    } else if (fieldRank <= 30) {
+      // Ranks 16–30: $7,500 → $5,000
+      raw = 7500 - (fieldRank - 16) * 167;
+    } else {
+      // Ranks 31–40: $4,000 → $3,000
+      raw = 4000 - (fieldRank - 31) * 100;
+    }
+
+    const salary = Math.max(3000, Math.round(raw / 500) * 500);
+    return { ...rider, salary, fieldRank };
+  });
+}
 export function getBand(rank) {
   if (rank <= 10) return { label: 'Top 10', cls: 'band-1' };
   if (rank <= 25) return { label: '11–25', cls: 'band-2' };

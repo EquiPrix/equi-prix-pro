@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { EVENTS_2026, GCL_TEAMS_2026, PREVIEW_RIDERS_2026, sbFetch, NAMES, VALID_CODES } from './equiprix-data';
+import { EVENTS_2026, GCL_TEAMS_2026, PREVIEW_RIDERS_2026, sbFetch, NAMES, VALID_CODES, calcEventRiderSalaries } from './equiprix-data';
 
 const EquiPrixContext = createContext(null);
 
@@ -26,9 +26,16 @@ export function EquiPrixProvider({ children }) {
     const st = ev.status;
     if (st === 'teams') return [];
     if (st === 'past') return ev.riders || [];
-    if (ev.gpRiders?.length) return ev.gpRiders;
-    if (ev.previewRiders?.length) return ev.previewRiders;
-    return ev.riders || [];
+
+    // Get the raw rider list
+    let rawRiders = null;
+    if (ev.gpRiders?.length) rawRiders = ev.gpRiders;
+    else if (ev.previewRiders?.length) rawRiders = ev.previewRiders;
+    else rawRiders = ev.riders || [];
+
+    // Apply dynamic salary curve based on this event's field
+    if (rawRiders.length) return calcEventRiderSalaries(rawRiders);
+    return [];
   };
 
   const doSelectEvent = useCallback((ev) => {
@@ -49,19 +56,24 @@ export function EquiPrixProvider({ children }) {
 
   const loadEventData = useCallback(async () => {
     try {
+      // Load team salaries from Supabase standings
       const salRows = await sbFetch('results?event=eq.team_salaries&limit=1');
       if (salRows && salRows.length && salRows[0].gp_riders) {
         salRows[0].gp_riders.forEach(sv => {
           const t = GCL_TEAMS_2026.find(x => x.id === sv.id);
           if (t && sv.salary) t.salary = sv.salary;
+          if (t && sv.rank) t.rank = sv.rank;
+          if (t && sv.pts) t.pts = sv.pts;
         });
       }
 
+      // Load FEI rankings (updates PREVIEW_RIDERS_2026 base ranks)
       const rankRows = await sbFetch('results?event=eq.fei_rankings&limit=1');
       if (rankRows && rankRows.length && rankRows[0].gp_riders) {
         rankRows[0].gp_riders.forEach(sr => {
           const r = PREVIEW_RIDERS_2026.find(pr => pr.id === sr.id);
-          if (r) { r.rank = sr.rank; r.salary = sr.salary; }
+          if (r) { r.rank = sr.rank; }
+          // Note: salary is now calculated dynamically, not stored
         });
       }
 
@@ -128,15 +140,12 @@ export function EquiPrixProvider({ children }) {
       if (rows && rows.length > 0) {
         const p = rows[0].picks_json;
 
-        // Search ALL available rider lists to find saved picks
-        // This ensures picks restore regardless of which list they were saved from
         const allAvailableRiders = [
           ...(ev.gpRiders || []),
           ...(ev.previewRiders || []),
           ...(ev.riders || []),
           ...PREVIEW_RIDERS_2026,
         ];
-        // Deduplicate by id
         const seenIds = new Set();
         const evRiders = allAvailableRiders.filter(r => {
           if (seenIds.has(r.id)) return false;
@@ -144,11 +153,14 @@ export function EquiPrixProvider({ children }) {
           return true;
         });
 
+        // Apply dynamic salaries to restored picks too
+        const evRidersWithSalaries = calcEventRiderSalaries(evRiders);
+
         const evTeams = ev.teams && ev.teams.length ? ev.teams : GCL_TEAMS_2026;
         const SLOT_IDS = ['cpt', 'r1', 'r2', 'r3', 'r4'];
         const newTeam = [];
         (p.riders || []).forEach(s => {
-          const rider = evRiders.find(r => r.id === s.id);
+          const rider = evRidersWithSalaries.find(r => r.id === s.id);
           if (rider) newTeam.push({ rider, slotId: SLOT_IDS[newTeam.length], isCpt: s.isCpt });
         });
         const newTeamPicks = [];
