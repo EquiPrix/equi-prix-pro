@@ -117,55 +117,80 @@ function TeamRoundEditor({ teams, round, data, onChange, startList }) {
 function calcFinalPositions(teams, teamResults) {
   const withData = teams.map(team => {
     const d = teamResults[team.id] || {};
+    const r1Faults = d.r1Faults !== '' && d.r1Faults !== undefined ? Number(d.r1Faults) : 0;
     const r2Faults = d.r2Faults !== '' && d.r2Faults !== undefined ? Number(d.r2Faults) : null;
     const r2Time = d.r2Time !== '' && d.r2Time !== undefined ? Number(d.r2Time) : null;
-    const r1Faults = d.r1Faults !== '' && d.r1Faults !== undefined ? Number(d.r1Faults) : null;
-    const r1Time = d.r1Time !== '' && d.r1Time !== undefined ? Number(d.r1Time) : null;
     const didR2 = r2Faults !== null || !!d.r2Ret || !!d.r2El;
     const isR2Failed = didR2 && (!!d.r2Ret || !!d.r2El);
-    return { id: team.id, didR2, isR2Failed, r2Faults: r2Faults ?? 9999, r2Time: r2Time ?? 9999, r1Faults: r1Faults ?? 9999, r1Time: r1Time ?? 9999 };
+    const totalFaults = r1Faults + (r2Faults ?? 9999);
+    return { id: team.id, didR2, isR2Failed, totalFaults, r2Time: r2Time ?? 9999, r1Faults };
   });
-  const tier0 = withData.filter(t => t.didR2 && !t.isR2Failed).sort((a, b) => a.r2Faults - b.r2Faults || a.r2Time - b.r2Time);
-  const tier1 = withData.filter(t => t.isR2Failed).sort((a, b) => a.r2Faults - b.r2Faults || a.r2Time - b.r2Time);
-  const tier2 = withData.filter(t => !t.didR2).sort((a, b) => a.r1Faults - b.r1Faults || a.r1Time - b.r1Time);
+
+  // Tier 0: completed R2 — sort by R1+R2 total faults, then R2 time
+  const tier0 = withData.filter(t => t.didR2 && !t.isR2Failed)
+    .sort((a, b) => a.totalFaults - b.totalFaults || a.r2Time - b.r2Time);
+  // Tier 1: R2 ret/el — rank above R1-only teams
+  const tier1 = withData.filter(t => t.isR2Failed)
+    .sort((a, b) => a.r1Faults - b.r1Faults);
+  // Tier 2: did not advance — sort by R1 faults
+  const tier2 = withData.filter(t => !t.didR2)
+    .sort((a, b) => a.r1Faults - b.r1Faults);
+
   const posMap = {};
   let pos = 1;
   for (const t of [...tier0, ...tier1, ...tier2]) { posMap[t.id] = pos++; }
   return posMap;
 }
 
-function FinalEditor({ teams, data, onChange }) {
+function FinalEditor({ teams, data }) {
   const get = (teamId) => data[teamId] || {};
-  const set = (teamId, field, value) => onChange({ ...data, [teamId]: { ...get(teamId), [field]: value } });
   const posMap = calcFinalPositions(teams, data);
   const sortedTeams = [...teams].sort((a, b) => (posMap[a.id] || 99) - (posMap[b.id] || 99));
 
   return (
     <div className="space-y-1">
       <p className="font-cormorant italic text-xs mb-2" style={{ color: 'var(--mid)' }}>
-        Positions auto-calculated: R2 faults → R2 time tiebreaker. R2 EL/RET teams rank above R1-only teams.
+        Auto-calculated from R1 + R2 total faults, R2 time as tiebreaker. Enter results in Team R1 and Team R2 tabs.
       </p>
       <div className="grid grid-cols-12 gap-2 px-3 py-1 text-xs font-cinzel" style={{ color: 'var(--mid)', fontSize: 9 }}>
         <div className="col-span-1 text-center">POS</div>
         <div className="col-span-5">TEAM</div>
-        <div className="col-span-3 text-center">R2 FAULTS · TIME</div>
-        <div className="col-span-3">FLAGS</div>
+        <div className="col-span-2 text-center">R1</div>
+        <div className="col-span-2 text-center">R2</div>
+        <div className="col-span-2 text-center">TOTAL · TIME</div>
       </div>
       {sortedTeams.map(team => {
         const d = get(team.id);
         const pos = posMap[team.id];
-        const didR2 = d.r2Faults !== '' && d.r2Faults !== undefined;
+        const r1F = d.r1Faults !== '' && d.r1Faults !== undefined ? Number(d.r1Faults) : null;
+        const r2F = d.r2Faults !== '' && d.r2Faults !== undefined ? Number(d.r2Faults) : null;
+        const totalF = r1F !== null && r2F !== null ? r1F + r2F : r1F !== null ? r1F : null;
+        const hasR2 = r2F !== null || !!d.r2Ret || !!d.r2El;
+        const flag = d.r2Ret ? ' RET' : d.r2El ? ' EL' : '';
+
         return (
-          <div key={team.id} className="grid grid-cols-12 items-center gap-2 px-3 py-2 rounded"
-            style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(42,40,32,0.5)' }}>
-            <div className="col-span-1 font-cinzel text-sm text-center" style={{ color: pos <= 3 ? 'var(--gold)' : 'var(--mid)' }}>{pos}</div>
-            <div className="col-span-5 font-cormorant text-sm truncate" style={{ color: didR2 ? 'var(--cream)' : 'var(--mid)' }}>{team.name}</div>
-            <div className="col-span-3 text-center font-cormorant text-xs" style={{ color: 'var(--mid)' }}>
-              {d.r2Faults !== '' && d.r2Faults !== undefined ? `${d.r2Faults}f · ${d.r2Time ?? '—'}s` : '—'}
+          <div key={team.id} className="grid grid-cols-12 items-center gap-2 px-3 py-2.5 rounded"
+            style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${pos <= 3 ? 'rgba(180,149,48,0.2)' : 'rgba(42,40,32,0.5)'}` }}>
+            <div className="col-span-1 font-cinzel text-sm text-center font-bold"
+              style={{ color: pos <= 3 ? 'var(--gold)' : 'var(--mid)' }}>
+              {pos}
             </div>
-            <div className="col-span-3 flex gap-1">
-              <Toggle label="R2 RET" value={!!d.r2Ret} onChange={v => set(team.id, 'r2Ret', v)} />
-              <Toggle label="R2 EL" value={!!d.r2El} onChange={v => set(team.id, 'r2El', v)} />
+            <div className="col-span-5 font-cormorant text-sm truncate"
+              style={{ color: hasR2 ? 'var(--cream)' : 'var(--mid)' }}>
+              {team.name}
+            </div>
+            <div className="col-span-2 text-center font-cormorant text-sm" style={{ color: 'var(--mid)' }}>
+              {r1F !== null ? `${r1F}f` : '—'}
+            </div>
+            <div className="col-span-2 text-center font-cormorant text-sm" style={{ color: flag ? '#e07070' : 'var(--mid)' }}>
+              {r2F !== null ? `${r2F}f${flag}` : flag ? flag.trim() : hasR2 ? '—' : '—'}
+            </div>
+            <div className="col-span-2 text-center font-cormorant text-sm font-bold"
+              style={{ color: pos <= 3 ? 'var(--gold-lt)' : 'var(--cream)' }}>
+              {totalF !== null ? `${totalF}f` : '—'}
+              {r2F !== null && d.r2Time !== undefined && d.r2Time !== '' && (
+                <span className="text-xs ml-1" style={{ color: 'var(--mid)' }}>{d.r2Time}s</span>
+              )}
             </div>
           </div>
         );
@@ -250,15 +275,28 @@ export default function ResultsEditor() {
     setRiderResults({});
     setStartList(null);
 
-    loadStartListRemote(selectedEventId).then(sl => {
+    const ev = EVENTS_2026.find(e => e.id === selectedEventId);
+
+    // Load start list and existing results in parallel
+    Promise.all([
+      loadStartListRemote(selectedEventId),
+      sbFetch('results?event=eq.' + (ev?.supabaseKey || selectedEventId) + '&limit=1')
+    ]).then(([sl, existingRes]) => {
       setStartList(sl);
       setLoadingStartList(false);
-      const ev = EVENTS_2026.find(e => e.id === selectedEventId);
-      const sourceRiders = sl?.gp?.length ? sl.gp : (ev?.gpRiders?.length ? ev.gpRiders : []);
-      if (sourceRiders.length) {
-        const pre = {};
-        sourceRiders.forEach(r => { if (r.horse) pre[String(r.id)] = { horse: r.horse }; });
-        setRiderResults(pre);
+
+      // Load existing saved results if available
+      if (existingRes && existingRes.length > 0) {
+        if (existingRes[0].team_results) setTeamResults(existingRes[0].team_results);
+        if (existingRes[0].rider_results) setRiderResults(existingRes[0].rider_results);
+      } else {
+        // Pre-populate horses from start list or hardcoded gpRiders
+        const sourceRiders = sl?.gp?.length ? sl.gp : (ev?.gpRiders?.length ? ev.gpRiders : []);
+        if (sourceRiders.length) {
+          const pre = {};
+          sourceRiders.forEach(r => { if (r.horse) pre[String(r.id)] = { horse: r.horse }; });
+          setRiderResults(pre);
+        }
       }
     });
   }, [selectedEventId]);
@@ -284,7 +322,6 @@ export default function ResultsEditor() {
     };
 
     try {
-      // PATCH if row exists, POST if new
       const existing = await sbFetch('results?event=eq.' + event.supabaseKey + '&limit=1');
       if (existing && existing.length > 0) {
         await sbFetch('results?event=eq.' + event.supabaseKey, {
@@ -324,16 +361,11 @@ export default function ResultsEditor() {
       {event && (
         <>
           {loadingStartList && (
-            <div className="mb-3 px-3 py-2 rounded text-xs font-cormorant italic" style={{ background: 'rgba(180,149,48,0.06)', border: '1px solid rgba(180,149,48,0.2)', color: 'var(--mid)' }}>Loading start list…</div>
+            <div className="mb-3 px-3 py-2 rounded text-xs font-cormorant italic" style={{ background: 'rgba(180,149,48,0.06)', border: '1px solid rgba(180,149,48,0.2)', color: 'var(--mid)' }}>Loading…</div>
           )}
           {!loadingStartList && startList && (
             <div className="mb-3 px-3 py-2 rounded text-xs font-cormorant italic" style={{ background: 'rgba(76,175,125,0.08)', border: '1px solid rgba(76,175,125,0.2)', color: '#6aad8a' }}>
               ✓ Start list loaded — {startList.gp?.length || 0} GP riders, team pairs set
-            </div>
-          )}
-          {!loadingStartList && !startList && (
-            <div className="mb-3 px-3 py-2 rounded text-xs font-cormorant italic" style={{ background: 'rgba(180,149,48,0.06)', border: '1px solid rgba(180,149,48,0.2)', color: 'var(--mid)' }}>
-              Using hardcoded start list — {event?.gpRiders?.length || 0} GP riders
             </div>
           )}
           <div className="flex gap-1 mb-4 flex-wrap">
@@ -353,7 +385,7 @@ export default function ResultsEditor() {
           <div className="mb-4">
             {activeRound === 'r1' && <TeamRoundEditor teams={teams} round="r1" data={teamResults} onChange={setTeamResults} startList={startList} />}
             {activeRound === 'r2' && <TeamRoundEditor teams={teams} round="r2" data={teamResults} onChange={setTeamResults} startList={startList} />}
-            {activeRound === 'final' && <FinalEditor teams={teams} data={teamResults} onChange={setTeamResults} />}
+            {activeRound === 'final' && <FinalEditor teams={teams} data={teamResults} />}
             {activeRound === 'gp' && <GPEditor riders={gpRiders} data={riderResults} onChange={setRiderResults} />}
           </div>
           <button onClick={save} disabled={saving}
