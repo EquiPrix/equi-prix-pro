@@ -26,7 +26,6 @@ export function EquiPrixProvider({ children }) {
     const st = ev.status;
     if (st === 'teams') return [];
     if (st === 'past') return ev.riders || [];
-    // Always prefer hardcoded gpRiders first, then Supabase previewRiders, then hardcoded riders
     if (ev.gpRiders?.length) return ev.gpRiders;
     if (ev.previewRiders?.length) return ev.previewRiders;
     return ev.riders || [];
@@ -50,7 +49,6 @@ export function EquiPrixProvider({ children }) {
 
   const loadEventData = useCallback(async () => {
     try {
-      // Load team salaries
       const salRows = await sbFetch('results?event=eq.team_salaries&limit=1');
       if (salRows && salRows.length && salRows[0].gp_riders) {
         salRows[0].gp_riders.forEach(sv => {
@@ -59,7 +57,6 @@ export function EquiPrixProvider({ children }) {
         });
       }
 
-      // Load FEI rankings
       const rankRows = await sbFetch('results?event=eq.fei_rankings&limit=1');
       if (rankRows && rankRows.length && rankRows[0].gp_riders) {
         rankRows[0].gp_riders.forEach(sr => {
@@ -68,10 +65,8 @@ export function EquiPrixProvider({ children }) {
         });
       }
 
-      // Load all result rows for statuses and rider lists
       const rows = await sbFetch('results?select=event,event_status,gp_riders,preview_riders,team_lock_iso,gp_lock_iso');
 
-      // Start from EVENTS_2026 to preserve hardcoded gpRiders
       let updatedEvents = EVENTS_2026.map(e => ({ ...e }));
 
       if (rows && rows.length) {
@@ -80,13 +75,10 @@ export function EquiPrixProvider({ children }) {
           if (!row) return ev;
           return {
             ...ev,
-            // Update status and lock times from Supabase
             ...(row.event_status ? { status: row.event_status } : {}),
             ...(row.team_lock_iso ? { teamLockISO: row.team_lock_iso } : {}),
             ...(row.gp_lock_iso ? { gpLockISO: row.gp_lock_iso } : {}),
-            // Only set gpRiders from Supabase if no hardcoded gpRiders exist
             ...(!ev.gpRiders?.length && row.gp_riders?.length ? { gpRiders: row.gp_riders } : {}),
-            // previewRiders always from Supabase
             ...(row.preview_riders?.length ? { previewRiders: row.preview_riders } : {}),
           };
         });
@@ -94,7 +86,6 @@ export function EquiPrixProvider({ children }) {
 
       setEvents(updatedEvents);
 
-      // Auto-select best event after data loads
       if (!hasAutoSelected.current) {
         hasAutoSelected.current = true;
         const priority = ['live', 'riders', 'teams', 'preview', 'future'];
@@ -136,7 +127,23 @@ export function EquiPrixProvider({ children }) {
       if (!rows || !rows.length) rows = await sbFetch('picks?access_code=eq.' + encodeURIComponent(code) + '&limit=1');
       if (rows && rows.length > 0) {
         const p = rows[0].picks_json;
-        const evRiders = ev.gpRiders?.length ? ev.gpRiders : ev.previewRiders || ev.riders || riders;
+
+        // Search ALL available rider lists to find saved picks
+        // This ensures picks restore regardless of which list they were saved from
+        const allAvailableRiders = [
+          ...(ev.gpRiders || []),
+          ...(ev.previewRiders || []),
+          ...(ev.riders || []),
+          ...PREVIEW_RIDERS_2026,
+        ];
+        // Deduplicate by id
+        const seenIds = new Set();
+        const evRiders = allAvailableRiders.filter(r => {
+          if (seenIds.has(r.id)) return false;
+          seenIds.add(r.id);
+          return true;
+        });
+
         const evTeams = ev.teams && ev.teams.length ? ev.teams : GCL_TEAMS_2026;
         const SLOT_IDS = ['cpt', 'r1', 'r2', 'r3', 'r4'];
         const newTeam = [];
