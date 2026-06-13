@@ -268,83 +268,53 @@ function TeamFinalResults({ teamResults, displayTeams }) {
   const entries = Object.entries(teamResults).map(([id, raw]) => {
     const t = displayTeams.find(x => x.id === id) || { id, name: 'Team ' + id };
     const pos = typeof raw === 'object' ? (raw.finalPos || null) : raw;
-    const ret = typeof raw === 'object' ? raw.ret : false;
-    const el = typeof raw === 'object' ? raw.el : false;
-    const r1Faults = typeof raw === 'object' ? raw.r1Faults : null;
-    const r2Faults = typeof raw === 'object' ? raw.r2Faults : null;
+    const ret = typeof raw === 'object' ? (raw.ret || false) : false;
+    const el = typeof raw === 'object' ? (raw.el || false) : false;
+    const r1Faults = typeof raw === 'object' ? (raw.r1Faults ?? null) : null;
+    const r2Faults = typeof raw === 'object' ? (raw.r2Faults ?? null) : null;
     const r2Time = typeof raw === 'object' ? (raw.r2Time ?? null) : null;
-    const combined = r1Faults != null && r2Faults != null ? r1Faults + r2Faults : null;
+    const madeR2 = r2Faults != null;
+    const combined = madeR2 ? r1Faults + r2Faults : null;
     const pts = el ? 0 : gclStagePts(pos);
-    return { t, pos, ret, el, r1Faults, r2Faults, r2Time, combined, pts };
+    return { t, pos, ret, el, madeR2, combined, r2Time, pts };
   }).sort((a, b) => {
     if (a.ret || a.el) return 1;
     if (b.ret || b.el) return -1;
-    if ((a.pos || 999) !== (b.pos || 999)) return (a.pos || 999) - (b.pos || 999);
-    // Tiebreak by combined faults
-    if (a.combined !== b.combined) return (a.combined ?? 999) - (b.combined ?? 999);
-    // Tiebreak by R2 time
-    return (a.r2Time ?? 999) - (b.r2Time ?? 999);
+    return (a.pos || 999) - (b.pos || 999);
   });
 
   if (!entries.length) return <Empty msg="Final standings not yet entered" />;
 
-  // Check if any entry has a tie in combined faults — show R2 time column if so
-  const hasTie = entries.some((e, i) =>
-    entries[i + 1] && e.combined != null && e.combined === entries[i + 1].combined
-  );
-
   return (
     <div>
-      {entries.map(({ t, pos, ret, el, r1Faults, r2Faults, r2Time, combined, pts }, i) => (
+      {entries.map(({ t, pos, ret, el, madeR2, combined, r2Time, pts }, i) => (
         <motion.div key={t.id}
           initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
           transition={{ delay: i * 0.02 }}
-          className="border-b"
+          className="flex items-center gap-2.5 px-3 py-2.5 border-b"
           style={{ borderColor: 'rgba(42,40,32,0.4)' }}>
 
-          {/* Main row */}
-          <div className="flex items-center gap-2.5 px-3 py-2.5">
-            <div className="font-cinzel text-xs w-5 text-center flex-shrink-0"
-              style={{ color: pos <= 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>
-              {ret ? 'RET' : el ? 'EL' : pos}
-            </div>
-            <div className="flex-1 font-cormorant text-base font-semibold" style={{ color: 'var(--cream)' }}>
-              {t.name}
-            </div>
-            <div className="flex items-center gap-3 flex-shrink-0">
-              {combined != null && (
-                <div className="text-xs" style={{ color: 'var(--mid)' }}>
-                  {combined} faults
-                </div>
-              )}
-              <div className="font-cormorant text-base font-semibold" style={{ color: 'var(--gold-lt)' }}>
-                {pts > 0 ? pts + ' pts' : '—'}
-              </div>
+          <div className="font-cinzel text-xs w-5 text-center flex-shrink-0"
+            style={{ color: pos <= 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>
+            {ret ? 'RET' : el ? 'EL' : pos}
+          </div>
+
+          <div className="flex-1 font-cormorant text-base font-semibold" style={{ color: 'var(--cream)' }}>
+            {t.name}
+          </div>
+
+          <div className="flex items-center gap-3 flex-shrink-0">
+            {madeR2 && combined != null && (
+              <div className="text-xs" style={{ color: 'var(--mid)' }}>{combined} faults</div>
+            )}
+            {madeR2 && r2Time != null && (
+              <div className="text-xs" style={{ color: 'var(--mid)' }}>{Number(r2Time).toFixed(2)}s</div>
+            )}
+            <div className="font-cormorant text-base font-semibold" style={{ color: 'var(--gold-lt)' }}>
+              {pts > 0 ? pts + ' pts' : '—'}
             </div>
           </div>
 
-          {/* R1 + R2 breakdown sub-row */}
-          {(r1Faults != null || r2Faults != null) && (
-            <div className="flex items-center gap-4 px-3 pb-2"
-              style={{ borderTop: '1px solid rgba(42,40,32,0.2)' }}>
-              <div className="w-5 flex-shrink-0" />
-              {r1Faults != null && (
-                <div className="text-xs" style={{ color: 'var(--mid)' }}>
-                  R1: <span style={{ color: r1Faults === 0 ? '#4caf7d' : 'var(--ep-text)' }}>{r1Faults} flt</span>
-                </div>
-              )}
-              {r2Faults != null && (
-                <div className="text-xs" style={{ color: 'var(--mid)' }}>
-                  R2: <span style={{ color: r2Faults === 0 ? '#4caf7d' : 'var(--ep-text)' }}>{r2Faults} flt</span>
-                </div>
-              )}
-              {r2Time != null && (
-                <div className="text-xs" style={{ color: 'var(--mid)' }}>
-                  R2 time: <span style={{ color: 'var(--gold-lt)' }}>{Number(r2Time).toFixed(2)}s</span>
-                </div>
-              )}
-            </div>
-          )}
         </motion.div>
       ))}
     </div>
