@@ -239,7 +239,6 @@ export default function ResultsEditor() {
   const event = EVENTS_2026.find(e => e.id === selectedEventId);
   const teams = event?.teams?.length ? event.teams : GCL_TEAMS_2026;
 
-  // Load start list from Supabase when event selected
   useEffect(() => {
     if (!selectedEventId) return;
     setLoadingStartList(true);
@@ -251,18 +250,24 @@ export default function ResultsEditor() {
       setStartList(sl);
       setLoadingStartList(false);
 
-      // Pre-populate rider results from GP start list (name + horse)
-      if (sl?.gp?.length) {
+      // Pre-populate horses from start list if available,
+      // otherwise fall back to hardcoded gpRiders which already have horses
+      const ev = EVENTS_2026.find(e => e.id === selectedEventId);
+      const sourceRiders = sl?.gp?.length
+        ? sl.gp
+        : (ev?.gpRiders?.length ? ev.gpRiders : []);
+
+      if (sourceRiders.length) {
         const pre = {};
-        sl.gp.forEach(r => {
-          pre[String(r.id)] = { horse: r.horse || '' };
+        sourceRiders.forEach(r => {
+          if (r.horse) pre[String(r.id)] = { horse: r.horse };
         });
         setRiderResults(pre);
       }
     });
   }, [selectedEventId]);
 
-  // GP riders: use start list if available, else fallback to event/preview data
+  // GP riders list for the editor
   const gpRiders = startList?.gp?.length
     ? [...startList.gp].sort((a, b) => a.rank - b.rank)
     : (event?.gpRiders?.length ? event.gpRiders : event?.riders?.length ? event.riders : PREVIEW_RIDERS_2026.slice(0, 20))
@@ -272,7 +277,6 @@ export default function ResultsEditor() {
     if (!event) return;
     setSaving(true);
 
-    // Include finalPos in team_results based on calculated positions
     const posMap = calcFinalPositions(teams, teamResults);
     const teamResultsWithPos = { ...teamResults };
     Object.entries(posMap).forEach(([teamId, pos]) => {
@@ -323,7 +327,7 @@ export default function ResultsEditor() {
           )}
           {!loadingStartList && !startList && (
             <div className="mb-3 px-3 py-2 rounded text-xs font-cormorant italic" style={{ background: 'rgba(180,149,48,0.06)', border: '1px solid rgba(180,149,48,0.2)', color: 'var(--mid)' }}>
-              No start list saved yet — enter results manually or save a start list first
+              Using hardcoded start list — {event?.gpRiders?.length || 0} GP riders
             </div>
           )}
 
