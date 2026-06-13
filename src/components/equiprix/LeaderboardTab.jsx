@@ -32,12 +32,10 @@ export default function LeaderboardTab() {
     if (!currentEvent) return;
     setLoading(true);
     try {
-      // Load all picks for this event
       const picks = await sbFetch(
         'picks?select=access_code,username,score,picks_json&event=eq.' + currentEvent.id
       ) || [];
 
-      // Load results for score calculation if event is past
       let riderResults = {};
       let teamResults = {};
       if (currentEvent.status === 'past') {
@@ -50,7 +48,6 @@ export default function LeaderboardTab() {
         }
       }
 
-      // Build rows with picks detail and calculated points
       const rows = picks
         .filter(p => p.picks_json && !p.picks_json.isPractice)
         .map(p => {
@@ -58,7 +55,6 @@ export default function LeaderboardTab() {
           const riderPicks = pj.riders || [];
           const teamPickIds = (pj.teams || []).map(t => t.id);
 
-          // Resolve rider details
           const allRiders = currentEvent.riders?.length
             ? currentEvent.riders
             : PREVIEW_RIDERS_2026;
@@ -78,7 +74,6 @@ export default function LeaderboardTab() {
             return { rider, isCpt: rp.isCpt, salary, pts };
           }).filter(Boolean);
 
-          // Resolve team details
           const resolvedTeams = teamPickIds.map(id => {
             const team = GCL_TEAMS_2026.find(t => t.id === id);
             if (!team) return null;
@@ -88,14 +83,11 @@ export default function LeaderboardTab() {
             return { team, salary: team.salary, pts };
           }).filter(Boolean);
 
-          // Total salary spent
           const totalSpent = resolvedRiders.reduce((s, r) => s + r.salary, 0) +
             resolvedTeams.reduce((s, t) => s + t.salary, 0);
-          const gpSalaryUsed = resolvedRiders.reduce((s, r) => s + r.salary, 0);
           const teamSalaryUsed = resolvedTeams.reduce((s, t) => s + t.salary, 0);
           const remainingAfterTeams = CAP - teamSalaryUsed;
 
-          // Total points if results available
           const hasResults = Object.keys(riderResults).length > 0;
           const totalPts = hasResults
             ? resolvedRiders.reduce((s, r) => s + (r.pts || 0), 0) +
@@ -223,12 +215,11 @@ function EventLeaderboard({ rows, event }) {
 
   if (!event) return <Empty msg="Select an event to view the leaderboard" />;
 
-  const isLocked = event.status === 'past' ||
-    new Date() >= new Date(event.teamLockISO);
-
+  const teamLocked = event.status === 'past' || new Date() >= new Date(event.teamLockISO);
+  const gpLocked = event.status === 'past' || new Date() >= new Date(event.gpLockISO);
   const isComplete = event.status === 'past';
 
-  if (!isLocked) {
+  if (!teamLocked) {
     return <Empty msg="Picks will appear here once the team lock closes" />;
   }
 
@@ -236,20 +227,17 @@ function EventLeaderboard({ rows, event }) {
 
   return (
     <div>
-      {/* Header bar */}
       <div className="px-4 py-2 flex items-center gap-2" style={{ borderBottom: '1px solid var(--ep-border)' }}>
         <Lock size={11} style={{ color: 'var(--gold)' }} />
         <span className="text-xs" style={{ color: 'var(--mid)' }}>
           {event.flag} {event.city} · {rows.length} {rows.length === 1 ? 'entry' : 'entries'}
-          {isComplete ? ' · Final scores' : ' · Team picks locked'}
+          {isComplete ? ' · Final scores' : gpLocked ? ' · GP picks locked' : ' · Team picks locked'}
         </span>
       </div>
 
       {rows.map((row, i) => {
         const open = expanded[row.access_code];
         const hasScore = row.score != null && row.score > 0;
-        const teamLocked = new Date() >= new Date(event?.teamLockISO);
-        const gpLocked = new Date() >= new Date(event?.gpLockISO);
 
         return (
           <motion.div
@@ -259,23 +247,20 @@ function EventLeaderboard({ rows, event }) {
             transition={{ delay: i * 0.03 }}
             style={{ borderBottom: '1px solid rgba(42,40,32,0.4)' }}
           >
-            {/* Main row */}
             <div
               className="flex items-center gap-3 px-4 py-3 cursor-pointer"
               onClick={() => setExpanded(p => ({ ...p, [row.access_code]: !p[row.access_code] }))}
             >
-              {/* Rank */}
               <div className="font-cinzel text-sm w-7 text-center flex-shrink-0"
                 style={{ color: i < 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>
                 {i < 3 ? ['🥇', '🥈', '🥉'][i] : ordinal(i + 1)}
               </div>
 
-              {/* Name */}
               <div className="flex-1 min-w-0">
                 <div className="font-cormorant text-base" style={{ color: 'var(--cream)' }}>
                   {row.username}
                 </div>
-                {/* Remaining cap after team picks — show before GP lock */}
+                {/* Show remaining budget only between team lock and GP lock */}
                 {teamLocked && !gpLocked && (
                   <div className="text-xs" style={{ color: '#6aad8a' }}>
                     {fmt(row.remainingAfterTeams)} remaining for GP
@@ -283,7 +268,6 @@ function EventLeaderboard({ rows, event }) {
                 )}
               </div>
 
-              {/* Score or locked indicator */}
               <div className="flex items-center gap-2 flex-shrink-0">
                 {hasScore ? (
                   <div className="font-cormorant text-xl font-bold" style={{ color: 'var(--gold-lt)' }}>
@@ -301,11 +285,10 @@ function EventLeaderboard({ rows, event }) {
               </div>
             </div>
 
-            {/* Expanded picks detail */}
             {open && (
               <div className="px-4 pb-3 pt-0" style={{ background: '#0d0c09', borderTop: '1px solid rgba(42,40,32,0.4)' }}>
 
-                {/* Teams section */}
+                {/* Teams — always visible after team lock */}
                 {row.teams.length > 0 && (
                   <div className="mb-3 mt-2">
                     <div className="font-cinzel text-xs mb-1.5"
@@ -331,7 +314,7 @@ function EventLeaderboard({ rows, event }) {
                   </div>
                 )}
 
-                {/* Remaining salary for GP */}
+                {/* Remaining budget — only between team lock and GP lock */}
                 {teamLocked && !gpLocked && (
                   <div className="mb-3 px-2 py-1.5 rounded text-xs font-cormorant"
                     style={{ background: 'rgba(61,90,76,0.1)', border: '1px solid rgba(61,90,76,0.25)', color: '#6aad8a' }}>
@@ -339,8 +322,13 @@ function EventLeaderboard({ rows, event }) {
                   </div>
                 )}
 
-                {/* Riders section */}
-                {row.riders.length > 0 && (
+                {/* GP Riders — ONLY visible after GP lock */}
+                {!gpLocked ? (
+                  <div className="px-2 py-2 rounded text-xs font-cormorant italic text-center"
+                    style={{ background: 'rgba(180,149,48,0.05)', border: '1px solid rgba(180,149,48,0.15)', color: 'var(--mid)' }}>
+                    🔒 GP rider picks hidden until lock closes
+                  </div>
+                ) : row.riders.length > 0 ? (
                   <div>
                     <div className="font-cinzel text-xs mb-1.5"
                       style={{ color: 'var(--gold)', fontSize: 9, letterSpacing: '0.1em' }}>
@@ -373,7 +361,7 @@ function EventLeaderboard({ rows, event }) {
                       </div>
                     ))}
                   </div>
-                )}
+                ) : null}
 
                 {/* Total */}
                 <div className="flex items-center justify-between mt-3 pt-2"
