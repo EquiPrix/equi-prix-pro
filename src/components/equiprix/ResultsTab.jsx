@@ -72,33 +72,27 @@ export default function ResultsTab() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0" style={{ background: 'var(--ink)' }}>
-      {/* Header */}
       <div className="px-4 pt-4 pb-0" style={{ borderBottom: '1px solid var(--ep-border)' }}>
         <div className="font-cinzel text-xs tracking-widest mb-0.5" style={{ color: 'var(--gold)' }}>RESULTS</div>
         <div className="font-cormorant text-xl mb-3" style={{ color: 'var(--cream)' }}>
           {currentEvent.flag} {currentEvent.city} · {currentEvent.dates}
         </div>
-        {/* Sub-tabs */}
         <div className="flex gap-1 overflow-x-auto scrollbar-hide pb-0">
           {SUB_TABS.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setSubTab(tab.id)}
+            <button key={tab.id} onClick={() => setSubTab(tab.id)}
               className="flex-shrink-0 px-3 py-1.5 rounded-t font-cinzel text-xs transition-all"
               style={{
                 background: subTab === tab.id ? 'rgba(180,149,48,0.08)' : 'none',
                 borderBottom: `2px solid ${subTab === tab.id ? 'var(--gold)' : 'transparent'}`,
                 color: subTab === tab.id ? 'var(--gold)' : 'var(--mid)',
                 letterSpacing: '0.1em',
-              }}
-            >
+              }}>
               {tab.label.toUpperCase()}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-y-auto pb-24">
         {loading ? (
           <div className="text-center py-12 font-cormorant text-lg italic" style={{ color: 'var(--mid)' }}>Loading…</div>
@@ -129,7 +123,13 @@ function GPResults({ riderResults, displayRiders }) {
     const clr = typeof res === 'object' ? (res.gpClear || res.clear || false) : false;
     const ret = typeof res === 'object' ? (res.gpRet || false) : false;
     const el = typeof res === 'object' ? (res.gpEl || false) : false;
-    return { r, pos, faults, time, clr, ret, el };
+    const hasJO = typeof res === 'object' ? !!res.gpJO : false;
+    const joPos = typeof res === 'object' ? (res.joPos || null) : null;
+    const joFaults = typeof res === 'object' ? (res.joFaults != null ? res.joFaults : null) : null;
+    const joTime = typeof res === 'object' ? (res.joTime || null) : null;
+    const joRet = typeof res === 'object' ? (res.joRet || false) : false;
+    const joEl = typeof res === 'object' ? (res.joEl || false) : false;
+    return { r, pos, faults, time, clr, ret, el, hasJO, joPos, joFaults, joTime, joRet, joEl };
   }).filter(e => e.pos < 999 || e.ret || e.el)
     .sort((a, b) => (a.ret || a.el ? 9999 : a.pos) - (b.ret || b.el ? 9999 : b.pos));
 
@@ -137,38 +137,65 @@ function GPResults({ riderResults, displayRiders }) {
 
   return (
     <div>
-      {entries.map(({ r, pos, faults, time, clr, ret, el }, i) => (
-        <motion.div
-          key={r.id}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
+      {entries.map(({ r, pos, faults, time, clr, ret, el, hasJO, joPos, joFaults, joTime, joRet, joEl }, i) => (
+        <motion.div key={r.id}
+          initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
           transition={{ delay: i * 0.02 }}
-          className="flex items-center gap-2.5 px-3 py-2.5 border-b"
-          style={{
-            borderColor: 'rgba(42,40,32,0.4)',
-            background: clr ? 'rgba(76,175,61,0.03)' : 'transparent',
-          }}
-        >
-          <div className="font-cinzel text-xs w-6 text-center flex-shrink-0" style={{ color: pos <= 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>
-            {ret ? 'RET' : el ? 'EL' : pos}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="font-cormorant text-sm font-semibold" style={{ color: clr ? '#6aad8a' : 'var(--ep-text)' }}>
-              {r.name}
-              {clr && <span className="ml-1 text-xs px-1" style={{ background: 'rgba(76,175,61,0.15)', color: '#4caf7d', borderRadius: 2 }}>CLR</span>}
+          className="border-b" style={{ borderColor: 'rgba(42,40,32,0.4)' }}>
+
+          {/* Main row */}
+          <div className="flex items-center gap-2.5 px-3 py-2.5"
+            style={{ background: clr ? 'rgba(76,175,61,0.03)' : 'transparent' }}>
+            <div className="font-cinzel text-xs w-6 text-center flex-shrink-0"
+              style={{ color: pos <= 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>
+              {ret ? 'RET' : el ? 'EL' : pos}
             </div>
-            <div className="text-xs" style={{ color: 'var(--mid)' }}>
-              {r.horse ? <span style={{ color: 'var(--gold-lt)', fontStyle: 'italic' }}>{r.horse}</span> : r.nat}
-            </div>
-          </div>
-          <div className="text-right flex-shrink-0">
-            {time != null && <div className="text-xs" style={{ color: 'var(--mid)' }}>{time.toFixed(2)}s</div>}
-            {faults != null && (
-              <div className="font-cormorant text-sm" style={{ color: faults === 0 ? '#4caf7d' : faults > 0 ? '#e88a3a' : 'var(--ep-text)' }}>
-                {faults === 0 ? '0 faults' : `${faults} faults`}
+            <div className="flex-1 min-w-0">
+              <div className="font-cormorant text-sm font-semibold" style={{ color: clr ? '#6aad8a' : 'var(--ep-text)' }}>
+                {r.name}
+                {clr && <span className="ml-1 text-xs px-1" style={{ background: 'rgba(76,175,61,0.15)', color: '#4caf7d', borderRadius: 2 }}>CLR</span>}
+                {hasJO && <span className="ml-1 text-xs px-1" style={{ background: 'rgba(180,149,48,0.15)', color: 'var(--gold)', borderRadius: 2 }}>JO</span>}
               </div>
-            )}
+              <div className="text-xs" style={{ color: 'var(--mid)' }}>
+                {r.horse ? <span style={{ color: 'var(--gold-lt)', fontStyle: 'italic' }}>{r.horse}</span> : r.nat}
+              </div>
+            </div>
+            <div className="text-right flex-shrink-0">
+              {time != null && <div className="text-xs" style={{ color: 'var(--mid)' }}>{Number(time).toFixed(2)}s</div>}
+              {faults != null && (
+                <div className="font-cormorant text-sm" style={{ color: faults === 0 ? '#4caf7d' : '#e88a3a' }}>
+                  {faults === 0 ? '0 faults' : `${faults} faults`}
+                </div>
+              )}
+            </div>
           </div>
+
+          {/* JO sub-row */}
+          {hasJO && (
+            <div className="flex items-center gap-2.5 px-3 py-1.5"
+              style={{ background: 'rgba(180,149,48,0.04)', borderTop: '1px solid rgba(42,40,32,0.3)' }}>
+              <div className="font-cinzel text-xs w-6 text-center flex-shrink-0"
+                style={{ color: 'var(--gold)', fontSize: 9 }}>↳ JO</div>
+              <div className="flex-1 font-cormorant text-xs italic" style={{ color: 'var(--mid)' }}>
+                Jump-off
+                {joRet && <span className="ml-1" style={{ color: '#e07070' }}>· RET</span>}
+                {joEl && <span className="ml-1" style={{ color: '#e07070' }}>· EL</span>}
+              </div>
+              <div className="text-right flex-shrink-0 flex items-center gap-2">
+                {joTime != null && (
+                  <span className="text-xs" style={{ color: 'var(--mid)' }}>{Number(joTime).toFixed(2)}s</span>
+                )}
+                {joFaults != null && (
+                  <span className="font-cormorant text-sm" style={{ color: joFaults === 0 ? '#4caf7d' : '#e88a3a' }}>
+                    {joFaults === 0 ? '0 faults' : `${joFaults} faults`}
+                  </span>
+                )}
+                {joPos && (
+                  <span className="font-cinzel text-xs font-bold" style={{ color: 'var(--gold)' }}>{joPos}</span>
+                )}
+              </div>
+            </div>
+          )}
         </motion.div>
       ))}
     </div>
@@ -215,7 +242,7 @@ function TeamRoundResults({ teamResults, displayTeams, round }) {
               </div>
             )}
             {teamTime != null && (
-              <div className="text-xs" style={{ color: 'var(--mid)' }}>{teamTime.toFixed(2)}s</div>
+              <div className="text-xs" style={{ color: 'var(--mid)' }}>{Number(teamTime).toFixed(2)}s</div>
             )}
           </div>
           {roundRiders.map((r, ri) => (
@@ -230,7 +257,7 @@ function TeamRoundResults({ teamResults, displayTeams, round }) {
                   {r.faults}
                 </span>
               )}
-              {r.time != null && <span className="text-xs" style={{ color: 'var(--mid)' }}>{r.time.toFixed(2)}s</span>}
+              {r.time != null && <span className="text-xs" style={{ color: 'var(--mid)' }}>{Number(r.time).toFixed(2)}s</span>}
             </div>
           ))}
         </div>
@@ -261,15 +288,13 @@ function TeamFinalResults({ teamResults, displayTeams }) {
   return (
     <div>
       {entries.map(({ t, pos, ret, el, combined, pts }, i) => (
-        <motion.div
-          key={t.id}
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
+        <motion.div key={t.id}
+          initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
           transition={{ delay: i * 0.02 }}
           className="flex items-center gap-2.5 px-3 py-2.5 border-b"
-          style={{ borderColor: 'rgba(42,40,32,0.4)' }}
-        >
-          <div className="font-cinzel text-xs w-5 text-center flex-shrink-0" style={{ color: pos <= 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>
+          style={{ borderColor: 'rgba(42,40,32,0.4)' }}>
+          <div className="font-cinzel text-xs w-5 text-center flex-shrink-0"
+            style={{ color: pos <= 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>
             {ret ? 'RET' : el ? 'EL' : pos}
           </div>
           <div className="flex-1 font-cormorant text-base font-semibold" style={{ color: 'var(--cream)' }}>
