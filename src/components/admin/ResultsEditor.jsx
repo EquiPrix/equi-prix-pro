@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { EVENTS_2026, GCL_TEAMS_2026, PREVIEW_RIDERS_2026, sbFetch } from '@/lib/equiprix-data';
-import { getStartList } from '@/lib/startListStore';
+import { loadStartListRemote } from '@/lib/startListStore';
 import { Save, ChevronDown, ChevronUp } from 'lucide-react';
 
 const ROUND_TABS = [
@@ -28,7 +28,6 @@ function Toggle({ label, value, onChange }) {
   );
 }
 
-// Team round results — pre-populated from start list, 2 riders per team
 function TeamRoundEditor({ teams, round, data, onChange, startList }) {
   const [expanded, setExpanded] = useState({});
   const faultsKey = round === 'r1' ? 'r1Faults' : 'r2Faults';
@@ -46,7 +45,6 @@ function TeamRoundEditor({ teams, round, data, onChange, startList }) {
     onChange({ ...data, [teamId]: { ...cur, [ridersKey]: riders } });
   };
 
-  // Get pre-populated rider slots from start list
   const getPreFilled = (teamId, idx) => {
     const pair = startList?.teamPairs?.[teamId]?.[round];
     return pair?.[idx] || { name: '', horse: '' };
@@ -109,9 +107,6 @@ function TeamRoundEditor({ teams, round, data, onChange, startList }) {
 }
 
 function calcFinalPositions(teams, teamResults) {
-  // Tier 0: completed R2 (no ret/el) — sort by r2Faults asc, then r2Time asc
-  // Tier 1: R2 ret/el — sort by r2Faults asc, then r2Time asc (still beat R1-only teams)
-  // Tier 2: did not advance (no r2Faults data and not flagged r2) — sort by r1Faults asc, r1Time asc
   const withData = teams.map(team => {
     const d = teamResults[team.id] || {};
     const r2Faults = d.r2Faults !== '' && d.r2Faults !== undefined ? Number(d.r2Faults) : null;
@@ -197,7 +192,6 @@ function GPEditor({ riders, data, onChange }) {
         const d = get(r.id);
         return (
           <div key={r.id} className="rounded" style={{ background: i % 2 === 0 ? 'rgba(255,255,255,0.015)' : 'transparent', border: '1px solid rgba(42,40,32,0.3)' }}>
-            {/* GP round row */}
             <div className="grid grid-cols-12 items-center gap-1 px-3 py-1.5">
               <div className="col-span-3">
                 <div className="font-cormorant text-xs truncate" style={{ color: 'var(--cream)' }}>{r.name}</div>
@@ -212,7 +206,6 @@ function GPEditor({ riders, data, onChange }) {
               <div className="col-span-1 flex justify-center"><Toggle label="R" value={!!d.gpRet} onChange={v => set(r.id, 'gpRet', v)} /></div>
               <div className="col-span-1 flex justify-center"><Toggle label="E" value={!!d.gpEl} onChange={v => set(r.id, 'gpEl', v)} /></div>
             </div>
-            {/* JO sub-row — only shown when gpJO is true */}
             {d.gpJO && (
               <div className="grid grid-cols-12 items-center gap-1 px-3 py-1.5" style={{ borderTop: '1px solid rgba(42,40,32,0.5)', background: 'rgba(180,149,48,0.04)' }}>
                 <div className="col-span-3 font-cinzel text-xs" style={{ color: 'var(--gold)', fontSize: 9 }}>↳ JO</div>
@@ -239,45 +232,59 @@ export default function ResultsEditor() {
   const [teamResults, setTeamResults] = useState({});
   const [riderResults, setRiderResults] = useState({});
   const [startList, setStartList] = useState(null);
+  const [loadingStartList, setLoadingStartList] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const event = EVENTS_2026.find(e => e.id === selectedEventId);
   const teams = event?.teams?.length ? event.teams : GCL_TEAMS_2026;
 
-  // When event selected, load start list to auto-populate
+  // Load start list from Supabase when event selected
   useEffect(() => {
     if (!selectedEventId) return;
-    const sl = getStartList(selectedEventId);
-    setStartList(sl);
+    setLoadingStartList(true);
     setTeamResults({});
     setRiderResults({});
+    setStartList(null);
 
-    // Pre-populate rider results from GP start list (name + horse)
-    if (sl?.gp?.length) {
-      const pre = {};
-      sl.gp.forEach(r => {
-        pre[String(r.id)] = { horse: r.horse || '' };
-      });
-      setRiderResults(pre);
-    }
+    loadStartListRemote(selectedEventId).then(sl => {
+      setStartList(sl);
+      setLoadingStartList(false);
+
+      // Pre-populate rider results from GP start list (name + horse)
+      if (sl?.gp?.length) {
+        const pre = {};
+        sl.gp.forEach(r => {
+          pre[String(r.id)] = { horse: r.horse || '' };
+        });
+        setRiderResults(pre);
+      }
+    });
   }, [selectedEventId]);
 
-  // GP riders: use start list if available, else fallback to event/preview data sorted by rank
+  // GP riders: use start list if available, else fallback to event/preview data
   const gpRiders = startList?.gp?.length
     ? [...startList.gp].sort((a, b) => a.rank - b.rank)
-    : (event?.riders?.length ? event.riders : event?.gpRiders?.length ? event.gpRiders : PREVIEW_RIDERS_2026.slice(0, 20))
+    : (event?.gpRiders?.length ? event.gpRiders : event?.riders?.length ? event.riders : PREVIEW_RIDERS_2026.slice(0, 20))
         .sort((a, b) => a.rank - b.rank);
 
   const save = async () => {
     if (!event) return;
     setSaving(true);
+
+    // Include finalPos in team_results based on calculated positions
+    const posMap = calcFinalPositions(teams, teamResults);
+    const teamResultsWithPos = { ...teamResults };
+    Object.entries(posMap).forEach(([teamId, pos]) => {
+      teamResultsWithPos[teamId] = { ...(teamResultsWithPos[teamId] || {}), finalPos: pos };
+    });
+
     await sbFetch('results', {
       method: 'POST',
       body: JSON.stringify({
         event: event.supabaseKey,
         rider_results: riderResults,
-        team_results: teamResults,
+        team_results: teamResultsWithPos,
         updated_at: new Date().toISOString()
       })
     });
@@ -304,12 +311,17 @@ export default function ResultsEditor() {
 
       {event && (
         <>
-          {startList && (
+          {loadingStartList && (
+            <div className="mb-3 px-3 py-2 rounded text-xs font-cormorant italic" style={{ background: 'rgba(180,149,48,0.06)', border: '1px solid rgba(180,149,48,0.2)', color: 'var(--mid)' }}>
+              Loading start list…
+            </div>
+          )}
+          {!loadingStartList && startList && (
             <div className="mb-3 px-3 py-2 rounded text-xs font-cormorant italic" style={{ background: 'rgba(76,175,125,0.08)', border: '1px solid rgba(76,175,125,0.2)', color: '#6aad8a' }}>
               ✓ Start list loaded — {startList.gp?.length || 0} GP riders, team pairs set
             </div>
           )}
-          {!startList && (
+          {!loadingStartList && !startList && (
             <div className="mb-3 px-3 py-2 rounded text-xs font-cormorant italic" style={{ background: 'rgba(180,149,48,0.06)', border: '1px solid rgba(180,149,48,0.2)', color: 'var(--mid)' }}>
               No start list saved yet — enter results manually or save a start list first
             </div>
