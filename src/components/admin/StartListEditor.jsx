@@ -7,7 +7,10 @@ import { Plus, X, Save } from 'lucide-react';
 function HorseInput({ riderName, value, onChange, horseDB, onAddHorse }) {
   const [adding, setAdding] = useState(false);
   const [newHorse, setNewHorse] = useState('');
-  const horses = horseDB[riderName] || [];
+
+  // Include the current saved value in the dropdown even if not in horse DB
+  const dbHorses = horseDB[riderName] || [];
+  const horses = [...new Set([...dbHorses, ...(value ? [value] : [])])];
 
   const saveHorse = async (h) => {
     if (!h) return;
@@ -31,7 +34,7 @@ function HorseInput({ riderName, value, onChange, horseDB, onAddHorse }) {
             onKeyDown={e => { if (e.key === 'Enter') saveHorse(newHorse.trim()); if (e.key === 'Escape') setAdding(false); }}
             placeholder="Horse" className="rounded px-2 py-1 text-xs outline-none"
             style={{ background: 'rgba(180,149,48,0.08)', border: '1px solid rgba(180,149,48,0.3)', color: 'var(--ep-text)', width: 100 }} />
-          <button onClick={() => saveHorse(newHorse.trim())} className="text-xs px-1.5 py-1 rounded" style={{ background: 'rgba(180,149,48,0.15)', color: 'var(--gold)' }}>✓</button>
+          <button onClick={() => saveHorse(newHorse.trim())} className="text-xs px-1.5 py-1 rounded" style={{ background: 'rgba(180,149,48,0.15)', color: 'var(--gold)' }}>OK</button>
           <button onClick={() => setAdding(false)} style={{ color: 'var(--mid)' }}><X size={11} /></button>
         </div>
       ) : (
@@ -58,7 +61,7 @@ function GPStartList({ riders, setRiders, horseDB, onAddHorse }) {
       </p>
       {sorted.length === 0 ? (
         <div className="rounded-lg p-6 text-center" style={{ border: '1px dashed var(--ep-border)' }}>
-          <p className="font-cormorant italic text-sm" style={{ color: 'var(--mid)' }}>No GP riders selected yet — go to the Riders tab and check the GP boxes</p>
+          <p className="font-cormorant italic text-sm" style={{ color: 'var(--mid)' }}>No GP riders selected yet</p>
         </div>
       ) : (
         <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--ep-border)', maxHeight: 420, overflowY: 'auto' }}>
@@ -146,12 +149,10 @@ export default function StartListEditor() {
   const event = EVENTS_2026.find(e => e.id === selectedEventId);
   const teams = event?.teams?.length ? event.teams : GCL_TEAMS_2026;
 
-  // Load horse DB from Supabase on mount
   useEffect(() => {
     loadHorseDBRemote().then(db => setHorseDB(db));
   }, []);
 
-  // Load start list from Supabase when event selected
   useEffect(() => {
     if (!selectedEventId) return;
     setLoading(true);
@@ -167,7 +168,6 @@ export default function StartListEditor() {
     });
   }, [selectedEventId]);
 
-  // Add horse to DB and save to Supabase immediately
   const addHorse = async (riderName, horse) => {
     if (!riderName || !horse) return;
     const db = { ...horseDB };
