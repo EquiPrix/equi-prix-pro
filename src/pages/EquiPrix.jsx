@@ -9,11 +9,72 @@ import LeaderboardTab from '@/components/equiprix/LeaderboardTab';
 import { motion, AnimatePresence } from 'framer-motion';
 import EquiPrixLogo from '@/components/equiprix/EquiPrixLogo';
 
+function useCountdown(targetISO) {
+  const [timeLeft, setTimeLeft] = useState('');
+
+  useEffect(() => {
+    if (!targetISO) return;
+
+    const tick = () => {
+      const diff = new Date(targetISO) - new Date();
+      if (diff <= 0) {
+        setTimeLeft('LOCKED');
+        return;
+      }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      if (h > 48) {
+        const days = Math.floor(h / 24);
+        setTimeLeft(`${days}d ${h % 24}h`);
+      } else if (h > 0) {
+        setTimeLeft(`${h}h ${String(m).padStart(2, '0')}m`);
+      } else {
+        setTimeLeft(`${m}m ${String(s).padStart(2, '0')}s`);
+      }
+    };
+
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [targetISO]);
+
+  return timeLeft;
+}
+
+function CountdownBadge({ event }) {
+  const now = new Date();
+  const teamLocked = event?.teamLockISO && now >= new Date(event.teamLockISO);
+  const gpLocked = event?.gpLockISO && now >= new Date(event.gpLockISO);
+
+  const showTeamCountdown = event?.status === 'teams' && !teamLocked;
+  const showGPCountdown = (event?.status === 'riders' || (event?.status === 'teams' && teamLocked)) && !gpLocked;
+
+  const targetISO = showTeamCountdown ? event.teamLockISO : showGPCountdown ? event.gpLockISO : null;
+  const label = showTeamCountdown ? 'TEAM LOCK' : showGPCountdown ? 'GP LOCK' : null;
+  const color = showTeamCountdown ? '#c9a84c' : '#b49530';
+
+  const timeLeft = useCountdown(targetISO);
+
+  if (!label || !timeLeft) return null;
+
+  return (
+    <div className="flex items-center gap-1.5 px-2 py-1 rounded"
+      style={{ background: 'rgba(180,149,48,0.08)', border: `1px solid rgba(180,149,48,0.25)` }}>
+      <div className="font-cinzel text-xs" style={{ color: 'var(--mid)', fontSize: 8, letterSpacing: '0.08em' }}>
+        {label}
+      </div>
+      <div className="font-cinzel text-xs font-bold" style={{ color, fontSize: 11, letterSpacing: '0.05em' }}>
+        {timeLeft}
+      </div>
+    </div>
+  );
+}
+
 export default function EquiPrix() {
   const { userCode, userName, currentEvent, selectEvent, toast, logout, isLoading, loadSavedPicks } = useEquiPrix();
   const [activeTab, setActiveTab] = useState('events');
 
-  // Load picks when event + user are both ready
   useEffect(() => {
     if (userCode && currentEvent && ['teams', 'riders', 'open'].includes(currentEvent.status)) {
       loadSavedPicks(userCode, currentEvent);
@@ -38,7 +99,6 @@ export default function EquiPrix() {
   }
 
   const handleSelectEvent = (ev) => {
-    // Switch to relevant tab based on event status
     if (ev.status === 'past') {
       setActiveTab('results');
     } else if (['teams', 'riders', 'open'].includes(ev.status)) {
@@ -50,9 +110,10 @@ export default function EquiPrix() {
     <div className="flex flex-col h-screen overflow-hidden" style={{ background: 'var(--ink)', color: 'var(--ep-text)' }}>
       {/* Header */}
       <header
-        className="flex items-center justify-between px-4 safe-top flex-shrink-0"
+        className="flex items-center justify-between px-4 flex-shrink-0"
         style={{
-          height: 52,
+          height: 'calc(52px + env(safe-area-inset-top))',
+          paddingTop: 'env(safe-area-inset-top)',
           background: '#0a0907',
           borderBottom: '1px solid rgba(180,149,48,0.2)',
         }}
@@ -65,7 +126,10 @@ export default function EquiPrix() {
             </div>
           )}
         </div>
-        <div className="flex items-center gap-3">
+
+        <div className="flex items-center gap-2">
+          {currentEvent && <CountdownBadge event={currentEvent} />}
+
           {userName && (
             <span className="font-cinzel text-xs" style={{ color: 'var(--gold-lt)', letterSpacing: '0.08em', opacity: 0.8 }}>
               {userName}
@@ -104,7 +168,7 @@ export default function EquiPrix() {
           <motion.div
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 40 }}
+            exit={{ opacity: 40 }}
             className="fixed bottom-24 left-1/2 -translate-x-1/2 px-4 py-2 rounded z-50 text-sm pointer-events-none"
             style={{
               background: 'var(--ep-card)',
