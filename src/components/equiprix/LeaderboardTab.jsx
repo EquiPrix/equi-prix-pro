@@ -38,7 +38,9 @@ export default function LeaderboardTab() {
 
       let riderResults = {};
       let teamResults = {};
-      if (currentEvent.status === 'past') {
+
+      // Load results for past events AND during riders phase (team event done, GP pending)
+      if (['past', 'riders'].includes(currentEvent.status)) {
         const res = await sbFetch(
           'results?event=eq.' + currentEvent.supabaseKey + '&limit=1'
         ) || [];
@@ -55,13 +57,21 @@ export default function LeaderboardTab() {
           const riderPicks = pj.riders || [];
           const teamPickIds = (pj.teams || []).map(t => t.id);
 
-          const allRiders = currentEvent.riders?.length
-            ? currentEvent.riders
-            : PREVIEW_RIDERS_2026;
+          // Search all rider sources
+          const allRiders = [
+            ...(currentEvent.gpRiders || []),
+            ...(currentEvent.riders || []),
+            ...PREVIEW_RIDERS_2026,
+          ];
+          const seenIds = new Set();
+          const evRiders = allRiders.filter(r => {
+            if (seenIds.has(r.id)) return false;
+            seenIds.add(r.id);
+            return true;
+          });
 
           const resolvedRiders = riderPicks.map(rp => {
-            const rider = allRiders.find(r => r.id === rp.id) ||
-              PREVIEW_RIDERS_2026.find(r => r.id === rp.id);
+            const rider = evRiders.find(r => r.id === rp.id);
             if (!rider) return null;
             const salary = rp.isCpt ? rider.salary + CPT_PREMIUM : rider.salary;
             const res = riderResults[String(rp.id)] || {};
@@ -88,22 +98,25 @@ export default function LeaderboardTab() {
           const teamSalaryUsed = resolvedTeams.reduce((s, t) => s + t.salary, 0);
           const remainingAfterTeams = CAP - teamSalaryUsed;
 
-          const hasResults = Object.keys(riderResults).length > 0;
-          const totalPts = hasResults
-            ? resolvedRiders.reduce((s, r) => s + (r.pts || 0), 0) +
-              resolvedTeams.reduce((s, t) => s + (t.pts || 0), 0)
-            : p.score;
+          const hasTeamResults = Object.keys(teamResults).length > 0;
+          const hasRiderResults = Object.keys(riderResults).length > 0;
+          const hasResults = hasTeamResults || hasRiderResults;
+
+          const teamPts = resolvedTeams.reduce((s, t) => s + (t.pts || 0), 0);
+          const riderPts = resolvedRiders.reduce((s, r) => s + (r.pts || 0), 0);
+          const totalPts = hasResults ? teamPts + riderPts : p.score;
 
           return {
             access_code: p.access_code,
             username: p.username || p.access_code,
             score: totalPts,
+            teamPts,
             riders: resolvedRiders,
             teams: resolvedTeams,
             totalSpent,
             remainingAfterTeams,
             hasResults,
-            isPractice: pj.isPractice,
+            hasTeamResults,
           };
         })
         .sort((a, b) => (b.score || 0) - (a.score || 0));
@@ -237,7 +250,7 @@ function EventLeaderboard({ rows, event }) {
 
       {rows.map((row, i) => {
         const open = expanded[row.access_code];
-        const hasScore = row.score != null && row.score > 0;
+        const hasScore = row.hasTeamResults && row.teamPts > 0;
 
         return (
           <motion.div
@@ -260,7 +273,6 @@ function EventLeaderboard({ rows, event }) {
                 <div className="font-cormorant text-base" style={{ color: 'var(--cream)' }}>
                   {row.username}
                 </div>
-                {/* Show remaining budget only between team lock and GP lock */}
                 {teamLocked && !gpLocked && (
                   <div className="text-xs" style={{ color: '#6aad8a' }}>
                     {fmt(row.remainingAfterTeams)} remaining for GP
@@ -271,7 +283,7 @@ function EventLeaderboard({ rows, event }) {
               <div className="flex items-center gap-2 flex-shrink-0">
                 {hasScore ? (
                   <div className="font-cormorant text-xl font-bold" style={{ color: 'var(--gold-lt)' }}>
-                    {typeof row.score === 'number' ? row.score.toFixed(1) : row.score} pts
+                    {row.teamPts} pts
                   </div>
                 ) : (
                   <div className="font-cinzel text-xs" style={{ color: 'var(--mid)' }}>
@@ -289,7 +301,7 @@ function EventLeaderboard({ rows, event }) {
               <div className="px-4 pb-3 pt-0" style={{ background: '#0d0c09', borderTop: '1px solid rgba(42,40,32,0.4)' }}>
 
                 {/* Teams — always visible after team lock */}
-                {row.teams.length > 0 && (
+                {row.teams.length > 0 ? (
                   <div className="mb-3 mt-2">
                     <div className="font-cinzel text-xs mb-1.5"
                       style={{ color: '#6aad8a', fontSize: 9, letterSpacing: '0.1em' }}>
@@ -311,10 +323,21 @@ function EventLeaderboard({ rows, event }) {
                         )}
                       </div>
                     ))}
+                    {row.hasTeamResults && row.teamPts > 0 && (
+                      <div className="flex justify-end mt-1 pt-1" style={{ borderTop: '1px solid rgba(42,40,32,0.4)' }}>
+                        <div className="font-cinzel text-xs" style={{ color: 'var(--gold)', fontSize: 9 }}>
+                          TEAM TOTAL: {row.teamPts} pts
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="mb-3 mt-2 text-xs font-cormorant italic" style={{ color: 'var(--mid)' }}>
+                    No team picks saved
                   </div>
                 )}
 
-                {/* Remaining budget — only between team lock and GP lock */}
+                {/* Remaining budget */}
                 {teamLocked && !gpLocked && (
                   <div className="mb-3 px-2 py-1.5 rounded text-xs font-cormorant"
                     style={{ background: 'rgba(61,90,76,0.1)', border: '1px solid rgba(61,90,76,0.25)', color: '#6aad8a' }}>
@@ -322,7 +345,7 @@ function EventLeaderboard({ rows, event }) {
                   </div>
                 )}
 
-                {/* GP Riders — ONLY visible after GP lock */}
+                {/* GP Riders — only after GP lock */}
                 {!gpLocked ? (
                   <div className="px-2 py-2 rounded text-xs font-cormorant italic text-center"
                     style={{ background: 'rgba(180,149,48,0.05)', border: '1px solid rgba(180,149,48,0.15)', color: 'var(--mid)' }}>
@@ -343,7 +366,8 @@ function EventLeaderboard({ rows, event }) {
                           </span>
                         )}
                         <div className="flex-1 min-w-0">
-                          <div className="font-cormorant text-sm truncate" style={{ color: isCpt ? 'var(--gold-lt)' : 'var(--cream)' }}>
+                          <div className="font-cormorant text-sm truncate"
+                            style={{ color: isCpt ? 'var(--gold-lt)' : 'var(--cream)' }}>
                             {rider.name}
                           </div>
                           <div className="text-xs" style={{ color: 'var(--mid)', fontSize: 9 }}>{rider.nat}</div>
@@ -369,7 +393,7 @@ function EventLeaderboard({ rows, event }) {
                   <div className="font-cinzel text-xs" style={{ color: 'var(--mid)', fontSize: 9 }}>
                     TOTAL SPENT: {fmt(row.totalSpent)}
                   </div>
-                  {hasScore && (
+                  {row.score > 0 && (
                     <div className="font-cormorant text-base font-bold" style={{ color: 'var(--gold)' }}>
                       {typeof row.score === 'number' ? row.score.toFixed(1) : row.score} pts
                     </div>
@@ -397,7 +421,8 @@ function SeasonLeaderboard({ rows }) {
           className="flex items-center gap-3 px-4 py-3 border-b"
           style={{ borderColor: 'rgba(42,40,32,0.4)' }}
         >
-          <div className="font-cinzel text-sm w-7 text-center" style={{ color: i < 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>
+          <div className="font-cinzel text-sm w-7 text-center"
+            style={{ color: i < 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>
             {i < 3 ? ['🥇', '🥈', '🥉'][i] : ordinal(i + 1)}
           </div>
           <div className="flex-1">
