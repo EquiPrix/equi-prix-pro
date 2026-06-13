@@ -35,19 +35,30 @@ function TeamRoundEditor({ teams, round, data, onChange, startList }) {
   const ridersKey = round === 'r1' ? 'r1Riders' : 'r2Riders';
 
   const get = (teamId) => data[teamId] || {};
-  const set = (teamId, field, value) => onChange({ ...data, [teamId]: { ...get(teamId), [field]: value } });
-
-  const setRider = (teamId, idx, field, value) => {
-    const cur = get(teamId);
-    const riders = [...(cur[ridersKey] || [{ name: '', horse: '', faults: '', time: '' }, { name: '', horse: '', faults: '', time: '' }])];
-    if (!riders[idx]) riders[idx] = { name: '', horse: '', faults: '', time: '' };
-    riders[idx] = { ...riders[idx], [field]: value };
-    onChange({ ...data, [teamId]: { ...cur, [ridersKey]: riders } });
-  };
 
   const getPreFilled = (teamId, idx) => {
     const pair = startList?.teamPairs?.[teamId]?.[round];
     return pair?.[idx] || { name: '', horse: '' };
+  };
+
+  const getInitRiders = (teamId) => [
+    { ...getPreFilled(teamId, 0), faults: '', time: '' },
+    { ...getPreFilled(teamId, 1), faults: '', time: '' },
+  ];
+
+  // When setting a header field, also initialize riders if not yet set
+  const set = (teamId, field, value) => {
+    const cur = get(teamId);
+    const riders = cur[ridersKey] || getInitRiders(teamId);
+    onChange({ ...data, [teamId]: { ...cur, [ridersKey]: riders, [field]: value } });
+  };
+
+  const setRider = (teamId, idx, field, value) => {
+    const cur = get(teamId);
+    const riders = [...(cur[ridersKey] || getInitRiders(teamId))];
+    if (!riders[idx]) riders[idx] = { name: '', horse: '', faults: '', time: '' };
+    riders[idx] = { ...riders[idx], [field]: value };
+    onChange({ ...data, [teamId]: { ...cur, [ridersKey]: riders } });
   };
 
   return (
@@ -55,10 +66,7 @@ function TeamRoundEditor({ teams, round, data, onChange, startList }) {
       {teams.map(team => {
         const d = get(team.id);
         const open = expanded[team.id];
-        const riders = d[ridersKey] || [
-          { ...getPreFilled(team.id, 0), faults: '', time: '' },
-          { ...getPreFilled(team.id, 1), faults: '', time: '' },
-        ];
+        const riders = d[ridersKey] || getInitRiders(team.id);
 
         return (
           <div key={team.id} className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--ep-border)' }}>
@@ -250,8 +258,6 @@ export default function ResultsEditor() {
       setStartList(sl);
       setLoadingStartList(false);
 
-      // Pre-populate horses from start list if available,
-      // otherwise fall back to hardcoded gpRiders which already have horses
       const ev = EVENTS_2026.find(e => e.id === selectedEventId);
       const sourceRiders = sl?.gp?.length
         ? sl.gp
@@ -267,7 +273,6 @@ export default function ResultsEditor() {
     });
   }, [selectedEventId]);
 
-  // GP riders list for the editor
   const gpRiders = startList?.gp?.length
     ? [...startList.gp].sort((a, b) => a.rank - b.rank)
     : (event?.gpRiders?.length ? event.gpRiders : event?.riders?.length ? event.riders : PREVIEW_RIDERS_2026.slice(0, 20))
