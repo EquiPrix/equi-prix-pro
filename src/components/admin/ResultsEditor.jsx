@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { EVENTS_2026, GCL_TEAMS_2026, PREVIEW_RIDERS_2026, sbFetch } from '@/lib/equiprix-data';
 import { loadStartListRemote } from '@/lib/startListStore';
-import { Save, ChevronDown, ChevronUp } from 'lucide-react';
+import { Save } from 'lucide-react';
 
 const ROUND_TABS = [
   { id: 'r1', label: 'Team R1' },
@@ -67,7 +67,6 @@ function TeamRoundEditor({ teams, round, data, onChange, startList }) {
 
         return (
           <div key={team.id} className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--ep-border)' }}>
-            {/* Team header — faults/time entry */}
             <div className="flex items-center gap-2 px-3 py-2" style={{ background: 'rgba(180,149,48,0.04)' }}>
               <span className="flex-1 font-cormorant text-sm font-semibold" style={{ color: 'var(--cream)' }}>{team.name}</span>
               <div className="flex items-center gap-1.5">
@@ -81,8 +80,6 @@ function TeamRoundEditor({ teams, round, data, onChange, startList }) {
                 <Toggle label="EL" value={!!d.el} onChange={v => set(team.id, 'el', v)} />
               </div>
             </div>
-
-            {/* Rider rows — display only, with individual fault entry */}
             <div className="px-3 py-2 space-y-1.5" style={{ borderTop: '1px solid var(--ep-border)', background: '#0d0c09' }}>
               <div className="grid grid-cols-12 gap-1 text-xs font-cinzel mb-1" style={{ color: 'var(--mid)', fontSize: 9 }}>
                 <div className="col-span-4">RIDER</div>
@@ -94,19 +91,15 @@ function TeamRoundEditor({ teams, round, data, onChange, startList }) {
                 const r = riders[idx] || {};
                 return (
                   <div key={idx} className="grid grid-cols-12 items-center gap-1">
-                    {/* Rider name — fixed display */}
                     <div className="col-span-4 font-cormorant text-sm truncate" style={{ color: 'var(--cream)' }}>
                       {r.name || <span style={{ color: 'var(--mid)', fontStyle: 'italic' }}>—</span>}
                     </div>
-                    {/* Horse — fixed display in gold */}
                     <div className="col-span-4 font-cormorant text-sm truncate italic" style={{ color: 'var(--gold-lt)' }}>
                       {r.horse || <span style={{ color: 'var(--mid)' }}>—</span>}
                     </div>
-                    {/* Faults — editable */}
                     <div className="col-span-2">
                       <NumCell value={r.faults} onChange={v => setRiderFault(team.id, idx, 'faults', v === '' ? '' : Number(v))} placeholder="0" />
                     </div>
-                    {/* Time — editable */}
                     <div className="col-span-2">
                       <NumCell value={r.time} onChange={v => setRiderFault(team.id, idx, 'time', v === '' ? '' : Number(v))} placeholder="0.0" />
                     </div>
@@ -132,11 +125,9 @@ function calcFinalPositions(teams, teamResults) {
     const isR2Failed = didR2 && (!!d.r2Ret || !!d.r2El);
     return { id: team.id, didR2, isR2Failed, r2Faults: r2Faults ?? 9999, r2Time: r2Time ?? 9999, r1Faults: r1Faults ?? 9999, r1Time: r1Time ?? 9999 };
   });
-
   const tier0 = withData.filter(t => t.didR2 && !t.isR2Failed).sort((a, b) => a.r2Faults - b.r2Faults || a.r2Time - b.r2Time);
   const tier1 = withData.filter(t => t.isR2Failed).sort((a, b) => a.r2Faults - b.r2Faults || a.r2Time - b.r2Time);
   const tier2 = withData.filter(t => !t.didR2).sort((a, b) => a.r1Faults - b.r1Faults || a.r1Time - b.r1Time);
-
   const posMap = {};
   let pos = 1;
   for (const t of [...tier0, ...tier1, ...tier2]) { posMap[t.id] = pos++; }
@@ -205,12 +196,10 @@ function GPEditor({ riders, data, onChange }) {
         return (
           <div key={r.id} className="rounded" style={{ background: i % 2 === 0 ? 'rgba(255,255,255,0.015)' : 'transparent', border: '1px solid rgba(42,40,32,0.3)' }}>
             <div className="grid grid-cols-12 items-center gap-1 px-3 py-1.5">
-              {/* Rider name + rank — fixed display */}
               <div className="col-span-3">
                 <div className="font-cormorant text-sm truncate" style={{ color: 'var(--cream)' }}>{r.name}</div>
                 <div className="text-xs" style={{ color: 'var(--mid)', fontSize: 9 }}>#{r.rank}</div>
               </div>
-              {/* Horse — fixed display in gold, editable only if missing */}
               <div className="col-span-2 font-cormorant text-sm italic truncate" style={{ color: 'var(--gold-lt)' }}>
                 {d.horse || r.horse || <span style={{ color: 'var(--mid)' }}>—</span>}
               </div>
@@ -229,8 +218,7 @@ function GPEditor({ riders, data, onChange }) {
                 <div className="col-span-1"><NumCell value={d.joPos} onChange={v => set(r.id, 'joPos', v === '' ? '' : Number(v))} placeholder="pos" /></div>
                 <div className="col-span-1"><NumCell value={d.joFaults} onChange={v => set(r.id, 'joFaults', v === '' ? '' : Number(v))} placeholder="0" /></div>
                 <div className="col-span-1"><NumCell value={d.joTime} onChange={v => set(r.id, 'joTime', v === '' ? '' : Number(v))} placeholder="0.0" /></div>
-                <div className="col-span-1" />
-                <div className="col-span-1" />
+                <div className="col-span-1" /><div className="col-span-1" />
                 <div className="col-span-1 flex justify-center"><Toggle label="R" value={!!d.joRet} onChange={v => set(r.id, 'joRet', v)} /></div>
                 <div className="col-span-1 flex justify-center"><Toggle label="E" value={!!d.joEl} onChange={v => set(r.id, 'joEl', v)} /></div>
               </div>
@@ -265,7 +253,6 @@ export default function ResultsEditor() {
     loadStartListRemote(selectedEventId).then(sl => {
       setStartList(sl);
       setLoadingStartList(false);
-
       const ev = EVENTS_2026.find(e => e.id === selectedEventId);
       const sourceRiders = sl?.gp?.length ? sl.gp : (ev?.gpRiders?.length ? ev.gpRiders : []);
       if (sourceRiders.length) {
@@ -289,15 +276,31 @@ export default function ResultsEditor() {
     Object.entries(posMap).forEach(([teamId, pos]) => {
       teamResultsWithPos[teamId] = { ...(teamResultsWithPos[teamId] || {}), finalPos: pos };
     });
-    await sbFetch('results', {
-      method: 'POST',
-      body: JSON.stringify({
-        event: event.supabaseKey,
-        rider_results: riderResults,
-        team_results: teamResultsWithPos,
-        updated_at: new Date().toISOString()
-      })
-    });
+
+    const payload = {
+      rider_results: riderResults,
+      team_results: teamResultsWithPos,
+      updated_at: new Date().toISOString()
+    };
+
+    try {
+      // PATCH if row exists, POST if new
+      const existing = await sbFetch('results?event=eq.' + event.supabaseKey + '&limit=1');
+      if (existing && existing.length > 0) {
+        await sbFetch('results?event=eq.' + event.supabaseKey, {
+          method: 'PATCH',
+          body: JSON.stringify(payload)
+        });
+      } else {
+        await sbFetch('results', {
+          method: 'POST',
+          body: JSON.stringify({ event: event.supabaseKey, ...payload })
+        });
+      }
+    } catch (e) {
+      console.error('Save error:', e);
+    }
+
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);

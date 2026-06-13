@@ -39,7 +39,6 @@ export default function LeaderboardTab() {
       let riderResults = {};
       let teamResults = {};
 
-      // Load results for past events AND during riders phase (team event done, GP pending)
       if (['past', 'riders'].includes(currentEvent.status)) {
         const res = await sbFetch(
           'results?event=eq.' + currentEvent.supabaseKey + '&limit=1'
@@ -57,7 +56,6 @@ export default function LeaderboardTab() {
           const riderPicks = pj.riders || [];
           const teamPickIds = (pj.teams || []).map(t => t.id);
 
-          // Search all rider sources
           const allRiders = [
             ...(currentEvent.gpRiders || []),
             ...(currentEvent.riders || []),
@@ -191,17 +189,14 @@ export default function LeaderboardTab() {
         <div className="font-cormorant text-xl mb-3" style={{ color: 'var(--cream)' }}>Leaderboard</div>
         <div className="flex gap-1">
           {TABS.map(t => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
+            <button key={t.id} onClick={() => setTab(t.id)}
               className="flex-shrink-0 px-3 py-1.5 font-cinzel text-xs transition-all rounded-t"
               style={{
                 background: tab === t.id ? 'rgba(180,149,48,0.08)' : 'none',
                 borderBottom: `2px solid ${tab === t.id ? 'var(--gold)' : 'transparent'}`,
                 color: tab === t.id ? 'var(--gold)' : 'var(--mid)',
                 letterSpacing: '0.08em',
-              }}
-            >
+              }}>
               {t.label.toUpperCase()}
             </button>
           ))}
@@ -232,10 +227,7 @@ function EventLeaderboard({ rows, event }) {
   const gpLocked = event.status === 'past' || new Date() >= new Date(event.gpLockISO);
   const isComplete = event.status === 'past';
 
-  if (!teamLocked) {
-    return <Empty msg="Picks will appear here once the team lock closes" />;
-  }
-
+  if (!teamLocked) return <Empty msg="Picks will appear here once the team lock closes" />;
   if (!rows.length) return <Empty msg="No picks submitted yet" />;
 
   return (
@@ -250,74 +242,54 @@ function EventLeaderboard({ rows, event }) {
 
       {rows.map((row, i) => {
         const open = expanded[row.access_code];
-        const hasScore = row.hasTeamResults && row.teamPts > 0;
+        // Show total score (team + rider pts) if we have any results
+        const hasScore = row.score != null && row.score > 0;
 
         return (
-          <motion.div
-            key={row.access_code}
-            initial={{ opacity: 0, x: -8 }}
-            animate={{ opacity: 1, x: 0 }}
+          <motion.div key={row.access_code}
+            initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
             transition={{ delay: i * 0.03 }}
-            style={{ borderBottom: '1px solid rgba(42,40,32,0.4)' }}
-          >
-            <div
-              className="flex items-center gap-3 px-4 py-3 cursor-pointer"
-              onClick={() => setExpanded(p => ({ ...p, [row.access_code]: !p[row.access_code] }))}
-            >
+            style={{ borderBottom: '1px solid rgba(42,40,32,0.4)' }}>
+            <div className="flex items-center gap-3 px-4 py-3 cursor-pointer"
+              onClick={() => setExpanded(p => ({ ...p, [row.access_code]: !p[row.access_code] }))}>
               <div className="font-cinzel text-sm w-7 text-center flex-shrink-0"
                 style={{ color: i < 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>
                 {i < 3 ? ['🥇', '🥈', '🥉'][i] : ordinal(i + 1)}
               </div>
-
               <div className="flex-1 min-w-0">
-                <div className="font-cormorant text-base" style={{ color: 'var(--cream)' }}>
-                  {row.username}
-                </div>
+                <div className="font-cormorant text-base" style={{ color: 'var(--cream)' }}>{row.username}</div>
                 {teamLocked && !gpLocked && (
                   <div className="text-xs" style={{ color: '#6aad8a' }}>
                     {fmt(row.remainingAfterTeams)} remaining for GP
                   </div>
                 )}
               </div>
-
               <div className="flex items-center gap-2 flex-shrink-0">
                 {hasScore ? (
                   <div className="font-cormorant text-xl font-bold" style={{ color: 'var(--gold-lt)' }}>
-                    {row.teamPts} pts
+                    {typeof row.score === 'number' ? row.score.toFixed(1) : row.score} pts
                   </div>
                 ) : (
                   <div className="font-cinzel text-xs" style={{ color: 'var(--mid)' }}>
                     {fmt(row.totalSpent)} spent
                   </div>
                 )}
-                {open
-                  ? <ChevronUp size={13} style={{ color: 'var(--mid)' }} />
-                  : <ChevronDown size={13} style={{ color: 'var(--mid)' }} />
-                }
+                {open ? <ChevronUp size={13} style={{ color: 'var(--mid)' }} /> : <ChevronDown size={13} style={{ color: 'var(--mid)' }} />}
               </div>
             </div>
 
             {open && (
               <div className="px-4 pb-3 pt-0" style={{ background: '#0d0c09', borderTop: '1px solid rgba(42,40,32,0.4)' }}>
-
-                {/* Teams — always visible after team lock */}
+                {/* Teams */}
                 {row.teams.length > 0 ? (
                   <div className="mb-3 mt-2">
-                    <div className="font-cinzel text-xs mb-1.5"
-                      style={{ color: '#6aad8a', fontSize: 9, letterSpacing: '0.1em' }}>
-                      GCL TEAMS
-                    </div>
+                    <div className="font-cinzel text-xs mb-1.5" style={{ color: '#6aad8a', fontSize: 9, letterSpacing: '0.1em' }}>GCL TEAMS</div>
                     {row.teams.map(({ team, salary, pts }) => (
                       <div key={team.id} className="flex items-center gap-2 py-1">
-                        <div className="flex-1 font-cormorant text-sm" style={{ color: 'var(--cream)' }}>
-                          {team.name}
-                        </div>
+                        <div className="flex-1 font-cormorant text-sm" style={{ color: 'var(--cream)' }}>{team.name}</div>
                         <div className="text-xs" style={{ color: 'var(--mid)' }}>{fmt(salary)}</div>
                         {pts !== null ? (
-                          <div className="font-cormorant text-sm font-bold w-16 text-right"
-                            style={{ color: 'var(--gold-lt)' }}>
-                            {pts} pts
-                          </div>
+                          <div className="font-cormorant text-sm font-bold w-16 text-right" style={{ color: 'var(--gold-lt)' }}>{pts} pts</div>
                         ) : (
                           <div className="text-xs w-16 text-right" style={{ color: 'var(--mid)' }}>—</div>
                         )}
@@ -325,16 +297,12 @@ function EventLeaderboard({ rows, event }) {
                     ))}
                     {row.hasTeamResults && row.teamPts > 0 && (
                       <div className="flex justify-end mt-1 pt-1" style={{ borderTop: '1px solid rgba(42,40,32,0.4)' }}>
-                        <div className="font-cinzel text-xs" style={{ color: 'var(--gold)', fontSize: 9 }}>
-                          TEAM TOTAL: {row.teamPts} pts
-                        </div>
+                        <div className="font-cinzel text-xs" style={{ color: 'var(--gold)', fontSize: 9 }}>TEAM TOTAL: {row.teamPts} pts</div>
                       </div>
                     )}
                   </div>
                 ) : (
-                  <div className="mb-3 mt-2 text-xs font-cormorant italic" style={{ color: 'var(--mid)' }}>
-                    No team picks saved
-                  </div>
+                  <div className="mb-3 mt-2 text-xs font-cormorant italic" style={{ color: 'var(--mid)' }}>No team picks saved</div>
                 )}
 
                 {/* Remaining budget */}
@@ -345,7 +313,7 @@ function EventLeaderboard({ rows, event }) {
                   </div>
                 )}
 
-                {/* GP Riders — only after GP lock */}
+                {/* GP Riders */}
                 {!gpLocked ? (
                   <div className="px-2 py-2 rounded text-xs font-cormorant italic text-center"
                     style={{ background: 'rgba(180,149,48,0.05)', border: '1px solid rgba(180,149,48,0.15)', color: 'var(--mid)' }}>
@@ -353,23 +321,15 @@ function EventLeaderboard({ rows, event }) {
                   </div>
                 ) : row.riders.length > 0 ? (
                   <div>
-                    <div className="font-cinzel text-xs mb-1.5"
-                      style={{ color: 'var(--gold)', fontSize: 9, letterSpacing: '0.1em' }}>
-                      GP RIDERS
-                    </div>
+                    <div className="font-cinzel text-xs mb-1.5" style={{ color: 'var(--gold)', fontSize: 9, letterSpacing: '0.1em' }}>GP RIDERS</div>
                     {row.riders.map(({ rider, isCpt, salary, pts }) => (
                       <div key={rider.id} className="flex items-center gap-2 py-1">
                         {isCpt && (
                           <span className="font-cinzel text-xs px-1.5 py-0.5 rounded flex-shrink-0"
-                            style={{ background: 'rgba(180,149,48,0.15)', color: 'var(--gold)', fontSize: 8 }}>
-                            CPT
-                          </span>
+                            style={{ background: 'rgba(180,149,48,0.15)', color: 'var(--gold)', fontSize: 8 }}>CPT</span>
                         )}
                         <div className="flex-1 min-w-0">
-                          <div className="font-cormorant text-sm truncate"
-                            style={{ color: isCpt ? 'var(--gold-lt)' : 'var(--cream)' }}>
-                            {rider.name}
-                          </div>
+                          <div className="font-cormorant text-sm truncate" style={{ color: isCpt ? 'var(--gold-lt)' : 'var(--cream)' }}>{rider.name}</div>
                           <div className="text-xs" style={{ color: 'var(--mid)', fontSize: 9 }}>{rider.nat}</div>
                         </div>
                         <div className="text-xs flex-shrink-0" style={{ color: 'var(--mid)' }}>{fmt(salary)}</div>
@@ -388,12 +348,9 @@ function EventLeaderboard({ rows, event }) {
                 ) : null}
 
                 {/* Total */}
-                <div className="flex items-center justify-between mt-3 pt-2"
-                  style={{ borderTop: '1px solid rgba(42,40,32,0.4)' }}>
-                  <div className="font-cinzel text-xs" style={{ color: 'var(--mid)', fontSize: 9 }}>
-                    TOTAL SPENT: {fmt(row.totalSpent)}
-                  </div>
-                  {row.score > 0 && (
+                <div className="flex items-center justify-between mt-3 pt-2" style={{ borderTop: '1px solid rgba(42,40,32,0.4)' }}>
+                  <div className="font-cinzel text-xs" style={{ color: 'var(--mid)', fontSize: 9 }}>TOTAL SPENT: {fmt(row.totalSpent)}</div>
+                  {hasScore && (
                     <div className="font-cormorant text-base font-bold" style={{ color: 'var(--gold)' }}>
                       {typeof row.score === 'number' ? row.score.toFixed(1) : row.score} pts
                     </div>
@@ -413,25 +370,17 @@ function SeasonLeaderboard({ rows }) {
   return (
     <div>
       {rows.map((row, i) => (
-        <motion.div
-          key={i}
-          initial={{ opacity: 0, x: -8 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: i * 0.03 }}
-          className="flex items-center gap-3 px-4 py-3 border-b"
-          style={{ borderColor: 'rgba(42,40,32,0.4)' }}
-        >
-          <div className="font-cinzel text-sm w-7 text-center"
-            style={{ color: i < 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>
+        <motion.div key={i} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: i * 0.03 }} className="flex items-center gap-3 px-4 py-3 border-b"
+          style={{ borderColor: 'rgba(42,40,32,0.4)' }}>
+          <div className="font-cinzel text-sm w-7 text-center" style={{ color: i < 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>
             {i < 3 ? ['🥇', '🥈', '🥉'][i] : ordinal(i + 1)}
           </div>
           <div className="flex-1">
             <div className="font-cormorant text-base" style={{ color: 'var(--cream)' }}>{row.name}</div>
             <div className="text-xs" style={{ color: 'var(--mid)' }}>{row.events} events</div>
           </div>
-          <div className="font-cormorant text-xl font-bold" style={{ color: 'var(--gold-lt)' }}>
-            {row.total} pts
-          </div>
+          <div className="font-cormorant text-xl font-bold" style={{ color: 'var(--gold-lt)' }}>{row.total} pts</div>
         </motion.div>
       ))}
     </div>
@@ -443,25 +392,15 @@ function GCLStandings({ rows }) {
   return (
     <div>
       {rows.map(({ t, pts, wins, events }, i) => (
-        <motion.div
-          key={t.id}
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: i * 0.02 }}
-          className="flex items-center gap-2.5 px-4 py-2.5 border-b"
-          style={{ borderColor: 'rgba(42,40,32,0.4)' }}
-        >
-          <div className="font-cinzel text-xs w-5 text-center flex-shrink-0"
-            style={{ color: i < 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>
-            {i + 1}
-          </div>
+        <motion.div key={t.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: i * 0.02 }} className="flex items-center gap-2.5 px-4 py-2.5 border-b"
+          style={{ borderColor: 'rgba(42,40,32,0.4)' }}>
+          <div className="font-cinzel text-xs w-5 text-center flex-shrink-0" style={{ color: i < 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>{i + 1}</div>
           <div className="flex-1 min-w-0">
             <div className="font-cormorant text-sm font-semibold" style={{ color: 'var(--cream)' }}>{t.name}</div>
             <div className="text-xs" style={{ color: 'var(--mid)' }}>{events} events · {wins || 0} wins</div>
           </div>
-          <div className="font-cormorant text-base font-bold" style={{ color: 'var(--gold-lt)' }}>
-            {pts} pts
-          </div>
+          <div className="font-cormorant text-base font-bold" style={{ color: 'var(--gold-lt)' }}>{pts} pts</div>
         </motion.div>
       ))}
     </div>
@@ -469,9 +408,5 @@ function GCLStandings({ rows }) {
 }
 
 function Empty({ msg }) {
-  return (
-    <div className="text-center py-12 font-cormorant text-lg italic" style={{ color: 'var(--mid)' }}>
-      {msg}
-    </div>
-  );
+  return <div className="text-center py-12 font-cormorant text-lg italic" style={{ color: 'var(--mid)' }}>{msg}</div>;
 }
