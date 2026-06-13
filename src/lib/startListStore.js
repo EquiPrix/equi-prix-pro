@@ -34,13 +34,12 @@ export async function loadStartListRemote(eventId) {
         gp: rows[0].gp || [],
         teamPairs: rows[0].team_pairs || {},
       };
-      saveLocal(eventId, data); // update local cache
+      saveLocal(eventId, data);
       return data;
     }
   } catch (e) {
     console.warn('Could not load start list from Supabase:', e);
   }
-  // Fall back to localStorage cache
   return loadLocal()[eventId] || null;
 }
 
@@ -48,17 +47,29 @@ export async function saveStartListRemote(eventId, data) {
   // Save to localStorage immediately
   saveLocal(eventId, data);
 
-  // Save to Supabase
+  // Try PATCH first (update existing row), fall back to POST (insert new)
   try {
-    await sbFetch('start_lists', {
-      method: 'POST',
-      body: JSON.stringify({
-        event: eventId,
-        gp: data.gp || [],
-        team_pairs: data.teamPairs || {},
-        updated_at: new Date().toISOString()
-      })
-    });
+    const existing = await sbFetch('start_lists?event=eq.' + eventId + '&limit=1');
+    if (existing && existing.length > 0) {
+      await sbFetch('start_lists?event=eq.' + eventId, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          gp: data.gp || [],
+          team_pairs: data.teamPairs || {},
+          updated_at: new Date().toISOString()
+        })
+      });
+    } else {
+      await sbFetch('start_lists', {
+        method: 'POST',
+        body: JSON.stringify({
+          event: eventId,
+          gp: data.gp || [],
+          team_pairs: data.teamPairs || {},
+          updated_at: new Date().toISOString()
+        })
+      });
+    }
   } catch (e) {
     console.error('Could not save start list to Supabase:', e);
   }
@@ -71,7 +82,6 @@ export async function loadHorseDBRemote() {
     const rows = await sbFetch('results?event=eq.horse_registry&limit=1');
     if (rows && rows.length && rows[0].rider_results) {
       const remoteDB = rows[0].rider_results;
-      // Merge remote into local (remote wins)
       const localDB = loadHorseDBLocal();
       const merged = { ...localDB };
       Object.entries(remoteDB).forEach(([rider, horses]) => {
