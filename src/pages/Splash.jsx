@@ -5,34 +5,48 @@ import { motion } from 'framer-motion';
 
 export default function Splash() {
   const navigate = useNavigate();
+  const [isSignUpMode, setIsSignUpMode] = useState(false); // Controls toggle state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
-  const handlePasswordLogin = async (e) => {
+  const handleAuthAction = async (e) => {
     e.preventDefault();
     setLoading(true);
     setMessage({ type: '', text: '' });
 
     try {
-      // Direct login verification bypassing all email queues
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email,
-        password: password,
-      });
-
-      if (error) throw error;
-
-      if (data?.session) {
-        // Successfully logged in! Go straight to the game dashboard
-        navigate('/play');
+      if (isSignUpMode) {
+        // 1. SIGN UP DISPATCH (Fires confirmation email link)
+        const { error } = await supabase.auth.signUp({
+          email: email,
+          password: password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/auth/callback`,
+          },
+        });
+        if (error) throw error;
+        setMessage({
+          type: 'success',
+          text: '✨ Registration successful! Please open your email inbox to verify your account credentials.',
+        });
+      } else {
+        // 2. SIGN IN DISPATCH (Instant Password Validation)
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: email,
+          password: password,
+        });
+        if (error) throw error;
+        if (data?.session) {
+          navigate('/play');
+        }
       }
     } catch (err) {
-      console.error("Login Error:", err);
+      console.error("Authentication Error:", err);
       setMessage({
         type: 'error',
-        text: err?.message || 'Invalid credentials or connection error.',
+        text: err?.message || 'Authentication request rejected.',
       });
     } finally {
       setLoading(false);
@@ -54,20 +68,14 @@ export default function Splash() {
           borderColor: 'rgba(180, 149, 48, 0.2)' 
         }}
       >
-        <h1 
-          className="font-cinzel text-3xl tracking-widest mb-1" 
-          style={{ color: 'var(--gold)', letterSpacing: '0.25em' }}
-        >
+        <h1 className="font-cinzel text-3xl tracking-widest mb-1" style={{ color: 'var(--gold)', letterSpacing: '0.25em' }}>
           EQUIPRIX
         </h1>
-        <p 
-          className="font-cormorant text-xs uppercase tracking-widest mb-8" 
-          style={{ color: 'var(--gold-lt)' }}
-        >
+        <p className="font-cormorant text-xs uppercase tracking-widest mb-8" style={{ color: 'var(--gold-lt)' }}>
           Elite Show Jumping Fantasy
         </p>
 
-        <form onSubmit={handlePasswordLogin} className="w-full flex flex-col gap-4 text-left">
+        <form onSubmit={handleAuthAction} className="w-full flex flex-col gap-4 text-left">
           <div className="flex flex-col gap-1.5">
             <label className="text-2xs uppercase tracking-wider font-cinzel font-semibold" style={{ color: 'var(--gold-lt)' }}>
               Email Address
@@ -107,15 +115,32 @@ export default function Splash() {
               color: loading ? 'var(--mid)' : '#0f0e0a'
             }}
           >
-            {loading ? 'Verifying Account...' : 'Sign In'}
+            {loading ? 'Processing...' : isSignUpMode ? 'Register Account' : 'Sign In'}
           </button>
         </form>
+
+        {/* Interactive layout switch link toggle option 👇 */}
+        <p className="mt-6 text-2xs uppercase tracking-wider font-cinzel text-gray-500">
+          {isSignUpMode ? "Already have an account? " : "New to the platform? "}
+          <span
+            onClick={() => {
+              setIsSignUpMode(!isSignUpMode);
+              setMessage({ type: '', text: '' });
+            }}
+            className="cursor-pointer font-bold hover:underline transition-all"
+            style={{ color: 'var(--gold-lt)' }}
+          >
+            {isSignUpMode ? 'Sign In' : 'Create Account'}
+          </span>
+        </p>
 
         {message.text && (
           <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="mt-6 text-sm font-cormorant font-semibold text-rose-400"
+            className={`mt-6 text-sm font-cormorant font-semibold ${
+              message.type === 'success' ? 'text-emerald-400' : 'text-rose-400'
+            }`}
           >
             {message.text}
           </motion.p>
