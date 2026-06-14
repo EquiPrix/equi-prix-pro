@@ -10,6 +10,8 @@ import { EquiPrixProvider } from '@/lib/EquiPrixContext';
 import EquiPrix from './pages/EquiPrix';
 import Admin from './pages/Admin';
 import Splash from './pages/Splash';
+import AuthCallback from './pages/AuthCallback';
+
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
