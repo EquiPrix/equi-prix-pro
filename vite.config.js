@@ -22,7 +22,7 @@ export default defineConfig({
         display: 'standalone',
         orientation: 'portrait',
         scope: '/',
-        start_url: '/play',
+        start_url: '/',
         icons: [
           {
             src: '/icons/icon-192x192.png',
@@ -43,15 +43,14 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // Bump this version string any time you need to force all clients to update
-        cacheId: 'equiprix-v2',
+        cacheId: 'equiprix-v3',
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
             handler: 'NetworkFirst',
             options: {
-              cacheName: 'supabase-api-cache-v2',
+              cacheName: 'supabase-api-cache-v3',
               expiration: {
                 maxEntries: 50,
                 maxAgeSeconds: 60 * 5,
@@ -63,7 +62,7 @@ export default defineConfig({
             urlPattern: /\.(png|jpg|jpeg|svg|gif|webp)$/,
             handler: 'CacheFirst',
             options: {
-              cacheName: 'image-cache-v2',
+              cacheName: 'image-cache-v3',
               expiration: {
                 maxEntries: 100,
                 maxAgeSeconds: 60 * 60 * 24 * 30,
@@ -71,7 +70,6 @@ export default defineConfig({
             },
           },
         ],
-        // Skip waiting so new SW activates immediately
         skipWaiting: true,
         clientsClaim: true,
       },
