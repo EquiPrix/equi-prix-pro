@@ -5,18 +5,18 @@ import { supabase } from '@/lib/supabaseClient';
 export default function AuthCallback() {
   const navigate = useNavigate();
 
-  useEffect(() => {
-    // Supabase automatically picks up the token parameters from the URL
+    useEffect(() => {
     supabase.auth.onAuthStateChange((event, session) => {
-      if (session) {
-        // Logged in! Redirect straight to your leaderboard game page
-        navigate('/play'); 
+      // Detects when the user clicks the confirmation link token safely
+      if (event === 'SIGNED_IN' || session) {
+        // Forward them directly to your password setup page! 👇
+        navigate('/reset-password'); 
       } else {
-        // If something fails, send them back to the splash page
         navigate('/');
       }
     });
   }, [navigate]);
+
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#0f0e0a]">

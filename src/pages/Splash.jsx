@@ -7,14 +7,16 @@ export default function Splash() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
-  const handleMagicLogin = async (e) => {
+  const handleRegisterUser = async (e) => {
     e.preventDefault();
     setLoading(true);
     setMessage({ type: '', text: '' });
 
     try {
-      const { error } = await supabase.auth.signInWithOtp({
+      // 1. Triggers Supabase Sign-Up (fires a confirmation email token)
+      const { data, error } = await supabase.auth.signUp({
         email: email,
+        password: 'TemporaryPassword123!', // Placeholder until they confirm and update it
         options: {
           emailRedirectTo: `${window.location.origin}/auth/callback`,
         },
@@ -24,13 +26,13 @@ export default function Splash() {
 
       setMessage({
         type: 'success',
-        text: '✨ Access link dispatched! Open your email inbox to sign in.',
+        text: '✨ Verification dispatched! Check your email inbox to confirm your account and set up your permanent profile access.',
       });
     } catch (err) {
-      console.error("Caught Validation Error:", err);
+      console.error("Sign Up Error:", err);
       setMessage({
         type: 'error',
-        text: err?.message || 'Authentication request rejected.',
+        text: err?.message || 'Registration request rejected.',
       });
     } finally {
       setLoading(false);
@@ -65,13 +67,10 @@ export default function Splash() {
           Elite Show Jumping Fantasy
         </p>
 
-        <form onSubmit={handleMagicLogin} className="w-full flex flex-col gap-4 text-left">
+        <form onSubmit={handleRegisterUser} className="w-full flex flex-col gap-4 text-left">
           <div className="flex flex-col gap-1.5">
-            <label 
-              className="text-2xs uppercase tracking-wider font-cinzel font-semibold" 
-              style={{ color: 'var(--gold-lt)' }}
-            >
-              Email Address
+            <label className="text-2xs uppercase tracking-wider font-cinzel font-semibold" style={{ color: 'var(--gold-lt)' }}>
+              Enter Email to Register
             </label>
             <input
               type="email"
@@ -80,10 +79,7 @@ export default function Splash() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="rider@domain.com"
               className="w-full px-4 py-3 rounded text-sm transition-all focus:outline-none bg-[#1c1a12] border"
-              style={{ 
-                borderColor: 'rgba(180, 149, 48, 0.15)', 
-                color: 'var(--cream)' 
-              }}
+              style={{ borderColor: 'rgba(180, 149, 48, 0.15)', color: 'var(--cream)' }}
             />
           </div>
 
@@ -96,7 +92,7 @@ export default function Splash() {
               color: loading ? 'var(--mid)' : '#0f0e0a'
             }}
           >
-            {loading ? 'Requesting Entry...' : 'Send Magic Link'}
+            {loading ? 'Sending Request...' : 'Register Account'}
           </button>
         </form>
 
