@@ -4,10 +4,9 @@ import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
 
 export default defineConfig({
-  // 1. Force Vite to always lock onto port 5180 to stop Supabase redirect errors
   server: {
     port: 5180,
-    strictPort: true, 
+    strictPort: true,
   },
   plugins: [
     react(),
@@ -18,12 +17,12 @@ export default defineConfig({
         name: 'EquiPrix: Elite Show Jumping Fantasy',
         short_name: 'EquiPrix',
         description: 'Elite show jumping fantasy competition platform',
-        theme_color: '#0f0e0a',       // Updated to match your app's black background
-        background_color: '#0f0e0a',  // Updated to match your app's black background
+        theme_color: '#0f0e0a',
+        background_color: '#0f0e0a',
         display: 'standalone',
         orientation: 'portrait',
         scope: '/',
-        start_url: '/play',           // Automatically opens directly to the game panel
+        start_url: '/play',
         icons: [
           {
             src: '/icons/icon-192x192.png',
@@ -44,18 +43,18 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // Cache app shell and static assets
+        // Bump this version string any time you need to force all clients to update
+        cacheId: 'equiprix-v2',
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        // Network-first for API calls, cache-first for assets
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
             handler: 'NetworkFirst',
             options: {
-              cacheName: 'supabase-api-cache',
+              cacheName: 'supabase-api-cache-v2',
               expiration: {
                 maxEntries: 50,
-                maxAgeSeconds: 60 * 5, // 5 minutes
+                maxAgeSeconds: 60 * 5,
               },
               networkTimeoutSeconds: 10,
             },
@@ -64,17 +63,20 @@ export default defineConfig({
             urlPattern: /\.(png|jpg|jpeg|svg|gif|webp)$/,
             handler: 'CacheFirst',
             options: {
-              cacheName: 'image-cache',
+              cacheName: 'image-cache-v2',
               expiration: {
                 maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
+                maxAgeSeconds: 60 * 60 * 24 * 30,
               },
             },
           },
         ],
+        // Skip waiting so new SW activates immediately
+        skipWaiting: true,
+        clientsClaim: true,
       },
       devOptions: {
-        enabled: false, 
+        enabled: false,
       },
     }),
   ],
