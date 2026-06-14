@@ -11,32 +11,21 @@ import { motion, AnimatePresence } from 'framer-motion';
 import EquiPrixLogo from '@/components/equiprix/EquiPrixLogo';
 import { useAuth } from '../lib/AuthContext';
 
-
 function useCountdown(targetISO) {
   const [timeLeft, setTimeLeft] = useState('');
 
   useEffect(() => {
     if (!targetISO) return;
-
     const tick = () => {
       const diff = new Date(targetISO) - new Date();
-      if (diff <= 0) {
-        setTimeLeft('LOCKED');
-        return;
-      }
+      if (diff <= 0) { setTimeLeft('LOCKED'); return; }
       const h = Math.floor(diff / 3600000);
       const m = Math.floor((diff % 3600000) / 60000);
       const s = Math.floor((diff % 60000) / 1000);
-      if (h > 48) {
-        const days = Math.floor(h / 24);
-        setTimeLeft(`${days}d ${h % 24}h`);
-      } else if (h > 0) {
-        setTimeLeft(`${h}h ${String(m).padStart(2, '0')}m`);
-      } else {
-        setTimeLeft(`${m}m ${String(s).padStart(2, '0')}s`);
-      }
+      if (h > 48) { const days = Math.floor(h / 24); setTimeLeft(`${days}d ${h % 24}h`); }
+      else if (h > 0) { setTimeLeft(`${h}h ${String(m).padStart(2, '0')}m`); }
+      else { setTimeLeft(`${m}m ${String(s).padStart(2, '0')}s`); }
     };
-
     tick();
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
@@ -49,41 +38,32 @@ function CountdownBadge({ event }) {
   const now = new Date();
   const teamLocked = event?.teamLockISO && now >= new Date(event.teamLockISO);
   const gpLocked = event?.gpLockISO && now >= new Date(event.gpLockISO);
-
   const showTeamCountdown = event?.status === 'teams' && !teamLocked;
   const showGPCountdown = (event?.status === 'riders' || (event?.status === 'teams' && teamLocked)) && !gpLocked;
-
   const targetISO = showTeamCountdown ? event.teamLockISO : showGPCountdown ? event.gpLockISO : null;
   const label = showTeamCountdown ? 'TEAM LOCK' : showGPCountdown ? 'GP LOCK' : null;
   const color = showTeamCountdown ? '#c9a84c' : '#b49530';
-
   const timeLeft = useCountdown(targetISO);
-
   if (!label || !timeLeft) return null;
-
   return (
     <div className="flex items-center gap-1.5 px-2 py-1 rounded"
       style={{ background: 'rgba(180,149,48,0.08)', border: `1px solid rgba(180,149,48,0.25)` }}>
-      <div className="font-cinzel text-xs" style={{ color: 'var(--mid)', fontSize: 8, letterSpacing: '0.08em' }}>
-        {label}
-      </div>
-      <div className="font-cinzel text-xs font-bold" style={{ color, fontSize: 11, letterSpacing: '0.05em' }}>
-        {timeLeft}
-      </div>
+      <div className="font-cinzel text-xs" style={{ color: 'var(--mid)', fontSize: 8, letterSpacing: '0.08em' }}>{label}</div>
+      <div className="font-cinzel text-xs font-bold" style={{ color, fontSize: 11, letterSpacing: '0.05em' }}>{timeLeft}</div>
     </div>
   );
 }
 
 export default function EquiPrix() {
   const { user } = useAuth();
-  const { userCode, userName, currentEvent, selectEvent, toast, logout, isLoading, loadSavedPicks } = useEquiPrix();
+  const { userCode, currentEvent, toast, logout, isLoading, loadSavedPicks } = useEquiPrix();
   const [activeTab, setActiveTab] = useState('events');
   const [showAccount, setShowAccount] = useState(false);
 
   const activeUserIdentity = user?.email || userCode;
 
-  // Resolve display name: prefer Supabase metadata username, fall back to equiprix userName
-  const displayName = user?.user_metadata?.username || userName || user?.email?.split('@')[0] || '';
+  // Only use Supabase metadata for display name — never fall back to old access code names
+  const displayName = user?.user_metadata?.username || user?.email?.split('@')[0] || '';
 
   useEffect(() => {
     if (activeUserIdentity && currentEvent && ['teams', 'riders', 'open'].includes(currentEvent.status)) {
@@ -97,9 +77,7 @@ export default function EquiPrix() {
     return (
       <div className="fixed inset-0 flex items-center justify-center" style={{ background: 'var(--ink)' }}>
         <div className="text-center">
-          <div className="font-cinzel text-2xl tracking-widest mb-3 animate-gold-pulse" style={{ color: 'var(--gold)', letterSpacing: '0.3em' }}>
-            EQUIPRIX
-          </div>
+          <div className="font-cinzel text-2xl tracking-widest mb-3 animate-gold-pulse" style={{ color: 'var(--gold)', letterSpacing: '0.3em' }}>EQUIPRIX</div>
           <div className="text-xs" style={{ color: 'var(--mid)' }}>Loading 2026 Season…</div>
         </div>
       </div>
@@ -107,16 +85,12 @@ export default function EquiPrix() {
   }
 
   const handleSelectEvent = (ev) => {
-    if (ev.status === 'past') {
-      setActiveTab('results');
-    } else if (['teams', 'riders', 'open'].includes(ev.status)) {
-      setActiveTab('draft');
-    }
+    if (ev.status === 'past') setActiveTab('results');
+    else if (['teams', 'riders', 'open'].includes(ev.status)) setActiveTab('draft');
   };
 
   return (
     <div className="flex flex-col h-screen overflow-hidden" style={{ background: 'var(--ink)', color: 'var(--ep-text)' }}>
-      {/* Header */}
       <header
         className="flex items-center justify-between px-4 flex-shrink-0"
         style={{
@@ -138,7 +112,6 @@ export default function EquiPrix() {
         <div className="flex items-center gap-2">
           {currentEvent && <CountdownBadge event={currentEvent} />}
 
-          {/* Username button → opens account modal */}
           {displayName && (
             <button
               onClick={() => setShowAccount(true)}
@@ -171,7 +144,6 @@ export default function EquiPrix() {
         </div>
       </header>
 
-      {/* Main content */}
       <main className="flex-1 overflow-hidden flex flex-col">
         {activeTab === 'events' && <EventsTab onSelectEvent={handleSelectEvent} />}
         {activeTab === 'draft' && <DraftTab />}
@@ -179,13 +151,10 @@ export default function EquiPrix() {
         {activeTab === 'leaderboard' && <LeaderboardTab />}
       </main>
 
-      {/* Bottom nav */}
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
 
-      {/* Account modal */}
       {showAccount && <AccountModal onClose={() => setShowAccount(false)} />}
 
-      {/* Toast */}
       <AnimatePresence>
         {toast && (
           <motion.div

@@ -37,7 +37,10 @@ export default function Splash() {
           password: password,
         });
         if (error) throw error;
-        if (data?.session) navigate('/play');
+        if (data?.session) {
+          localStorage.removeItem('ep_code'); // clear any old access code
+          navigate('/play');
+        }
       }
     } catch (err) {
       console.error("Authentication Error:", err);
@@ -65,12 +68,9 @@ export default function Splash() {
           borderColor: 'rgba(180, 149, 48, 0.2)'
         }}
       >
-        {/* Logo */}
         <div className="mb-3">
           <EquiPrixLogo width={180} />
         </div>
-
-        {/* Tagline */}
         <p className="font-cormorant italic text-base mb-8" style={{ color: 'var(--cream)', opacity: 0.85 }}>
           The world's first fantasy platform for elite show jumping
         </p>
