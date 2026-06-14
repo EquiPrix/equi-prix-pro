@@ -96,17 +96,18 @@ export default function Splash() {
         </form>
 
         {/* Dynamic Status Notifications */}
-        {message.text && (
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className={`mt-6 text-sm font-cormorant font-semibold ${
-              message.type === 'success' ? 'text-emerald-400' : 'text-rose-400'
-            }`}
-          >
-            {message.text}
-          </motion.p>
-        )}
+   {message.text && (
+  <motion.p
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    className={`mt-6 text-sm font-cormorant font-semibold ${
+      message.type === 'success' ? 'text-emerald-400' : 'text-rose-400'
+    }`}
+  >
+    {typeof message.text === 'object' ? message.text.message || JSON.stringify(message.text) : message.text}
+  </motion.p>
+)}
+
       </motion.div>
     </div>
   );
