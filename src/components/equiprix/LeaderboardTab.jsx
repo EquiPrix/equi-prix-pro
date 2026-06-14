@@ -367,25 +367,68 @@ function EventLeaderboard({ rows, event }) {
 
 function SeasonLeaderboard({ rows }) {
   if (!rows.length) return <Empty msg="No season scores recorded yet" />;
+
+  // 1. Accumulate points and count events for duplicate users
+  const aggregatedRows = Object.values(
+    rows.reduce((acc, currentItem) => {
+      const nameKey = currentItem.name;
+
+      if (!acc[nameKey]) {
+        acc[nameKey] = {
+          name: nameKey,
+          events: 0,
+          total: 0,
+        };
+      }
+
+      // Add 1 to the event counter for each row found
+      acc[nameKey].events += 1;
+      
+      // Sum up the points (handles row.total or row.points)
+      const points = currentItem.total ?? currentItem.points ?? 0;
+      acc[nameKey].total += Number(points);
+
+      return acc;
+    }, {})
+  ).sort((a, b) => b.total - a.total); // 2. Keep the leaderboard sorted highest to lowest
+
   return (
     <div>
-      {rows.map((row, i) => (
-        <motion.div key={i} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: i * 0.03 }} className="flex items-center gap-3 px-4 py-3 border-b"
-          style={{ borderColor: 'rgba(42,40,32,0.4)' }}>
-          <div className="font-cinzel text-sm w-7 text-center" style={{ color: i < 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>
+      {/* 3. Map over the newly aggregated data instead of raw rows */}
+      {aggregatedRows.map((row, i) => (
+        <motion.div
+          key={row.name} // Changed key to user name for stable animations
+          initial={{ opacity: 0, x: -8 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: i * 0.03 }}
+          className="flex items-center gap-3 px-4 py-3 border-b"
+          style={{ borderColor: 'rgba(42,40,32,0.4)' }}
+        >
+          <div
+            className="font-cinzel text-sm w-7 text-center"
+            style={{ color: i < 3 ? 'var(--gold)' : 'var(--gold-lt)' }}
+          >
             {i < 3 ? ['🥇', '🥈', '🥉'][i] : ordinal(i + 1)}
           </div>
-          <div className="flex-1">
-            <div className="font-cormorant text-base" style={{ color: 'var(--cream)' }}>{row.name}</div>
-            <div className="text-xs" style={{ color: 'var(--mid)' }}>{row.events} events</div>
+          <div
+            className="flex-1"
+          >
+            <div className="font-cormorant text-base" style={{ color: 'var(--cream)' }}>
+              {row.name}
+            </div>
+            <div className="text-xs" style={{ color: 'var(--mid)' }}>
+              {row.events} events
+            </div>
           </div>
-          <div className="font-cormorant text-xl font-bold" style={{ color: 'var(--gold-lt)' }}>{row.total} pts</div>
+          <div className="font-cormorant text-xl font-bold" style={{ color: 'var(--gold-lt)' }}>
+            {row.total} pts
+          </div>
         </motion.div>
       ))}
     </div>
   );
 }
+
 
 function GCLStandings({ rows }) {
   if (!rows.length) return <Empty msg="No GCL results recorded yet" />;
