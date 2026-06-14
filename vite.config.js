@@ -4,21 +4,26 @@ import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
 
 export default defineConfig({
+  // 1. Force Vite to always lock onto port 5180 to stop Supabase redirect errors
+  server: {
+    port: 5180,
+    strictPort: true, 
+  },
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       manifest: {
-        name: 'EquiPrix',
+        name: 'EquiPrix: Elite Show Jumping Fantasy',
         short_name: 'EquiPrix',
-        description: 'Show jumping competition platform',
-        theme_color: '#ffffff',
-        background_color: '#ffffff',
+        description: 'Elite show jumping fantasy competition platform',
+        theme_color: '#0f0e0a',       // Updated to match your app's black background
+        background_color: '#0f0e0a',  // Updated to match your app's black background
         display: 'standalone',
         orientation: 'portrait',
         scope: '/',
-        start_url: '/',
+        start_url: '/play',           // Automatically opens directly to the game panel
         icons: [
           {
             src: '/icons/icon-192x192.png',
@@ -69,7 +74,7 @@ export default defineConfig({
         ],
       },
       devOptions: {
-        enabled: false, // Set to true to test PWA in dev mode
+        enabled: false, 
       },
     }),
   ],
