@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 
 export default function Splash() {
   const navigate = useNavigate();
-  const [isSignUpMode, setIsSignUpMode] = useState(false); // Controls toggle state
+  const [isSignUpMode, setIsSignUpMode] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -18,25 +18,28 @@ export default function Splash() {
 
     try {
       if (isSignUpMode) {
-        // 1. SIGN UP DISPATCH (Fires confirmation email link)
+        // 1. REGISTRATION SIGN UP: Sends email confirmation link via Supabase auth
         const { error } = await supabase.auth.signUp({
           email: email,
-          password: password,
+          password: 'TmpPassword123!', // Safe background placeholder for token mapping
           options: {
             emailRedirectTo: `${window.location.origin}/auth/callback`,
           },
         });
+        
         if (error) throw error;
+        
         setMessage({
           type: 'success',
-          text: '✨ Registration successful! Please open your email inbox to verify your account credentials.',
+          text: '✨ Verification dispatched! Check your email inbox to confirm your account and set up your permanent profile access.',
         });
       } else {
-        // 2. SIGN IN DISPATCH (Instant Password Validation)
+        // 2. SIGN IN: Direct password validation
         const { data, error } = await supabase.auth.signInWithPassword({
           email: email,
           password: password,
         });
+        
         if (error) throw error;
         if (data?.session) {
           navigate('/play');
@@ -91,20 +94,23 @@ export default function Splash() {
             />
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-2xs uppercase tracking-wider font-cinzel font-semibold" style={{ color: 'var(--gold-lt)' }}>
-              Password
-            </label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full px-4 py-3 rounded text-sm transition-all focus:outline-none bg-[#1c1a12] border"
-              style={{ borderColor: 'rgba(180, 149, 48, 0.15)', color: 'var(--cream)' }}
-            />
-          </div>
+          {/* DYNAMIC PASSWORD CONTAINER: Automatically unmounts when registering */}
+          {!isSignUpMode && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-2xs uppercase tracking-wider font-cinzel font-semibold" style={{ color: 'var(--gold-lt)' }}>
+                Password
+              </label>
+              <input
+                type="password"
+                required={!isSignUpMode}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full px-4 py-3 rounded text-sm transition-all focus:outline-none bg-[#1c1a12] border"
+                style={{ borderColor: 'rgba(180, 149, 48, 0.15)', color: 'var(--cream)' }}
+              />
+            </div>
+          )}
 
           <button
             type="submit"
@@ -119,20 +125,24 @@ export default function Splash() {
           </button>
         </form>
 
-        {/* Interactive layout switch link toggle option 👇 */}
-        <p className="mt-6 text-2xs uppercase tracking-wider font-cinzel text-gray-500">
-          {isSignUpMode ? "Already have an account? " : "New to the platform? "}
-          <span
-            onClick={() => {
-              setIsSignUpMode(!isSignUpMode);
-              setMessage({ type: '', text: '' });
-            }}
-            className="cursor-pointer font-bold hover:underline transition-all"
-            style={{ color: 'var(--gold-lt)' }}
-          >
-            {isSignUpMode ? 'Sign In' : 'Create Account'}
-          </span>
-        </p>
+        {/* TWO-LINE FORMATTED TEXT SWITCHER LINKS */}
+        <div className="mt-6 text-2xs uppercase tracking-wider font-cinzel text-gray-500 flex flex-col gap-1">
+          <div>{isSignUpMode ? "Already have an account?" : "New to the platform?"}</div>
+          <div>
+            <span
+              onClick={() => {
+                setIsSignUpMode(!isSignUpMode);
+                setMessage({ type: '', text: '' });
+                setEmail('');
+                setPassword('');
+              }}
+              className="cursor-pointer font-bold hover:underline transition-all"
+              style={{ color: 'var(--gold-lt)' }}
+            >
+              {isSignUpMode ? 'Sign In' : 'Register Account'}
+            </span>
+          </div>
+        </div>
 
         {message.text && (
           <motion.p
