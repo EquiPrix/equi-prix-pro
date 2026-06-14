@@ -4,26 +4,26 @@ import { supabase } from '@/lib/supabaseClient';
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [session, setSession] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [currentSession, setCurrentSession] = useState(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
 
-    useEffect(() => {
+  useEffect(() => {
     // 1. Fetch current active session on load
-    supabase.auth.getSession().then(({ data: { currentSession } }) => {
-      setSession(currentSession);
-      setUser(currentSession?.user ?? null);
-      setLoading(false);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setCurrentSession(session);
+      setCurrentUser(session?.user ?? null);
+      setIsAuthLoading(false);
     });
 
-    // 2. Listen for auth updates (Fixed Destructuring Line) 👇
-    const { data } = supabase.auth.onAuthStateChange((_event, authSession) => {
-      setSession(authSession);
-      setUser(authSession?.user ?? null);
-      setLoading(false);
+    // 2. Listen for authentication state updates
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      setCurrentSession(session);
+      setCurrentUser(session?.user ?? null);
+      setIsAuthLoading(false);
     });
 
-    // 3. Clean up subscription correctly
+    // 3. Clean up auth subscription observer safely
     return () => {
       if (data?.subscription) {
         data.subscription.unsubscribe();
@@ -31,17 +31,16 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  // 1. Passwordless Magic Link Login Function
-  const signInWithMagicLink = async (email) => {
-    const { data, error } = await supabase.auth.signInWithOtp({
-      email,
+  // 4. Passwordless Magic Link Login Function
+  const signInWithMagicLink = async (userEmail) => {
+    const { data: authData, error: authError } = await supabase.auth.signInWithOtp({
+      email: userEmail,
       options: {
-        // Redirects users straight back to your live Netlify app or localhost
         emailRedirectTo: window.location.origin,
       },
     });
-    if (error) throw error;
-    return data;
+    if (authError) throw authError;
+    return authData;
   };
 
   const signUp = async ({ email, password, fullName }) => {
@@ -88,17 +87,17 @@ export function AuthProvider({ children }) {
   return (
     <AuthContext.Provider
       value={{
-        user,
-        session,
-        loading,
+        user: currentUser,
+        session: currentSession,
+        loading: isAuthLoading,
         signUp,
         signIn,
-        signInWithMagicLink, // 2. Made available to all your app screens
+        signInWithMagicLink,
         signInWithGoogle,
         signOut,
         resetPassword,
         updatePassword,
-        isAuthenticated: !!user,
+        isAuthenticated: !!currentUser,
       }}
     >
       {children}
