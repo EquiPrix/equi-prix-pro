@@ -2,20 +2,19 @@ import React from 'react';
 import { Toaster } from "@/components/ui/toaster";
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClientInstance } from '@/lib/query-client';
-import { BrowserRouter as Router, Route, Routes, useNavigate } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from './lib/AuthContext';
-import { EquiPrixProvider } from '@/lib/EquiPrixContext'; // 👈 Re-added your data context
-import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+import { EquiPrixProvider } from '@/lib/EquiPrixContext';
 import EquiPrix from './pages/EquiPrix';
 import Admin from './pages/Admin';
 import Splash from './pages/Splash';
 import AuthCallback from './pages/AuthCallback';
+import ResetPassword from './pages/ResetPassword';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth } = useAuth();
 
-  // Show loading spinner while checking auth status
   if (isLoadingAuth) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-[#0f0e0a]">
@@ -29,11 +28,11 @@ const AuthenticatedApp = () => {
   }
 
   return (
-    // Wrap your routes in your game's data provider 👇
     <EquiPrixProvider>
       <Routes>
         <Route path="/" element={<Splash />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/play" element={<EquiPrix />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="*" element={<PageNotFound />} />

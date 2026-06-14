@@ -1,114 +1,122 @@
-import React, { useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import { base44 } from "@/api/base44Client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Lock, Loader2, AlertTriangle } from "lucide-react";
-import AuthLayout from "@/components/AuthLayout";
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabaseClient';
+import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import EquiPrixLogo from '@/components/equiprix/EquiPrixLogo';
 
 export default function ResetPassword() {
-  const [searchParams] = useSearchParams();
-  const resetToken = searchParams.get("token");
-
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [error, setError] = useState("");
+  const navigate = useNavigate();
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
   const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
+  const [ready, setReady] = useState(false);
 
-  const handleSubmit = async (e) => {
+  useEffect(() => {
+    // Supabase injects the session from the reset link automatically
+    supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') setReady(true);
+    });
+  }, []);
+
+  const handleReset = async (e) => {
     e.preventDefault();
-    setError("");
-    if (newPassword !== confirmPassword) {
-      setError("Passwords do not match");
+    if (password !== confirm) {
+      setMessage({ type: 'error', text: 'Passwords do not match.' });
+      return;
+    }
+    if (password.length < 8) {
+      setMessage({ type: 'error', text: 'Password must be at least 8 characters.' });
       return;
     }
     setLoading(true);
+    setMessage({ type: '', text: '' });
     try {
-      await base44.auth.resetPassword({ resetToken, newPassword });
-      window.location.href = "/login";
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw error;
+      setMessage({ type: 'success', text: '✓ Password updated! Redirecting…' });
+      setTimeout(() => navigate('/play'), 2000);
     } catch (err) {
-      setError(err.message || "Failed to reset password");
+      setMessage({ type: 'error', text: err.message });
     } finally {
       setLoading(false);
     }
   };
 
-  if (!resetToken) {
-    return (
-      <AuthLayout
-        icon={AlertTriangle}
-        title="Invalid reset link"
-        subtitle="This password reset link is missing or invalid"
-        footer={
-          <Link to="/forgot-password" className="text-primary font-medium hover:underline">
-            Request a new link
-          </Link>
-        }
-      >
-        <p className="text-sm text-foreground text-center">
-          The link you used appears to be incomplete. Please request a new password reset email.
-        </p>
-      </AuthLayout>
-    );
-  }
-
   return (
-    <AuthLayout
-      icon={Lock}
-      title="New password"
-      subtitle="Enter your new password below"
-    >
-      {error && (
-        <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
-          {error}
+    <div className="min-h-screen flex flex-col items-center justify-center px-4" style={{ background: '#0f0e0a' }}>
+      <motion.div
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="w-full max-w-md p-8 rounded border flex flex-col items-center text-center"
+        style={{ backgroundColor: '#14130e', borderColor: 'rgba(180, 149, 48, 0.2)' }}
+      >
+        <div className="mb-3">
+          <EquiPrixLogo width={160} />
         </div>
-      )}
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="password">New Password</Label>
-          <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
-            <Input
-              id="password"
-              type="password"
-              autoComplete="new-password"
-              autoFocus
-              placeholder="••••••••"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              className="pl-10 h-12"
-              required
-            />
-          </div>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="confirm">Confirm Password</Label>
-          <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
-            <Input
-              id="confirm"
-              type="password"
-              autoComplete="new-password"
-              placeholder="••••••••"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="pl-10 h-12"
-              required
-            />
-          </div>
-        </div>
-        <Button type="submit" className="w-full h-12 font-medium" disabled={loading}>
-          {loading ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Resetting...
-            </>
-          ) : (
-            "Reset password"
-          )}
-        </Button>
-      </form>
-    </AuthLayout>
+        <p className="font-cinzel text-xs tracking-widest mb-8" style={{ color: 'var(--gold-lt)' }}>
+          SET NEW PASSWORD
+        </p>
+
+        {!ready ? (
+          <p className="font-cormorant italic text-base" style={{ color: 'var(--mid)' }}>
+            Verifying reset link…
+          </p>
+        ) : (
+          <form onSubmit={handleReset} className="w-full flex flex-col gap-4 text-left">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-2xs uppercase tracking-wider font-cinzel font-semibold" style={{ color: 'var(--gold-lt)' }}>
+                New Password
+              </label>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full px-4 py-3 rounded text-sm focus:outline-none bg-[#1c1a12] border"
+                style={{ borderColor: 'rgba(180,149,48,0.15)', color: 'var(--cream)', fontSize: '16px' }}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-2xs uppercase tracking-wider font-cinzel font-semibold" style={{ color: 'var(--gold-lt)' }}>
+                Confirm Password
+              </label>
+              <input
+                type="password"
+                required
+                value={confirm}
+                onChange={e => setConfirm(e.target.value)}
+                placeholder="••••••••"
+                className="w-full px-4 py-3 rounded text-sm focus:outline-none bg-[#1c1a12] border"
+                style={{ borderColor: 'rgba(180,149,48,0.15)', color: 'var(--cream)', fontSize: '16px' }}
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 rounded text-xs uppercase font-cinzel font-bold tracking-widest mt-2"
+              style={{
+                backgroundColor: loading ? 'rgba(180,149,48,0.1)' : 'var(--gold)',
+                color: loading ? 'var(--mid)' : '#0f0e0a'
+              }}
+            >
+              {loading ? 'Updating…' : 'Set Password'}
+            </button>
+          </form>
+        )}
+
+        {message.text && (
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className={`mt-6 text-sm font-cormorant font-semibold ${message.type === 'success' ? 'text-emerald-400' : 'text-rose-400'}`}
+          >
+            {message.text}
+          </motion.p>
+        )}
+      </motion.div>
+    </div>
   );
 }
