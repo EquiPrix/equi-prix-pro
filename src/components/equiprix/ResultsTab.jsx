@@ -292,15 +292,25 @@ function TeamFinalResults({ teamResults, displayTeams }) {
           initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
           transition={{ delay: i * 0.02 }}
           className="flex items-center gap-2.5 px-3 py-2.5 border-b"
-          style={{ borderColor: 'rgba(42,40,32,0.4)' }}>
+          style={{
+            borderColor: 'rgba(42,40,32,0.4)',
+            background: madeR2 ? 'rgba(76,175,61,0.03)' : 'transparent',
+          }}>
 
           <div className="font-cinzel text-xs w-5 text-center flex-shrink-0"
             style={{ color: pos <= 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>
             {ret ? 'RET' : el ? 'EL' : pos}
           </div>
 
-          <div className="flex-1 font-cormorant text-base font-semibold" style={{ color: 'var(--cream)' }}>
+          <div className="flex-1 font-cormorant text-base font-semibold flex items-center gap-1.5"
+            style={{ color: madeR2 ? '#6aad8a' : 'var(--cream)' }}>
             {t.name}
+            {madeR2 && (
+              <span className="font-cinzel text-xs px-1"
+                style={{ background: 'rgba(76,175,61,0.15)', color: '#4caf7d', borderRadius: 2, fontSize: 8, letterSpacing: '0.06em' }}>
+                R2
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-3 flex-shrink-0">
