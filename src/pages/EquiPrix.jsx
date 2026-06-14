@@ -6,6 +6,7 @@ import EventsTab from '@/components/equiprix/EventsTab';
 import DraftTab from '@/components/equiprix/DraftTab';
 import ResultsTab from '@/components/equiprix/ResultsTab';
 import LeaderboardTab from '@/components/equiprix/LeaderboardTab';
+import AccountModal from '@/components/equiprix/AccountModal';
 import { motion, AnimatePresence } from 'framer-motion';
 import EquiPrixLogo from '@/components/equiprix/EquiPrixLogo';
 import { useAuth } from '../lib/AuthContext';
@@ -74,14 +75,15 @@ function CountdownBadge({ event }) {
 }
 
 export default function EquiPrix() {
-  // 1. Grab your new secure user details right here 👇
   const { user } = useAuth();
-  
   const { userCode, userName, currentEvent, selectEvent, toast, logout, isLoading, loadSavedPicks } = useEquiPrix();
   const [activeTab, setActiveTab] = useState('events');
+  const [showAccount, setShowAccount] = useState(false);
 
-  // 2. Use your secure user email string or fallback to the old access code system
   const activeUserIdentity = user?.email || userCode;
+
+  // Resolve display name: prefer Supabase metadata username, fall back to equiprix userName
+  const displayName = user?.user_metadata?.username || userName || user?.email?.split('@')[0] || '';
 
   useEffect(() => {
     if (activeUserIdentity && currentEvent && ['teams', 'riders', 'open'].includes(currentEvent.status)) {
@@ -89,11 +91,7 @@ export default function EquiPrix() {
     }
   }, [activeUserIdentity, currentEvent?.id]);
 
-  // 3. If there is no secure Supabase user active, send them back to the login wall! 👇
-  if (!user) {
-    return <GateScreen />;
-  }
-
+  if (!user) return <GateScreen />;
 
   if (isLoading) {
     return (
@@ -140,11 +138,23 @@ export default function EquiPrix() {
         <div className="flex items-center gap-2">
           {currentEvent && <CountdownBadge event={currentEvent} />}
 
-          {userName && (
-            <span className="font-cinzel text-xs" style={{ color: 'var(--gold-lt)', letterSpacing: '0.08em', opacity: 0.8 }}>
-              {userName}
-            </span>
+          {/* Username button → opens account modal */}
+          {displayName && (
+            <button
+              onClick={() => setShowAccount(true)}
+              className="font-cinzel text-xs px-2 py-1 rounded transition-all"
+              style={{
+                color: 'var(--gold-lt)',
+                letterSpacing: '0.08em',
+                opacity: 0.9,
+                background: 'rgba(180,149,48,0.06)',
+                border: '1px solid rgba(180,149,48,0.15)',
+              }}
+            >
+              {displayName}
+            </button>
           )}
+
           <button
             onClick={logout}
             className="font-cinzel text-xs px-2 py-1 rounded transition-all"
@@ -172,13 +182,16 @@ export default function EquiPrix() {
       {/* Bottom nav */}
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
 
+      {/* Account modal */}
+      {showAccount && <AccountModal onClose={() => setShowAccount(false)} />}
+
       {/* Toast */}
       <AnimatePresence>
         {toast && (
           <motion.div
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 40 }}
+            exit={{ opacity: 0, y: 40 }}
             className="fixed bottom-24 left-1/2 -translate-x-1/2 px-4 py-2 rounded z-50 text-sm pointer-events-none"
             style={{
               background: 'var(--ep-card)',
