@@ -13,7 +13,6 @@ export default function AccountModal({ onClose }) {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    // Load current username from user metadata
     const meta = user?.user_metadata;
     setUsername(meta?.username || meta?.access_code || user?.email?.split('@')[0] || '');
   }, [user]);
@@ -39,7 +38,7 @@ export default function AccountModal({ onClose }) {
   const sendPasswordReset = async () => {
     try {
       await supabase.auth.resetPasswordForEmail(user.email, {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `${window.location.origin}/reset-password`,
       });
       setResetSent(true);
     } catch (e) {
@@ -121,7 +120,6 @@ export default function AccountModal({ onClose }) {
             </p>
           </div>
 
-          {/* Divider */}
           <div style={{ borderTop: '1px solid rgba(42,40,32,0.6)', margin: '20px 0' }} />
 
           {/* Password reset */}
@@ -150,12 +148,10 @@ export default function AccountModal({ onClose }) {
             )}
           </div>
 
-          {/* Error */}
           {error && (
             <p className="font-cormorant italic text-sm mb-4" style={{ color: '#e07070' }}>{error}</p>
           )}
 
-          {/* Divider */}
           <div style={{ borderTop: '1px solid rgba(42,40,32,0.6)', margin: '20px 0' }} />
 
           {/* Sign out */}
