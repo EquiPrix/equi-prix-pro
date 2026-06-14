@@ -53,16 +53,31 @@ const AuthenticatedApp = () => {
 
 
 function App() {
-  return (
-    <AuthProvider>
-      <QueryClientProvider client={queryClientInstance}>
-        <Router>
-          <AuthenticatedApp />
-        </Router>
-        <Toaster />
-      </QueryClientProvider>
-    </AuthProvider>
+    return (
+    <AuthContext.Provider
+      value={{
+        // 1. Map properties to match your App.jsx naming style 👇
+        user: currentUser,
+        session: currentSession,
+        loading: isAuthLoading,
+        isLoadingAuth: isAuthLoading,             // 👈 ADD THIS MATCHING LINE
+        authError: null,                          // 👈 ADD THIS MATCHING LINE
+        navigateToLogin: () => window.location.href = '/', // 👈 ADD THIS MATCHING LINE
+        
+        signUp,
+        signIn,
+        signInWithMagicLink,
+        signInWithGoogle,
+        signOut,
+        resetPassword,
+        updatePassword,
+        isAuthenticated: !!currentUser,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
   );
+
 }
 
 export default App
