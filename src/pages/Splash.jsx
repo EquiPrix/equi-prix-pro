@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { useAuth } from '../lib/AuthContext';
+import { supabase } from '../lib/supabaseClient';
 import { motion } from 'framer-motion';
 
 export default function Splash() {
-  const { signInWithMagicLink } = useAuth();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
@@ -14,20 +13,24 @@ export default function Splash() {
     setMessage({ type: '', text: '' });
 
     try {
-      // 1. Force the engine to explicitly await the network handshake promise
-      await signInWithMagicLink(email);
-      
-      // 2. Clear state variables out and apply raw string text
+      const { error } = await supabase.auth.signInWithOtp({
+        email: email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      if (error) throw error;
+
       setMessage({
         type: 'success',
         text: '✨ Access link dispatched! Open your email inbox to sign in.',
       });
     } catch (err) {
       console.error("Caught Validation Error:", err);
-      
       setMessage({
         type: 'error',
-        text: err?.message || typeof err === 'string' ? err : 'Authentication request rejected.',
+        text: err?.message || 'Authentication request rejected.',
       });
     } finally {
       setLoading(false);
@@ -97,8 +100,7 @@ export default function Splash() {
           </button>
         </form>
 
-        {/* 3. Render clean text strings safely */}
-        {message.text && typeof message.text === 'string' && (
+        {message.text && (
           <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}

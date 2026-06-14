@@ -28,6 +28,7 @@ const AuthenticatedApp = () => {
   }
 
   // Handle authentication errors
+  /*
   if (authError) {
     if (authError.type === 'user_not_registered') {
       return <UserNotRegisteredError />;
@@ -36,11 +37,12 @@ const AuthenticatedApp = () => {
       return null;
     }
   }
-
+*/
   return (
     <EquiPrixProvider>
       <Routes>
         <Route path="/" element={<Splash />} />
+        <Route path="/auth/callback" element={<AuthCallback />} /> 
         <Route path="/play" element={<EquiPrix />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="*" element={<PageNotFound />} />
