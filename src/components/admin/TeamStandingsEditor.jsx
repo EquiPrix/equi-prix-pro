@@ -11,7 +11,7 @@ export default function TeamStandingsEditor() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  // Load existing saved values from Supabase on mount
+  // Load existing saved salaries from Supabase on mount
   useEffect(() => {
     sbFetch('results?event=eq.team_salaries&limit=1').then(rows => {
       if (!rows || !rows.length || !rows[0].gp_riders) return;
@@ -29,8 +29,8 @@ export default function TeamStandingsEditor() {
     });
   }, []);
 
-  const update = (id, field, value) => {
-    setTeams(prev => prev.map(t => t.id === id ? { ...t, [field]: value === '' ? '' : Number(value) } : t));
+  const updateSalary = (id, value) => {
+    setTeams(prev => prev.map(t => t.id === id ? { ...t, salary: value === '' ? '' : Number(value) } : t));
   };
 
   const sorted = [...teams].sort((a, b) => (Number(a.rank) || 99) - (Number(b.rank) || 99));
@@ -45,14 +45,10 @@ export default function TeamStandingsEditor() {
         updated_at: new Date().toISOString()
       })
     });
-    // Sync back into the in-memory GCL_TEAMS_2026 array
+    // Sync salary back into in-memory GCL_TEAMS_2026
     teams.forEach(t => {
       const orig = GCL_TEAMS_2026.find(x => x.id === t.id);
-      if (orig) {
-        if (t.rank !== '') orig.rank = Number(t.rank);
-        if (t.pts !== '') orig.pts = Number(t.pts);
-        if (t.salary !== '') orig.salary = Number(t.salary);
-      }
+      if (orig && t.salary !== '') orig.salary = Number(t.salary);
     });
     setSaving(false);
     setSaved(true);
@@ -63,7 +59,7 @@ export default function TeamStandingsEditor() {
     <div className="max-w-2xl">
       <h2 className="font-cinzel text-sm tracking-widest mb-1" style={{ color: 'var(--gold)' }}>GCL STANDINGS</h2>
       <p className="font-cormorant text-base italic mb-4" style={{ color: 'var(--mid)' }}>
-        Update team rankings, GCL points and draft salaries. Saved to Supabase and reflected in the draft pool immediately.
+        Rankings and points are auto-calculated from results. Adjust draft salaries here if needed.
       </p>
 
       {/* Header */}
@@ -85,15 +81,11 @@ export default function TeamStandingsEditor() {
               border: '1px solid rgba(42,40,32,0.4)',
               borderRadius: 4
             }}>
-            {/* Editable rank */}
-            <div className="col-span-1">
-              <input
-                type="number"
-                value={team.rank}
-                onChange={e => update(team.id, 'rank', e.target.value)}
-                className="w-full rounded px-1 py-1 text-xs text-center outline-none"
-                style={{ background: 'rgba(180,149,48,0.08)', border: '1px solid rgba(180,149,48,0.2)', color: 'var(--gold)' }}
-              />
+
+            {/* Rank — read only */}
+            <div className="col-span-1 font-cinzel text-sm text-center font-bold"
+              style={{ color: 'var(--gold)' }}>
+              {team.rank}
             </div>
 
             {/* Name */}
@@ -101,27 +93,21 @@ export default function TeamStandingsEditor() {
               {team.name}
             </div>
 
-            {/* GCL pts */}
-            <div className="col-span-3">
-              <input
-                type="number"
-                value={team.pts}
-                onChange={e => update(team.id, 'pts', e.target.value)}
-                placeholder="pts"
-                className="w-full rounded px-1 py-1 text-xs text-center outline-none"
-                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--ep-border)', color: 'var(--ep-text)' }}
-              />
+            {/* GCL pts — read only */}
+            <div className="col-span-3 text-center font-cormorant text-sm"
+              style={{ color: 'var(--mid)' }}>
+              {team.pts}
             </div>
 
-            {/* Salary */}
+            {/* Salary — editable */}
             <div className="col-span-3">
               <input
                 type="number"
                 value={team.salary}
-                onChange={e => update(team.id, 'salary', e.target.value)}
+                onChange={e => updateSalary(team.id, e.target.value)}
                 placeholder="salary"
                 className="w-full rounded px-1 py-1 text-xs text-center outline-none"
-                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--ep-border)', color: 'var(--ep-text)' }}
+                style={{ background: 'rgba(180,149,48,0.08)', border: '1px solid rgba(180,149,48,0.2)', color: 'var(--gold)' }}
               />
             </div>
           </div>
@@ -136,7 +122,7 @@ export default function TeamStandingsEditor() {
           border: saved ? '1px solid #4caf7d' : 'none'
         }}>
         <Save size={13} />
-        {saved ? 'SAVED ✓' : saving ? 'SAVING…' : 'SAVE STANDINGS'}
+        {saved ? 'SAVED ✓' : saving ? 'SAVING…' : 'SAVE SALARIES'}
       </button>
     </div>
   );
