@@ -32,7 +32,7 @@ export function AuthProvider({ children }) {
       email,
       options: {
         // Redirects users straight back to your live Netlify app or localhost
-        redirectTo: window.location.origin,
+        emailRedirectTo: window.location.origin,
       },
     });
     if (error) throw error;
