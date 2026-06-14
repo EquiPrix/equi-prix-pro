@@ -36,8 +36,8 @@ export function teamPosPts(pos) {
 }
 
 export const GCL_STAGE_PTS = {
-  1: 30, 2: 25, 3: 21, 4: 19, 5: 17, 6: 15, 7: 13, 8: 11,
-  9: 9, 10: 8, 11: 7, 12: 6, 13: 5, 14: 4, 15: 3, 16: 2, 17: 2
+  1: 30, 2: 25, 3: 21, 4: 19, 5: 17, 6: 16, 7: 15, 8: 14,
+  9: 13, 10: 12, 11: 11, 12: 10, 13: 9, 14: 8, 15: 7, 16: 6, 17: 5
 };
 
 export function gclStagePts(pos) { return GCL_STAGE_PTS[pos] || 0; }
