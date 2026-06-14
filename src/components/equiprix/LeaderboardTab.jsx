@@ -14,6 +14,25 @@ const TABS = [
   { id: 'gcl', label: 'GCL Standings' },
 ];
 
+// Shared scoring: calculates total pts for one pick entry from results
+function calcPickScore(picksJson, riderResults, teamResults) {
+  const riderPts = (picksJson.riders || []).reduce((sum, rp) => {
+    const res = riderResults[String(rp.id)] || {};
+    const gpPts = res.gpPos ? gpPosPts(res.gpPos) : null;
+    if (gpPts === null) return sum;
+    const raw = gpPts + (res.gpClear ? 20 : 0);
+    return sum + (rp.isCpt ? raw * CAPTAIN_MULT : raw);
+  }, 0);
+
+  const teamPts = (picksJson.teams || []).reduce((sum, t) => {
+    const tr = teamResults[t.id] || {};
+    const pos = tr.finalPos || null;
+    return sum + (pos ? teamPosPts(pos) : 0);
+  }, 0);
+
+  return riderPts + teamPts;
+}
+
 export default function LeaderboardTab() {
   const { currentEvent, events } = useEquiPrix();
   const [tab, setTab] = useState('event');
@@ -49,24 +68,26 @@ export default function LeaderboardTab() {
         }
       }
 
+      const hasResults = Object.keys(teamResults).length > 0 || Object.keys(riderResults).length > 0;
+
+      const allRiders = [
+        ...(currentEvent.gpRiders || []),
+        ...(currentEvent.riders || []),
+        ...PREVIEW_RIDERS_2026,
+      ];
+      const seenIds = new Set();
+      const evRiders = allRiders.filter(r => {
+        if (seenIds.has(r.id)) return false;
+        seenIds.add(r.id);
+        return true;
+      });
+
       const rows = picks
         .filter(p => p.picks_json && !p.picks_json.isPractice)
         .map(p => {
           const pj = p.picks_json;
           const riderPicks = pj.riders || [];
           const teamPickIds = (pj.teams || []).map(t => t.id);
-
-          const allRiders = [
-            ...(currentEvent.gpRiders || []),
-            ...(currentEvent.riders || []),
-            ...PREVIEW_RIDERS_2026,
-          ];
-          const seenIds = new Set();
-          const evRiders = allRiders.filter(r => {
-            if (seenIds.has(r.id)) return false;
-            seenIds.add(r.id);
-            return true;
-          });
 
           const resolvedRiders = riderPicks.map(rp => {
             const rider = evRiders.find(r => r.id === rp.id);
@@ -76,9 +97,7 @@ export default function LeaderboardTab() {
             const gpPts = res.gpPos ? gpPosPts(res.gpPos) : null;
             const clearBonus = res.gpClear ? 20 : 0;
             const rawPts = gpPts !== null ? gpPts + clearBonus : null;
-            const pts = rawPts !== null
-              ? (rp.isCpt ? rawPts * CAPTAIN_MULT : rawPts)
-              : null;
+            const pts = rawPts !== null ? (rp.isCpt ? rawPts * CAPTAIN_MULT : rawPts) : null;
             return { rider, isCpt: rp.isCpt, salary, pts };
           }).filter(Boolean);
 
@@ -95,14 +114,10 @@ export default function LeaderboardTab() {
             resolvedTeams.reduce((s, t) => s + t.salary, 0);
           const teamSalaryUsed = resolvedTeams.reduce((s, t) => s + t.salary, 0);
           const remainingAfterTeams = CAP - teamSalaryUsed;
-
           const hasTeamResults = Object.keys(teamResults).length > 0;
-          const hasRiderResults = Object.keys(riderResults).length > 0;
-          const hasResults = hasTeamResults || hasRiderResults;
-
           const teamPts = resolvedTeams.reduce((s, t) => s + (t.pts || 0), 0);
           const riderPts = resolvedRiders.reduce((s, r) => s + (r.pts || 0), 0);
-          const totalPts = hasResults ? teamPts + riderPts : p.score;
+          const totalPts = hasResults ? teamPts + riderPts : null;
 
           return {
             access_code: p.access_code,
@@ -120,6 +135,21 @@ export default function LeaderboardTab() {
         .sort((a, b) => (b.score || 0) - (a.score || 0));
 
       setEventRows(rows);
+
+      // Write scores back to picks table so season LB can read them
+      if (hasResults && currentEvent.status === 'past') {
+        rows.forEach(async (row) => {
+          if (row.score == null) return;
+          try {
+            await sbFetch(
+              'picks?access_code=eq.' + encodeURIComponent(row.access_code) + '&event=eq.' + currentEvent.id,
+              { method: 'PATCH', body: JSON.stringify({ score: row.score }) }
+            );
+          } catch (e) {
+            console.warn('Score write-back failed for', row.access_code, e);
+          }
+        });
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -127,20 +157,33 @@ export default function LeaderboardTab() {
     }
   };
 
+  // Season LB: recalculate scores from results directly — never relies on stored p.score
   const loadSeasonLB = async () => {
     setLoading(true);
     try {
       const pastEvents = events.filter(e => e.status === 'past');
       const userTotals = {};
+
       for (const ev of pastEvents) {
-        const evPicks = await sbFetch('picks?select=access_code,username,score&event=eq.' + ev.id) || [];
-        evPicks.forEach(p => {
-          if (p.score == null) return;
-          if (!userTotals[p.access_code]) userTotals[p.access_code] = { name: p.username || p.access_code, total: 0, events: 0 };
-          userTotals[p.access_code].total += p.score;
-          userTotals[p.access_code].events++;
+        const [evPicks, evResults] = await Promise.all([
+          sbFetch('picks?select=access_code,username,picks_json&event=eq.' + ev.id),
+          sbFetch('results?event=eq.' + ev.supabaseKey + '&limit=1'),
+        ]);
+
+        const riderResults = evResults?.[0]?.rider_results || {};
+        const teamResults = evResults?.[0]?.team_results || {};
+        const hasResults = Object.keys(riderResults).length > 0 || Object.keys(teamResults).length > 0;
+
+        (evPicks || []).forEach(p => {
+          if (!p.picks_json || p.picks_json.isPractice) return;
+          const score = hasResults ? calcPickScore(p.picks_json, riderResults, teamResults) : 0;
+          const key = p.access_code;
+          if (!userTotals[key]) userTotals[key] = { name: p.username || p.access_code, total: 0, events: 0 };
+          userTotals[key].total += score;
+          userTotals[key].events++;
         });
       }
+
       const sorted = Object.values(userTotals).sort((a, b) => b.total - a.total);
       setSeasonRows(sorted);
     } catch (e) {
@@ -242,7 +285,6 @@ function EventLeaderboard({ rows, event }) {
 
       {rows.map((row, i) => {
         const open = expanded[row.access_code];
-        // Show total score (team + rider pts) if we have any results
         const hasScore = row.score != null && row.score > 0;
 
         return (
@@ -280,7 +322,6 @@ function EventLeaderboard({ rows, event }) {
 
             {open && (
               <div className="px-4 pb-3 pt-0" style={{ background: '#0d0c09', borderTop: '1px solid rgba(42,40,32,0.4)' }}>
-                {/* Teams */}
                 {row.teams.length > 0 ? (
                   <div className="mb-3 mt-2">
                     <div className="font-cinzel text-xs mb-1.5" style={{ color: '#6aad8a', fontSize: 9, letterSpacing: '0.1em' }}>GCL TEAMS</div>
@@ -305,7 +346,6 @@ function EventLeaderboard({ rows, event }) {
                   <div className="mb-3 mt-2 text-xs font-cormorant italic" style={{ color: 'var(--mid)' }}>No team picks saved</div>
                 )}
 
-                {/* Remaining budget */}
                 {teamLocked && !gpLocked && (
                   <div className="mb-3 px-2 py-1.5 rounded text-xs font-cormorant"
                     style={{ background: 'rgba(61,90,76,0.1)', border: '1px solid rgba(61,90,76,0.25)', color: '#6aad8a' }}>
@@ -313,7 +353,6 @@ function EventLeaderboard({ rows, event }) {
                   </div>
                 )}
 
-                {/* GP Riders */}
                 {!gpLocked ? (
                   <div className="px-2 py-2 rounded text-xs font-cormorant italic text-center"
                     style={{ background: 'rgba(180,149,48,0.05)', border: '1px solid rgba(180,149,48,0.15)', color: 'var(--mid)' }}>
@@ -347,7 +386,6 @@ function EventLeaderboard({ rows, event }) {
                   </div>
                 ) : null}
 
-                {/* Total */}
                 <div className="flex items-center justify-between mt-3 pt-2" style={{ borderTop: '1px solid rgba(42,40,32,0.4)' }}>
                   <div className="font-cinzel text-xs" style={{ color: 'var(--mid)', fontSize: 9 }}>TOTAL SPENT: {fmt(row.totalSpent)}</div>
                   {hasScore && (
@@ -367,68 +405,29 @@ function EventLeaderboard({ rows, event }) {
 
 function SeasonLeaderboard({ rows }) {
   if (!rows.length) return <Empty msg="No season scores recorded yet" />;
-
-  // 1. Accumulate points and count events for duplicate users
-  const aggregatedRows = Object.values(
-    rows.reduce((acc, currentItem) => {
-      const nameKey = currentItem.name;
-
-      if (!acc[nameKey]) {
-        acc[nameKey] = {
-          name: nameKey,
-          events: 0,
-          total: 0,
-        };
-      }
-
-      // Add 1 to the event counter for each row found
-      acc[nameKey].events += 1;
-      
-      // Sum up the points (handles row.total or row.points)
-      const points = currentItem.total ?? currentItem.points ?? 0;
-      acc[nameKey].total += Number(points);
-
-      return acc;
-    }, {})
-  ).sort((a, b) => b.total - a.total); // 2. Keep the leaderboard sorted highest to lowest
-
   return (
     <div>
-      {/* 3. Map over the newly aggregated data instead of raw rows */}
-      {aggregatedRows.map((row, i) => (
-        <motion.div
-          key={row.name} // Changed key to user name for stable animations
-          initial={{ opacity: 0, x: -8 }}
-          animate={{ opacity: 1, x: 0 }}
+      {rows.map((row, i) => (
+        <motion.div key={row.name}
+          initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
           transition={{ delay: i * 0.03 }}
           className="flex items-center gap-3 px-4 py-3 border-b"
-          style={{ borderColor: 'rgba(42,40,32,0.4)' }}
-        >
-          <div
-            className="font-cinzel text-sm w-7 text-center"
-            style={{ color: i < 3 ? 'var(--gold)' : 'var(--gold-lt)' }}
-          >
+          style={{ borderColor: 'rgba(42,40,32,0.4)' }}>
+          <div className="font-cinzel text-sm w-7 text-center" style={{ color: i < 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>
             {i < 3 ? ['🥇', '🥈', '🥉'][i] : ordinal(i + 1)}
           </div>
-          <div
-            className="flex-1"
-          >
-            <div className="font-cormorant text-base" style={{ color: 'var(--cream)' }}>
-              {row.name}
-            </div>
-            <div className="text-xs" style={{ color: 'var(--mid)' }}>
-              {row.events} events
-            </div>
+          <div className="flex-1">
+            <div className="font-cormorant text-base" style={{ color: 'var(--cream)' }}>{row.name}</div>
+            <div className="text-xs" style={{ color: 'var(--mid)' }}>{row.events} events</div>
           </div>
           <div className="font-cormorant text-xl font-bold" style={{ color: 'var(--gold-lt)' }}>
-            {row.total} pts
+            {row.total % 1 === 0 ? row.total : row.total.toFixed(1)} pts
           </div>
         </motion.div>
       ))}
     </div>
   );
 }
-
 
 function GCLStandings({ rows }) {
   if (!rows.length) return <Empty msg="No GCL results recorded yet" />;
