@@ -28,7 +28,7 @@ export function AuthProvider({ children }) {
 
   // 1. Passwordless Magic Link Login Function
   const signInWithMagicLink = async (email) => {
-    const { data, error } = await supabase.auth.signInWithOTP({
+    const { data, error } = await supabase.auth.signInWithOtp({
       email,
       options: {
         // Redirects users straight back to your live Netlify app or localhost
