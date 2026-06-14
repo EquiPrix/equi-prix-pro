@@ -1,132 +1,112 @@
 import React, { useState } from 'react';
+import { useAuth } from '@/lib/AuthContext';
 import { motion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
-import { sbFetch } from '@/lib/equiprix-data';
 
 export default function Splash() {
+  const { signInWithMagicLink } = useAuth();
   const [email, setEmail] = useState('');
-  const [submitted, setSubmitted] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
 
-  const handleSubmit = async (e) => {
+  const handleMagicLogin = async (e) => {
     e.preventDefault();
-    if (!email || !email.includes('@')) return;
-    setSaving(true);
-    await sbFetch('interest_emails', {
-      method: 'POST',
-      body: JSON.stringify({ email, created_at: new Date().toISOString() })
-    });
-    setSaving(false);
-    setSubmitted(true);
+    setLoading(true);
+    setMessage({ type: '', text: '' });
+
+    try {
+      // Calls our new passwordless helper from AuthContext
+      await signInWithMagicLink(email);
+      setMessage({
+        type: 'success',
+        text: '✨ Access link dispatched! Open your email inbox to sign in.',
+      });
+    } catch (err) {
+      setMessage({
+        type: 'error',
+        text: err.message || 'Failed to request login link.',
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div
-      className="fixed inset-0 flex flex-col items-center justify-center px-4"
-      style={{ background: '#0a0907' }}
+    <div 
+      className="min-h-screen flex flex-col items-center justify-center px-4" 
+      style={{ background: '#0f0e0a' }}
     >
-      {/* Coming soon line */}
       <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 1 }}
-        className="flex items-center gap-3 mb-8"
-      >
-        <div style={{ width: 60, height: 1, background: 'linear-gradient(to right, transparent, var(--gold))' }} />
-        <span className="font-cinzel text-xs tracking-widest" style={{ color: 'var(--gold)', letterSpacing: '0.25em', fontSize: 10 }}>
-          ◆ COMING SOON ◆
-        </span>
-        <div style={{ width: 60, height: 1, background: 'linear-gradient(to left, transparent, var(--gold))' }} />
-      </motion.div>
-
-      {/* Logo */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
+        initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, delay: 0.2 }}
-        className="mb-3 text-center"
+        transition={{ duration: 0.5 }}
+        className="w-full max-w-md p-8 rounded border flex flex-col items-center text-center"
+        style={{ 
+          backgroundColor: '#14130e', 
+          borderColor: 'rgba(180, 149, 48, 0.2)' 
+        }}
       >
-        <img
-          src="https://media.base44.com/images/public/6a2b0536fbfbf4f70f04b020/6724260c5_FinalLogo.png"
-          alt="EquiPrix"
-          style={{ width: 320, maxWidth: '85vw', height: 'auto' }}
-        />
-      </motion.div>
+        {/* App Logo Identity */}
+        <h1 
+          className="font-cinzel text-3xl tracking-widest mb-1" 
+          style={{ color: 'var(--gold)', letterSpacing: '0.25em' }}
+        >
+          EQUIPRIX
+        </h1>
+        <p 
+          className="font-cormorant text-xs uppercase tracking-widest mb-8" 
+          style={{ color: 'var(--gold-lt)' }}
+        >
+          Elite Show Jumping Fantasy
+        </p>
 
-      {/* Tagline */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.8, delay: 0.4 }}
-        className="font-cinzel text-xs tracking-widest mb-12 text-center"
-        style={{ color: 'rgba(245,237,214,0.5)', letterSpacing: '0.22em', fontSize: 11 }}
-      >
-        ELITE SHOW JUMPING FANTASY
-      </motion.div>
-
-      {/* Email form */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, delay: 0.5 }}
-        className="w-full max-w-sm text-center"
-      >
-        <div className="font-cinzel text-xs tracking-widest mb-4" style={{ color: 'var(--mid)', letterSpacing: '0.2em', fontSize: 10 }}>
-          REGISTER YOUR INTEREST
-        </div>
-
-        {submitted ? (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="font-cormorant text-lg italic"
-            style={{ color: 'var(--gold-lt)' }}
-          >
-            Thank you — we'll be in touch ✦
-          </motion.div>
-        ) : (
-          <form onSubmit={handleSubmit} className="flex rounded overflow-hidden" style={{ border: '1px solid rgba(180,149,48,0.35)' }}>
+        {/* Passwordless Entry Form */}
+        <form onSubmit={handleMagicLogin} className="w-full flex flex-col gap-4 text-left">
+          <div className="flex flex-col gap-1.5">
+            <label 
+              className="text-2xs uppercase tracking-wider font-cinzel font-semibold" 
+              style={{ color: 'var(--gold-lt)' }}
+            >
+              Email Address
+            </label>
             <input
               type="email"
+              required
               value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="your@email.com"
-              className="flex-1 px-4 py-3 text-sm outline-none bg-transparent"
-              style={{ color: 'var(--ep-text)', fontFamily: "'Cormorant Garamond', serif" }}
-            />
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-5 py-3 font-cinzel text-xs tracking-widest transition-all"
-              style={{
-                background: 'rgba(180,149,48,0.15)',
-                color: 'var(--gold)',
-                borderLeft: '1px solid rgba(180,149,48,0.35)',
-                letterSpacing: '0.14em',
-                fontSize: 10,
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="rider@domain.com"
+              className="w-full px-4 py-3 rounded text-sm transition-all focus:outline-none bg-[#1c1a12] border"
+              style={{ 
+                borderColor: 'rgba(180, 149, 48, 0.15)', 
+                color: 'var(--cream)' 
               }}
-            >
-              {saving ? '…' : 'NOTIFY ME'}
-            </button>
-          </form>
-        )}
-      </motion.div>
+            />
+          </div>
 
-      {/* Already have access link */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 1 }}
-        className="mt-12"
-      >
-        <button
-          onClick={() => navigate('/play')}
-          className="font-cinzel text-xs tracking-widest underline transition-all"
-          style={{ color: 'rgba(180,149,48,0.4)', letterSpacing: '0.12em', fontSize: 9 }}
-        >
-          Have an access code? Enter here →
-        </button>
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-3 rounded text-xs uppercase font-cinzel font-bold tracking-widest transition-all mt-2 cursor-pointer border border-transparent"
+            style={{ 
+              backgroundColor: loading ? 'rgba(180, 149, 48, 0.1)' : 'var(--gold)', 
+              color: loading ? 'var(--mid)' : '#0f0e0a'
+            }}
+          >
+            {loading ? 'Requesting Entry...' : 'Send Magic Link'}
+          </button>
+        </form>
+
+        {/* Dynamic Status Notifications */}
+        {message.text && (
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className={`mt-6 text-sm font-cormorant font-semibold ${
+              message.type === 'success' ? 'text-emerald-400' : 'text-rose-400'
+            }`}
+          >
+            {message.text}
+          </motion.p>
+        )}
       </motion.div>
     </div>
   );

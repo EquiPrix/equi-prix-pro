@@ -12,7 +12,7 @@ export function AuthProvider({ children }) {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
-      setLoading(false);
+      loading && setLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -26,9 +26,24 @@ export function AuthProvider({ children }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  // 1. Passwordless Magic Link Login Function
+  const signInWithMagicLink = async (email) => {
+    const { data, error } = await supabase.auth.signInWithOTP({
+      email,
+      options: {
+        // Redirects users straight back to your live Netlify app or localhost
+        redirectTo: window.location.origin,
+      },
+    });
+    if (error) throw error;
+    return data;
+  };
+
   const signUp = async ({ email, password, fullName }) => {
     const { data, error } = await supabase.auth.signUp({
-      email, password, options: { data: { full_name: fullName } },
+      email,
+      password,
+      options: { data: { full_name: fullName } },
     });
     if (error) throw error;
     return data;
@@ -66,10 +81,21 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{
-      user, session, loading, signUp, signIn, signInWithGoogle,
-      signOut, resetPassword, updatePassword, isAuthenticated: !!user,
-    }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        session,
+        loading,
+        signUp,
+        signIn,
+        signInWithMagicLink, // 2. Made available to all your app screens
+        signInWithGoogle,
+        signOut,
+        resetPassword,
+        updatePassword,
+        isAuthenticated: !!user,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
