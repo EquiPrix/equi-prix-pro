@@ -11,6 +11,7 @@ import Admin from './pages/Admin';
 import Splash from './pages/Splash';
 import AuthCallback from './pages/AuthCallback';
 import ResetPassword from './pages/ResetPassword';
+import RoomPage from './pages/RoomPage';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth } = useAuth();
@@ -33,6 +34,7 @@ const AuthenticatedApp = () => {
         <Route path="/" element={<Splash />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/room/:code" element={<RoomPage />} />
         <Route path="/play" element={<EquiPrix />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="*" element={<PageNotFound />} />

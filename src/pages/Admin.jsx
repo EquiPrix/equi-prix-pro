@@ -7,7 +7,8 @@ import StartListEditor from '@/components/admin/StartListEditor';
 import ResultsEditor from '@/components/admin/ResultsEditor';
 import EventStatusEditor from '@/components/admin/EventStatusEditor';
 import TeamStandingsEditor from '@/components/admin/TeamStandingsEditor';
-import { Lock, BarChart3, Users, ListOrdered, Trophy, ShieldHalf, CalendarCog, TrendingUp } from 'lucide-react';
+import RoomsEditor from '@/components/admin/RoomsEditor';
+import { Lock, BarChart3, Users, ListOrdered, Trophy, ShieldHalf, CalendarCog, TrendingUp, DoorOpen } from 'lucide-react';
 
 const TABS = [
   { id: 'status', label: 'Status', icon: CalendarCog },
@@ -17,6 +18,7 @@ const TABS = [
   { id: 'riders', label: 'Riders', icon: Users },
   { id: 'startlist', label: 'Start List', icon: ListOrdered },
   { id: 'results', label: 'Results', icon: Trophy },
+  { id: 'rooms', label: 'Rooms', icon: DoorOpen },
 ];
 
 export default function Admin() {
@@ -64,14 +66,12 @@ export default function Admin() {
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--ink)' }}>
-      {/* Header */}
       <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid var(--ep-border)', background: '#0a0907' }}>
         <span className="font-cinzel text-sm tracking-widest" style={{ color: 'var(--gold)' }}>ADMIN PANEL</span>
         <button onClick={() => setAuthed(false)} className="text-xs font-cinzel tracking-widest" style={{ color: 'var(--mid)' }}>LOCK</button>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 px-4 py-3" style={{ borderBottom: '1px solid var(--ep-border)' }}>
+      <div className="flex gap-1 px-4 py-3 flex-wrap" style={{ borderBottom: '1px solid var(--ep-border)' }}>
         {TABS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
@@ -90,7 +90,6 @@ export default function Admin() {
         ))}
       </div>
 
-      {/* Content */}
       <div className="p-4">
         {activeTab === 'status' && <EventStatusEditor />}
         {activeTab === 'rankings' && <RankingsImport />}
@@ -99,6 +98,7 @@ export default function Admin() {
         {activeTab === 'riders' && <RidersEditor />}
         {activeTab === 'startlist' && <StartListEditor />}
         {activeTab === 'results' && <ResultsEditor />}
+        {activeTab === 'rooms' && <RoomsEditor />}
       </div>
     </div>
   );
