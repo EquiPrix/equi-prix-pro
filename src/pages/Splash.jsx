@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import EquiPrixLogo from '@/components/equiprix/EquiPrixLogo';
 
 export default function Splash() {
   const navigate = useNavigate();
@@ -18,32 +19,25 @@ export default function Splash() {
 
     try {
       if (isSignUpMode) {
-        // 1. REGISTRATION SIGN UP: Sends email confirmation link via Supabase auth
         const { error } = await supabase.auth.signUp({
           email: email,
-          password: 'TmpPassword123!', // Safe background placeholder for token mapping
+          password: 'TmpPassword123!',
           options: {
             emailRedirectTo: `${window.location.origin}/auth/callback`,
           },
         });
-        
         if (error) throw error;
-        
         setMessage({
           type: 'success',
           text: '✨ Verification dispatched! Check your email inbox to confirm your account and set up your permanent profile access.',
         });
       } else {
-        // 2. SIGN IN: Direct password validation
         const { data, error } = await supabase.auth.signInWithPassword({
           email: email,
           password: password,
         });
-        
         if (error) throw error;
-        if (data?.session) {
-          navigate('/play');
-        }
+        if (data?.session) navigate('/play');
       }
     } catch (err) {
       console.error("Authentication Error:", err);
@@ -57,8 +51,8 @@ export default function Splash() {
   };
 
   return (
-    <div 
-      className="min-h-screen flex flex-col items-center justify-center px-4" 
+    <div
+      className="min-h-screen flex flex-col items-center justify-center px-4"
       style={{ background: '#0f0e0a' }}
     >
       <motion.div
@@ -66,16 +60,19 @@ export default function Splash() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
         className="w-full max-w-md p-8 rounded border flex flex-col items-center text-center"
-        style={{ 
-          backgroundColor: '#14130e', 
-          borderColor: 'rgba(180, 149, 48, 0.2)' 
+        style={{
+          backgroundColor: '#14130e',
+          borderColor: 'rgba(180, 149, 48, 0.2)'
         }}
       >
-        <h1 className="font-cinzel text-3xl tracking-widest mb-1" style={{ color: 'var(--gold)', letterSpacing: '0.25em' }}>
-          EQUIPRIX
-        </h1>
-        <p className="font-cormorant text-xs uppercase tracking-widest mb-8" style={{ color: 'var(--gold-lt)' }}>
-          Elite Show Jumping Fantasy
+        {/* Logo */}
+        <div className="mb-3">
+          <EquiPrixLogo width={180} />
+        </div>
+
+        {/* Tagline */}
+        <p className="font-cormorant italic text-base mb-8" style={{ color: 'var(--cream)', opacity: 0.85 }}>
+          The world's first fantasy platform for elite show jumping
         </p>
 
         <form onSubmit={handleAuthAction} className="w-full flex flex-col gap-4 text-left">
@@ -90,11 +87,10 @@ export default function Splash() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="rider@domain.com"
               className="w-full px-4 py-3 rounded text-sm transition-all focus:outline-none bg-[#1c1a12] border"
-              style={{ borderColor: 'rgba(180, 149, 48, 0.15)', color: 'var(--cream)' }}
+              style={{ borderColor: 'rgba(180, 149, 48, 0.15)', color: 'var(--cream)', fontSize: '16px' }}
             />
           </div>
 
-          {/* DYNAMIC PASSWORD CONTAINER: Automatically unmounts when registering */}
           {!isSignUpMode && (
             <div className="flex flex-col gap-1.5">
               <label className="text-2xs uppercase tracking-wider font-cinzel font-semibold" style={{ color: 'var(--gold-lt)' }}>
@@ -107,7 +103,7 @@ export default function Splash() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 className="w-full px-4 py-3 rounded text-sm transition-all focus:outline-none bg-[#1c1a12] border"
-                style={{ borderColor: 'rgba(180, 149, 48, 0.15)', color: 'var(--cream)' }}
+                style={{ borderColor: 'rgba(180, 149, 48, 0.15)', color: 'var(--cream)', fontSize: '16px' }}
               />
             </div>
           )}
@@ -116,8 +112,8 @@ export default function Splash() {
             type="submit"
             disabled={loading}
             className="w-full py-3 rounded text-xs uppercase font-cinzel font-bold tracking-widest transition-all mt-2 cursor-pointer border border-transparent"
-            style={{ 
-              backgroundColor: loading ? 'rgba(180, 149, 48, 0.1)' : 'var(--gold)', 
+            style={{
+              backgroundColor: loading ? 'rgba(180, 149, 48, 0.1)' : 'var(--gold)',
               color: loading ? 'var(--mid)' : '#0f0e0a'
             }}
           >
@@ -125,7 +121,6 @@ export default function Splash() {
           </button>
         </form>
 
-        {/* TWO-LINE FORMATTED TEXT SWITCHER LINKS */}
         <div className="mt-6 text-2xs uppercase tracking-wider font-cinzel text-gray-500 flex flex-col gap-1">
           <div>{isSignUpMode ? "Already have an account?" : "New to the platform?"}</div>
           <div>
