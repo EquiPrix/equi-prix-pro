@@ -8,6 +8,8 @@ import ResultsTab from '@/components/equiprix/ResultsTab';
 import LeaderboardTab from '@/components/equiprix/LeaderboardTab';
 import { motion, AnimatePresence } from 'framer-motion';
 import EquiPrixLogo from '@/components/equiprix/EquiPrixLogo';
+import { useAuth } from '../lib/AuthContext';
+
 
 function useCountdown(targetISO) {
   const [timeLeft, setTimeLeft] = useState('');
@@ -72,18 +74,26 @@ function CountdownBadge({ event }) {
 }
 
 export default function EquiPrix() {
+  // 1. Grab your new secure user details right here 👇
+  const { user } = useAuth();
+  
   const { userCode, userName, currentEvent, selectEvent, toast, logout, isLoading, loadSavedPicks } = useEquiPrix();
   const [activeTab, setActiveTab] = useState('events');
 
-  useEffect(() => {
-    if (userCode && currentEvent && ['teams', 'riders', 'open'].includes(currentEvent.status)) {
-      loadSavedPicks(userCode, currentEvent);
-    }
-  }, [userCode, currentEvent?.id]);
+  // 2. Use your secure user email string or fallback to the old access code system
+  const activeUserIdentity = user?.email || userCode;
 
-  if (!userCode) {
+  useEffect(() => {
+    if (activeUserIdentity && currentEvent && ['teams', 'riders', 'open'].includes(currentEvent.status)) {
+      loadSavedPicks(activeUserIdentity, currentEvent);
+    }
+  }, [activeUserIdentity, currentEvent?.id]);
+
+  // 3. If there is no secure Supabase user active, send them back to the login wall! 👇
+  if (!user) {
     return <GateScreen />;
   }
+
 
   if (isLoading) {
     return (
