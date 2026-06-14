@@ -5,6 +5,7 @@ import { queryClientInstance } from '@/lib/query-client';
 import { BrowserRouter as Router, Route, Routes, useNavigate } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from './lib/AuthContext';
+import { EquiPrixProvider } from '@/lib/EquiPrixContext'; // 👈 Re-added your data context
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import EquiPrix from './pages/EquiPrix';
 import Admin from './pages/Admin';
@@ -12,8 +13,7 @@ import Splash from './pages/Splash';
 import AuthCallback from './pages/AuthCallback';
 
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, authError } = useAuth();
-  const navigate = useNavigate();
+  const { isLoadingAuth } = useAuth();
 
   // Show loading spinner while checking auth status
   if (isLoadingAuth) {
@@ -29,13 +29,16 @@ const AuthenticatedApp = () => {
   }
 
   return (
-    <Routes>
-      <Route path="/" element={<Splash />} />
-      <Route path="/auth/callback" element={<AuthCallback />} />
-      <Route path="/play" element={<EquiPrix />} />
-      <Route path="/admin" element={<Admin />} />
-      <Route path="*" element={<PageNotFound />} />
-    </Routes>
+    // Wrap your routes in your game's data provider 👇
+    <EquiPrixProvider>
+      <Routes>
+        <Route path="/" element={<Splash />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="/play" element={<EquiPrix />} />
+        <Route path="/admin" element={<Admin />} />
+        <Route path="*" element={<PageNotFound />} />
+      </Routes>
+    </EquiPrixProvider>
   );
 };
 
