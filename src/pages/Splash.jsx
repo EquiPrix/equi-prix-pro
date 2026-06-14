@@ -8,13 +8,14 @@ export default function Splash() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
-   const handleMagicLogin = async (e) => {
+  const handleMagicLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
     setMessage({ type: '', text: '' });
 
     try {
       await signInWithMagicLink(email);
+      // Explicitly set text string to avoid rendering Supabase's empty success object {}
       setMessage({
         type: 'success',
         text: '✨ Access link dispatched! Open your email inbox to sign in.',
@@ -22,12 +23,10 @@ export default function Splash() {
     } catch (err) {
       console.error("Supabase Auth Error:", err);
       
-      // Extract the error string safely from any format Supabase sends back
       let errorString = 'An unexpected authentication error occurred.';
       if (typeof err === 'string') errorString = err;
       else if (err && err.message) errorString = err.message;
-      else if (err && typeof err === 'object') errorString = JSON.stringify(err);
-
+      
       setMessage({
         type: 'error',
         text: errorString,
@@ -36,7 +35,6 @@ export default function Splash() {
       setLoading(false);
     }
   };
-
 
   return (
     <div 
@@ -53,7 +51,6 @@ export default function Splash() {
           borderColor: 'rgba(180, 149, 48, 0.2)' 
         }}
       >
-        {/* App Logo Identity */}
         <h1 
           className="font-cinzel text-3xl tracking-widest mb-1" 
           style={{ color: 'var(--gold)', letterSpacing: '0.25em' }}
@@ -67,7 +64,6 @@ export default function Splash() {
           Elite Show Jumping Fantasy
         </p>
 
-        {/* Passwordless Entry Form */}
         <form onSubmit={handleMagicLogin} className="w-full flex flex-col gap-4 text-left">
           <div className="flex flex-col gap-1.5">
             <label 
@@ -103,19 +99,17 @@ export default function Splash() {
           </button>
         </form>
 
-        {/* Dynamic Status Notifications */}
-   {message.text && (
-  <motion.p
-    initial={{ opacity: 0 }}
-    animate={{ opacity: 1 }}
-    className={`mt-6 text-sm font-cormorant font-semibold ${
-      message.type === 'success' ? 'text-emerald-400' : 'text-rose-400'
-    }`}
-  >
-    {typeof message.text === 'object' ? message.text.message || JSON.stringify(message.text) : message.text}
-  </motion.p>
-)}
-
+        {message.text && (
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className={`mt-6 text-sm font-cormorant font-semibold ${
+              message.type === 'success' ? 'text-emerald-400' : 'text-rose-400'
+            }`}
+          >
+            {message.text}
+          </motion.p>
+        )}
       </motion.div>
     </div>
   );
