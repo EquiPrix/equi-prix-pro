@@ -14,22 +14,20 @@ export default function Splash() {
     setMessage({ type: '', text: '' });
 
     try {
+      // 1. Force the engine to explicitly await the network handshake promise
       await signInWithMagicLink(email);
-      // Explicitly set text string to avoid rendering Supabase's empty success object {}
+      
+      // 2. Clear state variables out and apply raw string text
       setMessage({
         type: 'success',
         text: '✨ Access link dispatched! Open your email inbox to sign in.',
       });
     } catch (err) {
-      console.error("Supabase Auth Error:", err);
-      
-      let errorString = 'An unexpected authentication error occurred.';
-      if (typeof err === 'string') errorString = err;
-      else if (err && err.message) errorString = err.message;
+      console.error("Caught Validation Error:", err);
       
       setMessage({
         type: 'error',
-        text: errorString,
+        text: err?.message || typeof err === 'string' ? err : 'Authentication request rejected.',
       });
     } finally {
       setLoading(false);
@@ -99,7 +97,8 @@ export default function Splash() {
           </button>
         </form>
 
-        {message.text && (
+        {/* 3. Render clean text strings safely */}
+        {message.text && typeof message.text === 'string' && (
           <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
