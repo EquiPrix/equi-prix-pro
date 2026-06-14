@@ -8,22 +8,27 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      loading && setLoading(false);
+    useEffect(() => {
+    // 1. Fetch current active session on load
+    supabase.auth.getSession().then(({ data: { currentSession } }) => {
+      setSession(currentSession);
+      setUser(currentSession?.user ?? null);
+      setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-      }
-    );
+    // 2. Listen for auth updates (Fixed Destructuring Line) 👇
+    const { data } = supabase.auth.onAuthStateChange((_event, authSession) => {
+      setSession(authSession);
+      setUser(authSession?.user ?? null);
+      setLoading(false);
+    });
 
-    return () => subscription.unsubscribe();
+    // 3. Clean up subscription correctly
+    return () => {
+      if (data?.subscription) {
+        data.subscription.unsubscribe();
+      }
+    };
   }, []);
 
   // 1. Passwordless Magic Link Login Function
