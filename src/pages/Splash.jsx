@@ -8,27 +8,35 @@ export default function Splash() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
-  const handleMagicLogin = async (e) => {
+   const handleMagicLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
     setMessage({ type: '', text: '' });
 
     try {
-      // Calls our new passwordless helper from AuthContext
       await signInWithMagicLink(email);
       setMessage({
         type: 'success',
         text: '✨ Access link dispatched! Open your email inbox to sign in.',
       });
     } catch (err) {
+      console.error("Supabase Auth Error:", err);
+      
+      // Extract the error string safely from any format Supabase sends back
+      let errorString = 'An unexpected authentication error occurred.';
+      if (typeof err === 'string') errorString = err;
+      else if (err && err.message) errorString = err.message;
+      else if (err && typeof err === 'object') errorString = JSON.stringify(err);
+
       setMessage({
         type: 'error',
-        text: err.message || 'Failed to request login link.',
+        text: errorString,
       });
     } finally {
       setLoading(false);
     }
   };
+
 
   return (
     <div 
