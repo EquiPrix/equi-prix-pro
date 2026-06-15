@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 1200 1200">
+  <!-- Generator: Adobe Illustrator 30.4.0, SVG Export Plug-In . SVG Version: 2.1.4 Build 226)  -->
+  <defs>
+    <style>
+      .st0 {
+        opacity: .45;
+        stroke-width: .8px;
+      }
+
+      .st0, .st1, .st2, .st3, .st4, .st5, .st6, .st7, .st8 {
+        isolation: isolate;
+      }
+
+      .st0, .st1, .st5, .st6 {
+        fill: none;
+        stroke: #b49530;
+      }
+
+      .st1 {
+        opacity: .35;
+      }
+
+      .st2, .st3, .st9 {
+        fill: #b49530;
+      }
+
+      .st2, .st6 {
+        opacity: .7;
+      }
+
+      .st3 {
+        opacity: .8;
+      }
+
+      .st10 {
+        fill: #0f0e0a;
+      }
+
+      .st11, .st8 {
+        fill: #fff;
+      }
+
+      .st5 {
+        opacity: .18;
+        stroke-width: .5px;
+      }
+
+      .st6 {
+        stroke-linecap: round;
+        stroke-width: 2px;
+      }
+
+      .st7 {
+        fill: #c9a84c;
+        font-family: Cinzel-Regular, Cinzel;
+        font-size: 33.88px;
+        letter-spacing: .02em;
+      }
+
+      .st8 {
+        font-family: CormorantGaramond-Regular, 'Cormorant Garamond';
+        font-size: 228.33px;
+        letter-spacing: .02em;
+      }
+    </style>
+  </defs>
+  <rect class="st10" x="2.46" width="1200" height="1200"/>
+  <rect class="st1" x="28" y="28" width="1144" height="1144" rx="12" ry="12"/>
+  <rect class="st5" x="38" y="38" width="1124" height="1124" rx="10" ry="10"/>
+  <path class="st6" d="M28,88V28h60"/>
+  <circle class="st2" cx="28" cy="28" r="3"/>
+  <path class="st6" d="M1172,88V28h-60"/>
+  <circle class="st2" cx="1172" cy="28" r="3"/>
+  <path class="st6" d="M28,1112v60h60"/>
+  <circle class="st2" cx="28" cy="1172" r="3"/>
+  <path class="st6" d="M1172,1112v60h-60"/>
+  <circle class="st2" cx="1172" cy="1172" r="3"/>
+  <line class="st0" x1="1255.43" y1="618.37" x2="1585.43" y2="618.37"/>
+  <polygon class="st3" points="1331.62 479.58 1339.62 487.58 1331.62 495.58 1323.62 487.58 1331.62 479.58"/>
+  <line class="st0" x1="1323.62" y1="431.8" x2="1653.62" y2="431.8"/>
+  <line class="st0" x1="1309.52" y1="741.16" x2="1639.52" y2="741.16"/>
+  <polygon class="st3" points="1523.09 829.97 1531.09 837.97 1523.09 845.97 1515.09 837.97 1523.09 829.97"/>
+  <line class="st0" x1="1420.43" y1="1072.49" x2="1750.43" y2="1072.49"/>
+  <g>
+    <g class="st4">
+      <text class="st8" transform="translate(213.25 664.63)"><tspan x="0" y="0">Equi</tspan></text>
+    </g>
+    <g class="st4">
+      <text class="st8" transform="translate(634.1 664.63)"><tspan x="0" y="0">Prıx</tspan></text>
+    </g>
+    <polygon class="st9" points="832.29 521.93 837.66 538.03 855.11 538.03 841.02 548.1 846.38 564.21 832.29 554.14 818.2 564.21 823.57 548.1 809.47 538.03 826.92 538.03 832.29 521.93"/>
+    <polygon class="st9" points="977.94 521.93 983.3 538.03 1000.75 538.03 986.66 548.1 992.03 564.21 977.94 554.14 963.84 564.21 969.21 548.1 955.11 538.03 972.57 538.03 977.94 521.93"/>
+    <polygon class="st9" points="783.94 521.93 789.31 538.03 806.76 538.03 792.66 548.1 798.03 564.21 783.94 554.14 769.84 564.21 775.21 548.1 761.11 538.03 778.57 538.03 783.94 521.93"/>
+    <polygon class="st11" points="880.94 521.93 886.31 538.03 903.76 538.03 889.66 548.1 895.03 564.21 880.94 554.14 866.84 564.21 872.21 548.1 858.11 538.03 875.57 538.03 880.94 521.93"/>
+    <polygon class="st9" points="929.74 521.93 935.11 538.03 952.56 538.03 938.47 548.1 943.84 564.21 929.74 554.14 915.65 564.21 921.02 548.1 906.93 538.03 924.38 538.03 929.74 521.93"/>
+    <g class="st4">
+      <text class="st7" transform="translate(473.75 714.81)"><tspan x="0" y="0">ELITE SHOW JUMPING FANTASY</tspan></text>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 1543.34 641.49">
+  <!-- Generator: Adobe Illustrator 30.5.1, SVG Export Plug-In . SVG Version: 2.1.4 Build 3)  -->
+  <defs>
+    <style>
+      .st0 {
+        fill: none;
+        opacity: .45;
+        stroke: #b49530;
+        stroke-width: .8px;
+      }
+
+      .st0, .st1, .st2, .st3, .st4 {
+        isolation: isolate;
+      }
+
+      .st1 {
+        opacity: .8;
+      }
+
+      .st1, .st5 {
+        fill: #b49530;
+      }
+
+      .st6, .st7, .st4 {
+        fill: #fff;
+      }
+
+      .st7 {
+        font-family: Georgia-Italic, Georgia;
+        font-size: 29.1px;
+        font-style: italic;
+      }
+
+      .st3 {
+        fill: #c9a84c;
+        font-family: Cinzel-Regular, Cinzel;
+        font-size: 33.88px;
+        letter-spacing: .02em;
+      }
+
+      .st4 {
+        font-family: CormorantGaramond-Regular, 'Cormorant Garamond';
+        font-size: 228.33px;
+        letter-spacing: .02em;
+      }
+    </style>
+  </defs>
+  <line class="st0" x1="1048.34" y1="186.97" x2="1378.34" y2="186.97"/>
+  <polygon class="st1" points="1124.53 48.18 1132.53 56.18 1124.53 64.18 1116.53 56.18 1124.53 48.18"/>
+  <line class="st0" x1="1116.53" y1=".4" x2="1446.53" y2=".4"/>
+  <line class="st0" x1="1102.43" y1="309.76" x2="1432.43" y2="309.76"/>
+  <polygon class="st1" points="1316 398.57 1324 406.57 1316 414.57 1308 406.57 1316 398.57"/>
+  <line class="st0" x1="1213.34" y1="641.09" x2="1543.34" y2="641.09"/>
+  <g>
+    <g class="st2">
+      <g class="st2">
+        <text class="st4" transform="translate(0 233.23)"><tspan x="0" y="0">Equi</tspan></text>
+      </g>
+    </g>
+    <g class="st2">
+      <g class="st2">
+        <text class="st4" transform="translate(420.85 233.23)"><tspan x="0" y="0">Prıx</tspan></text>
+      </g>
+    </g>
+    <polygon class="st5" points="619.04 90.53 624.41 106.63 641.86 106.63 627.77 116.7 633.13 132.81 619.04 122.74 604.95 132.81 610.32 116.7 596.22 106.63 613.67 106.63 619.04 90.53"/>
+    <polygon class="st5" points="764.69 90.53 770.05 106.63 787.5 106.63 773.41 116.7 778.78 132.81 764.69 122.74 750.59 132.81 755.96 116.7 741.86 106.63 759.32 106.63 764.69 90.53"/>
+    <polygon class="st5" points="570.69 90.53 576.06 106.63 593.51 106.63 579.41 116.7 584.78 132.81 570.69 122.74 556.59 132.81 561.96 116.7 547.86 106.63 565.32 106.63 570.69 90.53"/>
+    <polygon class="st6" points="667.69 90.53 673.06 106.63 690.51 106.63 676.41 116.7 681.78 132.81 667.69 122.74 653.59 132.81 658.96 116.7 644.86 106.63 662.32 106.63 667.69 90.53"/>
+    <polygon class="st5" points="716.49 90.53 721.86 106.63 739.31 106.63 725.22 116.7 730.59 132.81 716.49 122.74 702.4 132.81 707.77 116.7 693.68 106.63 711.13 106.63 716.49 90.53"/>
+    <g class="st2">
+      <g class="st2">
+        <text class="st3" transform="translate(260.5 283.41)"><tspan x="0" y="0">ELITE SHOW JUMPING FANTASY</tspan></text>
+      </g>
+    </g>
+  </g>
+  <text class="st7" transform="translate(30.46 367.16)"><tspan x="0" y="0">The world&apos;s first fantasy platform for elite show jumping</tspan></text>
+</svg>
