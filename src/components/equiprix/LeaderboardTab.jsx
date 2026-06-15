@@ -368,17 +368,19 @@ function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode
                 </div>
                 <div>
                   <label className="font-cinzel text-xs block mb-1" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>MAX MEMBERS</label>
-                  <div className="flex items-center gap-3">
-                    {[5, 10, 20, 50].map(n => (
+                  <div className="flex gap-2">
+                    {[10, 25, 50, 100].map(n => (
                       <button key={n} onClick={() => setReqMax(n)}
                         className="flex-1 py-2 rounded font-cinzel text-xs transition-all"
                         style={{ background: reqMax === n ? 'var(--gold)' : 'rgba(255,255,255,0.04)', color: reqMax === n ? 'var(--ink)' : 'var(--mid)', border: `1px solid ${reqMax === n ? 'var(--gold)' : 'rgba(180,149,48,0.2)'}`, fontSize: 10 }}>
                         {n}
                       </button>
                     ))}
-                    <input type="number" value={reqMax} onChange={e => setReqMax(parseInt(e.target.value) || 20)}
-                      min={2} max={500} placeholder="Other"
-                      style={{ width: 60, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(180,149,48,0.2)', color: 'var(--cream)', borderRadius: 4, padding: '8px', fontSize: 13, outline: 'none', textAlign: 'center' }} />
+                    <button onClick={() => setReqMax(999)}
+                      className="flex-1 py-2 rounded font-cinzel text-xs transition-all"
+                      style={{ background: reqMax === 999 ? 'var(--gold)' : 'rgba(255,255,255,0.04)', color: reqMax === 999 ? 'var(--ink)' : 'var(--mid)', border: `1px solid ${reqMax === 999 ? 'var(--gold)' : 'rgba(180,149,48,0.2)'}`, fontSize: 10 }}>
+                      100+
+                    </button>
                   </div>
                 </div>
                 <div>

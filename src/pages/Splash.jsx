@@ -1,14 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import EquiPrixLogo from '@/components/equiprix/EquiPrixLogo';
-
-// Check if passkeys are supported on this device
-function isPasskeySupported() {
-  return window.PublicKeyCredential !== undefined &&
-    typeof window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === 'function';
-}
 
 export default function Splash() {
   const navigate = useNavigate();
@@ -19,20 +13,7 @@ export default function Splash() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
-  const [passkeySupported, setPasskeySupported] = useState(false);
-  const [passkeyRegistered, setPasskeyRegistered] = useState(false);
-
-  useEffect(() => {
-    // Check passkey support
-    if (isPasskeySupported()) {
-      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
-        .then(available => setPasskeySupported(available));
-    }
-    // Check if user has registered a passkey before
-    setPasskeyRegistered(!!localStorage.getItem('ep_passkey'));
-  }, []);
 
   const handleAuthAction = async (e) => {
     e.preventDefault();
@@ -72,47 +53,6 @@ export default function Splash() {
     }
   };
 
-  const registerPasskey = async (session) => {
-    try {
-      const { data, error } = await supabase.auth.mfa.enroll({ factorType: 'webauthn' });
-      if (!error && data) {
-        localStorage.setItem('ep_passkey', '1');
-      }
-    } catch (e) {
-      // Silently fail — passkey registration is optional
-    }
-  };
-
-  const signInWithPasskey = async () => {
-    setPasskeyLoading(true);
-    setMessage({ type: '', text: '' });
-    try {
-      // Use Supabase's signInWithPasskey
-      const { data, error } = await supabase.auth.signInWithPasskey();
-      if (error) throw error;
-      if (data?.session) {
-        localStorage.removeItem('ep_code');
-        navigate(redirectTo);
-      }
-    } catch (err) {
-      // Fall back to showing password form with helpful message
-      setMessage({
-        type: 'error',
-        text: err?.message?.includes('not found')
-          ? 'No passkey found. Please sign in with your password first.'
-          : err?.message || 'Passkey sign in failed.',
-      });
-    } finally {
-      setPasskeyLoading(false);
-    }
-  };
-
-  const inputStyle = {
-    borderColor: 'rgba(180,149,48,0.15)',
-    color: 'var(--cream)',
-    fontSize: '16px'
-  };
-
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4" style={{ background: '#0f0e0a' }}>
       <motion.div
@@ -125,43 +65,6 @@ export default function Splash() {
           The world's first fantasy platform for elite show jumping
         </p>
 
-        {/* Passkey button — only on sign in, only if supported */}
-        {!isSignUpMode && passkeySupported && (
-          <div className="w-full mb-4">
-            <button
-              onClick={signInWithPasskey}
-              disabled={passkeyLoading}
-              className="w-full py-3 rounded font-cinzel text-xs tracking-widest flex items-center justify-center gap-2 transition-all"
-              style={{
-                background: 'rgba(180,149,48,0.08)',
-                border: '1px solid rgba(180,149,48,0.3)',
-                color: 'var(--gold-lt)',
-                letterSpacing: '0.1em',
-              }}
-            >
-              {passkeyLoading ? (
-                'Verifying…'
-              ) : (
-                <>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="8" r="4"/>
-                    <path d="M6 20v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/>
-                    <path d="M16 11l1.5 1.5L20 10"/>
-                  </svg>
-                  SIGN IN WITH FACE ID / PASSKEY
-                </>
-              )}
-            </button>
-
-            {/* Divider */}
-            <div className="flex items-center gap-3 my-4">
-              <div style={{ flex: 1, height: 1, background: 'rgba(180,149,48,0.15)' }} />
-              <span className="font-cinzel text-xs" style={{ color: 'var(--mid)', fontSize: 9, letterSpacing: '0.1em' }}>OR</span>
-              <div style={{ flex: 1, height: 1, background: 'rgba(180,149,48,0.15)' }} />
-            </div>
-          </div>
-        )}
-
         {/* Email/password form */}
         <form onSubmit={handleAuthAction} className="w-full flex flex-col gap-4 text-left">
           <div className="flex flex-col gap-1.5">
@@ -171,7 +74,7 @@ export default function Splash() {
             <input type="email" required value={email} onChange={e => setEmail(e.target.value)}
               placeholder="rider@domain.com"
               className="w-full px-4 py-3 rounded text-sm transition-all focus:outline-none bg-[#1c1a12] border"
-              style={inputStyle} />
+              style={{ borderColor: 'rgba(180,149,48,0.15)', color: 'var(--cream)', fontSize: '16px' }} />
           </div>
 
           {!isSignUpMode && (
@@ -182,7 +85,7 @@ export default function Splash() {
               <input type="password" required value={password} onChange={e => setPassword(e.target.value)}
                 placeholder="••••••••"
                 className="w-full px-4 py-3 rounded text-sm transition-all focus:outline-none bg-[#1c1a12] border"
-                style={inputStyle} />
+                style={{ borderColor: 'rgba(180,149,48,0.15)', color: 'var(--cream)', fontSize: '16px' }} />
             </div>
           )}
 
