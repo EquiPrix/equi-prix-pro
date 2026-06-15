@@ -182,7 +182,15 @@ export default function RoomPage() {
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
         className="max-w-md mx-auto">
 
-        <div className="flex justify-center mb-8"><EquiPrixLogo width={160} /></div>
+        <div className="flex items-center justify-between mb-8">
+          <button onClick={() => navigate('/play')}
+            className="font-cinzel text-xs px-3 py-1.5 rounded transition-all"
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(180,149,48,0.15)', color: 'var(--mid)', letterSpacing: '0.08em' }}>
+            ← BACK
+          </button>
+          <EquiPrixLogo width={140} />
+          <div style={{ width: 60 }} />
+        </div>
 
         {/* Room card */}
         <div className="rounded-xl overflow-hidden mb-4" style={{ border: '1px solid rgba(180,149,48,0.25)', background: '#14130e' }}>
