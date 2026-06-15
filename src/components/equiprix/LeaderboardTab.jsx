@@ -250,7 +250,7 @@ export default function LeaderboardTab() {
             rooms={myRooms} activeRoom={activeRoom} setActiveRoom={setActiveRoom}
             roomRows={roomRows} loading={loading}
             joinCode={joinCode} setJoinCode={setJoinCode}
-            joinWithCode={joinWithCode} joining={joining} joinMsg={joinMsg}
+            joinWithCode={joinWithCode} joining={joining} joinMsg={joinMsg} user={user}
           />
         )}
       </div>
@@ -258,7 +258,7 @@ export default function LeaderboardTab() {
   );
 }
 
-function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode, setJoinCode, joinWithCode, joining, joinMsg }) {
+function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode, setJoinCode, joinWithCode, joining, joinMsg, user }) {
   return (
     <div>
       {/* Join with code */}
@@ -316,15 +316,26 @@ function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode
           {/* Active room header */}
           {activeRoom && (
             <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--ep-border)' }}>
-              <div className="font-cormorant text-base font-semibold" style={{ color: 'var(--cream)' }}>{activeRoom.name}</div>
-              {activeRoom.prize_description && (
-                <div className="font-cormorant italic text-xs mt-0.5" style={{ color: 'var(--gold-lt)' }}>
-                  🏆 {activeRoom.prize_description}
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="font-cormorant text-base font-semibold" style={{ color: 'var(--cream)' }}>{activeRoom.name}</div>
+                  {activeRoom.prize_description && (
+                    <div className="font-cormorant italic text-xs mt-0.5" style={{ color: 'var(--gold-lt)' }}>
+                      🏆 {activeRoom.prize_description}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 mt-1">
+                    <Hash size={10} style={{ color: 'var(--mid)' }} />
+                    <span className="font-cinzel text-xs" style={{ color: 'var(--mid)', fontSize: 9 }}>{activeRoom.join_code}</span>
+                  </div>
                 </div>
-              )}
-              <div className="flex items-center gap-2 mt-1">
-                <Hash size={10} style={{ color: 'var(--mid)' }} />
-                <span className="font-cinzel text-xs" style={{ color: 'var(--mid)', fontSize: 9 }}>{activeRoom.join_code}</span>
+                {user?.email === activeRoom.manager_email && (
+                  <a href={'/room/' + activeRoom.join_code}
+                    className="font-cinzel text-xs px-2.5 py-1.5 rounded flex-shrink-0 transition-all"
+                    style={{ background: 'rgba(180,149,48,0.12)', border: '1px solid rgba(180,149,48,0.3)', color: 'var(--gold)', fontSize: 8, letterSpacing: '0.08em' }}>
+                    MANAGE →
+                  </a>
+                )}
               </div>
             </div>
           )}

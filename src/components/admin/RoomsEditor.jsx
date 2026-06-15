@@ -65,9 +65,7 @@ export default function RoomsEditor() {
   };
 
   const copyLink = (code, type) => {
-    const url = type === 'manager'
-      ? `${window.location.origin}/room/${code}?mgr=1`
-      : `${window.location.origin}/room/${code}`;
+    const url = `${window.location.origin}/room/${code}`;
     navigator.clipboard.writeText(url);
     setCopied(code + type);
     setTimeout(() => setCopied(''), 2000);
@@ -235,18 +233,11 @@ export default function RoomsEditor() {
                     <span className="font-cinzel text-sm font-bold" style={{ color: 'var(--gold)' }}>{room.join_code}</span>
                   </div>
 
-                  <button onClick={() => copyLink(room.join_code, 'mgr')}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded font-cinzel text-xs transition-all"
-                    style={{ background: 'rgba(180,149,48,0.08)', border: '1px solid rgba(180,149,48,0.2)', color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>
-                    {copied === room.join_code + 'mgr' ? <Check size={11} /> : <Copy size={11} />}
-                    MANAGER LINK
-                  </button>
-
                   <button onClick={() => copyLink(room.join_code, 'join')}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded font-cinzel text-xs transition-all"
                     style={{ background: 'rgba(180,149,48,0.08)', border: '1px solid rgba(180,149,48,0.2)', color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>
                     {copied === room.join_code + 'join' ? <Check size={11} /> : <Copy size={11} />}
-                    MEMBER LINK
+                    COPY INVITE LINK
                   </button>
                 </div>
               </div>
