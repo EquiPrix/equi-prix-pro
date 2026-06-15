@@ -145,36 +145,38 @@ export default function RoomPage() {
   };
 
   const sendInvite = async () => {
-    if (!inviteEmail.trim() || !inviteEmail.includes('@')) return;
+    const emails = inviteEmail.split(/[,\n;]/).map(e => e.trim()).filter(e => e.includes('@'));
+    if (!emails.length) return;
     setInviting(true);
     setInviteResult(null);
     const event = EVENTS_2026.find(e => e.id === room.event_id);
-    try {
-      const res = await fetch('/api/send-room-invite', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: inviteEmail.trim(),
-          roomName: room.name,
-          prize: room.prize_description || null,
-          eventName: event?.city || null,
-          eventFlag: event?.flag || null,
-          joinUrl: `${window.location.origin}/room/${room.join_code}`,
-          managerName: user?.user_metadata?.username || user?.email?.split('@')[0] || null,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setInviteResult({ success: true, msg: `✓ Invite sent to ${inviteEmail.trim()}` });
-        setInviteEmail('');
-      } else {
-        setInviteResult({ success: false, msg: data.error || 'Failed to send invite' });
-      }
-    } catch (e) {
-      setInviteResult({ success: false, msg: e.message });
-    } finally {
-      setInviting(false);
+    const results = { sent: 0, failed: 0 };
+    for (const email of emails) {
+      try {
+        const res = await fetch('/api/send-room-invite', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email,
+            roomName: room.name,
+            prize: room.prize_description || null,
+            eventName: event?.city || null,
+            eventFlag: event?.flag || null,
+            joinUrl: `${window.location.origin}/room/${room.join_code}`,
+            managerName: user?.user_metadata?.username || user?.email?.split('@')[0] || null,
+          }),
+        });
+        const data = await res.json();
+        if (data.success) results.sent++; else results.failed++;
+      } catch (e) { results.failed++; }
     }
+    if (results.sent > 0) {
+      setInviteResult({ success: true, msg: `✓ ${results.sent} invite${results.sent > 1 ? 's' : ''} sent${results.failed > 0 ? `, ${results.failed} failed` : ''}` });
+      setInviteEmail('');
+    } else {
+      setInviteResult({ success: false, msg: 'Failed to send invites' });
+    }
+    setInviting(false);
   };
 
   const copyLink = (type) => {
@@ -424,38 +426,41 @@ export default function RoomPage() {
               </div>
             </div>
             <div className="px-5 py-4">
-              <div className="flex gap-2">
-                <input
-                  type="email"
-                  value={inviteEmail}
-                  onChange={e => setInviteEmail(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && sendInvite()}
-                  placeholder="member@example.com"
-                  style={{
-                    flex: 1,
-                    background: 'rgba(255,255,255,0.04)',
-                    border: '1px solid rgba(180,149,48,0.2)',
-                    color: 'var(--cream)',
-                    borderRadius: 4,
-                    padding: '8px 12px',
-                    fontSize: '16px',
-                    outline: 'none',
-                  }}
-                />
-                <button
-                  onClick={sendInvite}
-                  disabled={inviting || !inviteEmail.trim()}
-                  className="px-4 py-2 rounded font-cinzel text-xs tracking-widest flex items-center gap-1.5 transition-all flex-shrink-0"
-                  style={{
-                    background: inviting ? 'rgba(180,149,48,0.1)' : 'var(--gold)',
-                    color: inviting ? 'var(--mid)' : 'var(--ink)',
-                    letterSpacing: '0.08em',
-                    opacity: !inviteEmail.trim() ? 0.4 : 1,
-                  }}>
-                  <Send size={12} />
-                  {inviting ? '…' : 'SEND'}
-                </button>
-              </div>
+              <p className="font-cormorant italic text-xs mb-2" style={{ color: 'var(--mid)' }}>
+                Enter one or more emails — separate with comma or new line
+              </p>
+              <textarea
+                value={inviteEmail}
+                onChange={e => setInviteEmail(e.target.value)}
+                placeholder={"member@example.com\nanother@example.com"}
+                rows={3}
+                style={{
+                  width: '100%',
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(180,149,48,0.2)',
+                  color: 'var(--cream)',
+                  borderRadius: 4,
+                  padding: '8px 12px',
+                  fontSize: '14px',
+                  outline: 'none',
+                  resize: 'vertical',
+                  lineHeight: 1.6,
+                  marginBottom: 8,
+                }}
+              />
+              <button
+                onClick={sendInvite}
+                disabled={inviting || !inviteEmail.trim()}
+                className="w-full py-2.5 rounded font-cinzel text-xs tracking-widest flex items-center justify-center gap-1.5 transition-all"
+                style={{
+                  background: inviting ? 'rgba(180,149,48,0.1)' : 'var(--gold)',
+                  color: inviting ? 'var(--mid)' : 'var(--ink)',
+                  letterSpacing: '0.08em',
+                  opacity: !inviteEmail.trim() ? 0.4 : 1,
+                }}>
+                <Send size={12} />
+                {inviting ? 'SENDING…' : `SEND INVITE${inviteEmail.split(/[,\n]/).filter(e => e.trim().includes('@')).length > 1 ? 'S' : ''}`}
+              </button>
               {inviteResult && (
                 <p className="font-cormorant italic text-sm mt-2"
                   style={{ color: inviteResult.success ? '#4caf7d' : '#e07070' }}>
@@ -466,7 +471,7 @@ export default function RoomPage() {
           </div>
         )}
 
-        {/* Manager notification panel */}}
+        {/* Manager notification panel */}
         {isManager && (
           <div className="rounded-xl overflow-hidden mb-6" style={{ border: '1px solid rgba(180,149,48,0.2)', background: '#14130e' }}>
             <div className="px-5 py-3" style={{ borderBottom: '1px solid rgba(180,149,48,0.1)', background: 'rgba(180,149,48,0.04)' }}>
