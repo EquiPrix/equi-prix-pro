@@ -7,13 +7,14 @@ import DraftTab from '@/components/equiprix/DraftTab';
 import ResultsTab from '@/components/equiprix/ResultsTab';
 import LeaderboardTab from '@/components/equiprix/LeaderboardTab';
 import AccountModal from '@/components/equiprix/AccountModal';
+import PWAInstallModal, { usePWAInstallModal } from '@/components/equiprix/PWAInstallModal';
+import PWABanner from '@/components/equiprix/PWABanner';
 import { motion, AnimatePresence } from 'framer-motion';
 import EquiPrixLogo from '@/components/equiprix/EquiPrixLogo';
 import { useAuth } from '../lib/AuthContext';
 
 function useCountdown(targetISO) {
   const [timeLeft, setTimeLeft] = useState('');
-
   useEffect(() => {
     if (!targetISO) return;
     const tick = () => {
@@ -30,7 +31,6 @@ function useCountdown(targetISO) {
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
   }, [targetISO]);
-
   return timeLeft;
 }
 
@@ -59,10 +59,9 @@ export default function EquiPrix() {
   const { userCode, currentEvent, toast, logout, isLoading, loadSavedPicks } = useEquiPrix();
   const [activeTab, setActiveTab] = useState('events');
   const [showAccount, setShowAccount] = useState(false);
+  const { showModal: showPWAModal, dismiss: dismissPWAModal } = usePWAInstallModal();
 
   const activeUserIdentity = user?.email || userCode;
-
-  // Only use Supabase metadata for display name — never fall back to old access code names
   const displayName = user?.user_metadata?.username || user?.email?.split('@')[0] || '';
 
   useEffect(() => {
@@ -91,6 +90,7 @@ export default function EquiPrix() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden" style={{ background: 'var(--ink)', color: 'var(--ep-text)' }}>
+      {/* Header */}
       <header
         className="flex items-center justify-between px-4 flex-shrink-0"
         style={{
@@ -108,42 +108,27 @@ export default function EquiPrix() {
             </div>
           )}
         </div>
-
         <div className="flex items-center gap-2">
           {currentEvent && <CountdownBadge event={currentEvent} />}
-
           {displayName && (
-            <button
-              onClick={() => setShowAccount(true)}
+            <button onClick={() => setShowAccount(true)}
               className="font-cinzel text-xs px-2 py-1 rounded transition-all"
-              style={{
-                color: 'var(--gold-lt)',
-                letterSpacing: '0.08em',
-                opacity: 0.9,
-                background: 'rgba(180,149,48,0.06)',
-                border: '1px solid rgba(180,149,48,0.15)',
-              }}
-            >
+              style={{ color: 'var(--gold-lt)', letterSpacing: '0.08em', opacity: 0.9, background: 'rgba(180,149,48,0.06)', border: '1px solid rgba(180,149,48,0.15)' }}>
               {displayName}
             </button>
           )}
-
-          <button
-            onClick={logout}
+          <button onClick={logout}
             className="font-cinzel text-xs px-2 py-1 rounded transition-all"
-            style={{
-              border: '1px solid var(--ep-border)',
-              color: 'var(--mid)',
-              background: 'none',
-              letterSpacing: '0.08em',
-              fontSize: 9,
-            }}
-          >
+            style={{ border: '1px solid var(--ep-border)', color: 'var(--mid)', background: 'none', letterSpacing: '0.08em', fontSize: 9 }}>
             EXIT
           </button>
         </div>
       </header>
 
+      {/* PWA Banner — shows at top of app for new events if not installed */}
+      <PWABanner eventId={currentEvent?.id} />
+
+      {/* Main content */}
       <main className="flex-1 overflow-hidden flex flex-col">
         {activeTab === 'events' && <EventsTab onSelectEvent={handleSelectEvent} />}
         {activeTab === 'draft' && <DraftTab />}
@@ -153,22 +138,19 @@ export default function EquiPrix() {
 
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
 
+      {/* Account modal */}
       {showAccount && <AccountModal onClose={() => setShowAccount(false)} />}
 
+      {/* PWA Install modal — first login only */}
+      {showPWAModal && <PWAInstallModal onClose={dismissPWAModal} />}
+
+      {/* Toast */}
       <AnimatePresence>
         {toast && (
           <motion.div
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 40 }}
+            initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 40 }}
             className="fixed bottom-24 left-1/2 -translate-x-1/2 px-4 py-2 rounded z-50 text-sm pointer-events-none"
-            style={{
-              background: 'var(--ep-card)',
-              border: '1px solid var(--gold)',
-              color: 'var(--gold-lt)',
-              whiteSpace: 'nowrap',
-            }}
-          >
+            style={{ background: 'var(--ep-card)', border: '1px solid var(--gold)', color: 'var(--gold-lt)', whiteSpace: 'nowrap' }}>
             {toast}
           </motion.div>
         )}
