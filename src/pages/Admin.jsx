@@ -8,7 +8,8 @@ import ResultsEditor from '@/components/admin/ResultsEditor';
 import EventStatusEditor from '@/components/admin/EventStatusEditor';
 import TeamStandingsEditor from '@/components/admin/TeamStandingsEditor';
 import RoomsEditor from '@/components/admin/RoomsEditor';
-import { Lock, BarChart3, Users, ListOrdered, Trophy, ShieldHalf, CalendarCog, TrendingUp, DoorOpen } from 'lucide-react';
+import NotificationsEditor from '@/components/admin/NotificationsEditor';
+import { Lock, BarChart3, Users, ListOrdered, Trophy, ShieldHalf, CalendarCog, TrendingUp, DoorOpen, Bell } from 'lucide-react';
 
 const TABS = [
   { id: 'status', label: 'Status', icon: CalendarCog },
@@ -19,6 +20,7 @@ const TABS = [
   { id: 'startlist', label: 'Start List', icon: ListOrdered },
   { id: 'results', label: 'Results', icon: Trophy },
   { id: 'rooms', label: 'Rooms', icon: DoorOpen },
+  { id: 'notifications', label: 'Notify', icon: Bell },
 ];
 
 export default function Admin() {
@@ -45,17 +47,13 @@ export default function Admin() {
             <span className="font-cinzel text-sm tracking-widest" style={{ color: 'var(--gold)' }}>ADMIN ACCESS</span>
           </div>
           <form onSubmit={handleLogin}>
-            <input
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="Password"
-              autoFocus
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+              placeholder="Password" autoFocus
               className="w-full rounded px-3 py-2 mb-3 text-sm outline-none"
-              style={{ background: 'rgba(180,149,48,0.06)', border: '1px solid rgba(180,149,48,0.25)', color: 'var(--cream)' }}
-            />
+              style={{ background: 'rgba(180,149,48,0.06)', border: '1px solid rgba(180,149,48,0.25)', color: 'var(--cream)' }} />
             {error && <p className="text-xs mb-3 font-cormorant italic" style={{ color: 'var(--crimson)' }}>{error}</p>}
-            <button type="submit" className="w-full py-2.5 rounded font-cinzel text-xs tracking-widest" style={{ background: 'var(--gold)', color: 'var(--ink)' }}>
+            <button type="submit" className="w-full py-2.5 rounded font-cinzel text-xs tracking-widest"
+              style={{ background: 'var(--gold)', color: 'var(--ink)' }}>
               Enter
             </button>
           </form>
@@ -66,24 +64,22 @@ export default function Admin() {
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--ink)' }}>
-      <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid var(--ep-border)', background: '#0a0907' }}>
+      <div className="px-4 py-3 flex items-center justify-between"
+        style={{ borderBottom: '1px solid var(--ep-border)', background: '#0a0907' }}>
         <span className="font-cinzel text-sm tracking-widest" style={{ color: 'var(--gold)' }}>ADMIN PANEL</span>
         <button onClick={() => setAuthed(false)} className="text-xs font-cinzel tracking-widest" style={{ color: 'var(--mid)' }}>LOCK</button>
       </div>
 
       <div className="flex gap-1 px-4 py-3 flex-wrap" style={{ borderBottom: '1px solid var(--ep-border)' }}>
         {TABS.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => setActiveTab(id)}
+          <button key={id} onClick={() => setActiveTab(id)}
             className="flex items-center gap-2 px-3 py-2 rounded font-cinzel text-xs transition-all"
             style={{
               background: activeTab === id ? 'rgba(180,149,48,0.12)' : 'none',
               border: `1px solid ${activeTab === id ? 'rgba(180,149,48,0.4)' : 'transparent'}`,
               color: activeTab === id ? 'var(--gold)' : 'var(--mid)',
               letterSpacing: '0.08em',
-            }}
-          >
+            }}>
             <Icon size={13} />
             {label.toUpperCase()}
           </button>
@@ -99,6 +95,7 @@ export default function Admin() {
         {activeTab === 'startlist' && <StartListEditor />}
         {activeTab === 'results' && <ResultsEditor />}
         {activeTab === 'rooms' && <RoomsEditor />}
+        {activeTab === 'notifications' && <NotificationsEditor />}
       </div>
     </div>
   );
