@@ -36,11 +36,15 @@ export default function RoomPage() {
   const [sending, setSending] = useState(false);
   const [notifResult, setNotifResult] = useState(null);
   const [copied, setCopied] = useState('');
-  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteSearch, setInviteSearch] = useState('');
+  const [inviteList, setInviteList] = useState([]); // confirmed recipients
+  const [searchResults, setSearchResults] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
   const [inviting, setInviting] = useState(false);
   const [inviteResult, setInviteResult] = useState(null);
 
   useEffect(() => { loadRoom(); }, [code]);
+  useEffect(() => { if (isManager) loadUsers(); }, [isManager]);
 
   useEffect(() => {
     if (room && user) {
@@ -144,8 +148,42 @@ export default function RoomPage() {
     finally { setSending(false); }
   };
 
+  const loadUsers = async () => {
+    try {
+      const { data } = await supabase.from('user_profiles').select('email, username').order('username');
+      setAllUsers(data || []);
+    } catch (e) { console.error(e); }
+  };
+
+  const handleInviteSearch = (val) => {
+    setInviteSearch(val);
+    if (!val.trim()) { setSearchResults([]); return; }
+    const q = val.toLowerCase();
+    const results = allUsers.filter(u =>
+      (u.username?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q)) &&
+      !inviteList.includes(u.email) &&
+      !members.find(m => m.user_email === u.email)
+    ).slice(0, 5);
+    // Also show raw email if it looks valid
+    if (val.includes('@') && !results.find(r => r.email === val)) {
+      results.push({ email: val, username: val, isManual: true });
+    }
+    setSearchResults(results);
+  };
+
+  const addToInviteList = (email) => {
+    if (!inviteList.includes(email)) setInviteList(prev => [...prev, email]);
+    setInviteSearch('');
+    setSearchResults([]);
+  };
+
+  const removeFromInviteList = (email) => {
+    setInviteList(prev => prev.filter(e => e !== email));
+  };
+
   const sendInvite = async () => {
-    const emails = inviteEmail.split(/[,\n;]/).map(e => e.trim()).filter(e => e.includes('@'));
+    const emails = inviteList.length ? inviteList : 
+      inviteSearch.includes('@') ? [inviteSearch.trim()] : [];
     if (!emails.length) return;
     setInviting(true);
     setInviteResult(null);
@@ -172,7 +210,8 @@ export default function RoomPage() {
     }
     if (results.sent > 0) {
       setInviteResult({ success: true, msg: `✓ ${results.sent} invite${results.sent > 1 ? 's' : ''} sent${results.failed > 0 ? `, ${results.failed} failed` : ''}` });
-      setInviteEmail('');
+      setInviteList([]);
+      setInviteSearch('');
     } else {
       setInviteResult({ success: false, msg: 'Failed to send invites' });
     }
@@ -426,41 +465,87 @@ export default function RoomPage() {
               </div>
             </div>
             <div className="px-5 py-4">
-              <p className="font-cormorant italic text-xs mb-2" style={{ color: 'var(--mid)' }}>
-                Enter one or more emails — separate with comma or new line
-              </p>
-              <textarea
-                value={inviteEmail}
-                onChange={e => setInviteEmail(e.target.value)}
-                placeholder={"member@example.com\nanother@example.com"}
-                rows={3}
-                style={{
-                  width: '100%',
-                  background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid rgba(180,149,48,0.2)',
-                  color: 'var(--cream)',
-                  borderRadius: 4,
-                  padding: '8px 12px',
-                  fontSize: '14px',
-                  outline: 'none',
-                  resize: 'vertical',
-                  lineHeight: 1.6,
-                  marginBottom: 8,
-                }}
-              />
+              {/* Search field */}
+              <div className="relative mb-3">
+                <input
+                  type="text"
+                  value={inviteSearch}
+                  onChange={e => handleInviteSearch(e.target.value)}
+                  placeholder="Search by name or email…"
+                  style={{
+                    width: '100%',
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(180,149,48,0.2)',
+                    color: 'var(--cream)',
+                    borderRadius: 4,
+                    padding: '8px 12px',
+                    fontSize: '16px',
+                    outline: 'none',
+                  }}
+                />
+                {/* Dropdown */}
+                {searchResults.length > 0 && (
+                  <div className="absolute left-0 right-0 top-full mt-1 rounded-lg overflow-hidden z-20"
+                    style={{ background: '#1c1a12', border: '1px solid rgba(180,149,48,0.25)', boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
+                    {searchResults.map((u, i) => (
+                      <button key={u.email} onClick={() => addToInviteList(u.email)}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition-all"
+                        style={{ borderBottom: i < searchResults.length - 1 ? '1px solid rgba(42,40,32,0.4)' : 'none', background: 'transparent' }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(180,149,48,0.08)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                        <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+                          style={{ background: 'rgba(180,149,48,0.12)', color: 'var(--gold)', fontSize: 11, fontFamily: 'var(--font-cinzel)' }}>
+                          {(u.username || u.email)[0].toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-cormorant text-sm" style={{ color: 'var(--cream)' }}>
+                            {u.isManual ? 'Add ' : ''}{u.username || u.email.split('@')[0]}
+                          </div>
+                          {!u.isManual && <div className="font-cormorant text-xs italic truncate" style={{ color: 'var(--mid)' }}>{u.email}</div>}
+                          {u.isManual && <div className="font-cormorant text-xs italic" style={{ color: 'var(--gold-lt)' }}>Send invite to this email</div>}
+                        </div>
+                        <span className="font-cinzel text-xs" style={{ color: 'var(--gold)', fontSize: 8 }}>+ ADD</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Selected invite list */}
+              {inviteList.length > 0 && (
+                <div className="mb-3 rounded-lg overflow-hidden" style={{ border: '1px solid rgba(180,149,48,0.15)' }}>
+                  {inviteList.map((email, i) => {
+                    const u = allUsers.find(x => x.email === email);
+                    return (
+                      <div key={email} className="flex items-center gap-2 px-3 py-2"
+                        style={{ borderBottom: i < inviteList.length - 1 ? '1px solid rgba(42,40,32,0.3)' : 'none', background: 'rgba(180,149,48,0.04)' }}>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-cormorant text-sm" style={{ color: 'var(--cream)' }}>{u?.username || email.split('@')[0]}</div>
+                          <div className="font-cormorant text-xs italic truncate" style={{ color: 'var(--mid)' }}>{email}</div>
+                        </div>
+                        <button onClick={() => removeFromInviteList(email)} style={{ color: 'var(--mid)', flexShrink: 0 }}>
+                          <X size={13} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               <button
                 onClick={sendInvite}
-                disabled={inviting || !inviteEmail.trim()}
+                disabled={inviting || (!inviteList.length && !inviteSearch.includes('@'))}
                 className="w-full py-2.5 rounded font-cinzel text-xs tracking-widest flex items-center justify-center gap-1.5 transition-all"
                 style={{
                   background: inviting ? 'rgba(180,149,48,0.1)' : 'var(--gold)',
                   color: inviting ? 'var(--mid)' : 'var(--ink)',
                   letterSpacing: '0.08em',
-                  opacity: !inviteEmail.trim() ? 0.4 : 1,
+                  opacity: (!inviteList.length && !inviteSearch.includes('@')) ? 0.4 : 1,
                 }}>
                 <Send size={12} />
-                {inviting ? 'SENDING…' : `SEND INVITE${inviteEmail.split(/[,\n]/).filter(e => e.trim().includes('@')).length > 1 ? 'S' : ''}`}
+                {inviting ? 'SENDING…' : inviteList.length > 1 ? `SEND ${inviteList.length} INVITES` : 'SEND INVITE'}
               </button>
+
               {inviteResult && (
                 <p className="font-cormorant italic text-sm mt-2"
                   style={{ color: inviteResult.success ? '#4caf7d' : '#e07070' }}>
