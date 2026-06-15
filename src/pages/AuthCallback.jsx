@@ -1,28 +1,52 @@
 import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 
 export default function AuthCallback() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
-    useEffect(() => {
-    supabase.auth.onAuthStateChange((event, session) => {
-      // Detects when the user clicks the confirmation link token safely
-      if (event === 'SIGNED_IN' || session) {
-        // Forward them directly to your password setup page! 👇
-        navigate('/reset-password'); 
-      } else {
-        navigate('/');
+  useEffect(() => {
+    const handleCallback = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) throw error;
+
+        if (session?.user) {
+          // Save user profile on first login
+          await registerUserProfile(session.user);
+        }
+
+        const redirectTo = searchParams.get('redirect') || '/play';
+        navigate(redirectTo, { replace: true });
+      } catch (e) {
+        console.error('Auth callback error:', e);
+        navigate('/', { replace: true });
       }
-    });
-  }, [navigate]);
+    };
 
+    handleCallback();
+  }, []);
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0f0e0a]">
-      <div className="font-cinzel text-xl tracking-widest text-[#b49530] animate-pulse">
-        AUTHENTICATING ENTRY...
-      </div>
-    </div>
-  );
+  return null;
+}
+
+async function registerUserProfile(user) {
+  try {
+    const email = user.email;
+    const username = user.user_metadata?.username ||
+      user.user_metadata?.full_name ||
+      email.split('@')[0];
+
+    // Upsert — safe to call on every login, only inserts once
+    await supabase.from('user_profiles').upsert({
+      email,
+      username,
+      email_notifications: true,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'email', ignoreDuplicates: false });
+  } catch (e) {
+    // Non-fatal — don't block login
+    console.warn('Could not register user profile:', e);
+  }
 }

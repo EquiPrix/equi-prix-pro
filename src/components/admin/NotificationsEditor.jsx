@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { EVENTS_2026, sbFetch } from '@/lib/equiprix-data';
+import { supabase } from '@/lib/supabaseClient';
 import { Send, Users, CheckCircle, AlertCircle } from 'lucide-react';
 
 const NOTIFICATION_TYPES = [
@@ -16,6 +17,7 @@ export default function NotificationsEditor() {
   const [customMessage, setCustomMessage] = useState('');
   const [sponsorName, setSponsorName] = useState('');
   const [recipients, setRecipients] = useState([]);
+  const [unsubscribed, setUnsubscribed] = useState([]);
   const [manualEmails, setManualEmails] = useState('');
   const [loadingRecipients, setLoadingRecipients] = useState(false);
   const [sending, setSending] = useState(false);
@@ -29,7 +31,23 @@ export default function NotificationsEditor() {
     try {
       const emails = new Set();
 
-      // 1. From user_mapping (users who signed up via email)
+      // 1. From user_profiles table (most reliable — set on signup)
+      const { data: profiles } = await supabase
+        .from('user_profiles')
+        .select('email, email_notifications');
+
+      if (profiles?.length) {
+        const unsub = [];
+        profiles.forEach(p => {
+          if (p.email) {
+            emails.add(p.email);
+            if (!p.email_notifications) unsub.push(p.email);
+          }
+        });
+        setUnsubscribed(unsub);
+      }
+
+      // 2. From user_mapping (legacy beta users)
       const mapping = await sbFetch('results?event=eq.user_mapping&limit=1');
       if (mapping?.[0]?.rider_results) {
         Object.keys(mapping[0].rider_results).forEach(email => {
@@ -37,13 +55,9 @@ export default function NotificationsEditor() {
         });
       }
 
-      // 2. From room_members (anyone who joined a room)
+      // 3. From room_members
       const members = await sbFetch('room_members?select=user_email') || [];
       members.forEach(m => { if (m.user_email?.includes('@')) emails.add(m.user_email); });
-
-      // 3. From picks table (legacy access codes that are emails)
-      const picks = await sbFetch('picks?select=access_code') || [];
-      picks.forEach(p => { if (p.access_code?.includes('@')) emails.add(p.access_code); });
 
       setRecipients([...emails]);
     } catch (e) {
@@ -55,11 +69,14 @@ export default function NotificationsEditor() {
 
   const allRecipients = () => {
     const extra = manualEmails.split(/[\n,;]/).map(e => e.trim()).filter(e => e.includes('@'));
-    return [...new Set([...recipients, ...extra])];
+    const all = [...new Set([...recipients, ...extra])];
+    // Filter out unsubscribed
+    return all.filter(e => !unsubscribed.includes(e));
   };
 
   const selectedEvent = EVENTS_2026.find(e => e.id === selectedEventId);
   const notificationType = NOTIFICATION_TYPES.find(t => t.id === selectedType);
+  const total = allRecipients().length;
 
   const send = async () => {
     const to = allRecipients();
@@ -73,7 +90,7 @@ export default function NotificationsEditor() {
         body: JSON.stringify({
           type: selectedType,
           recipients: to,
-          eventName: selectedEvent ? `${selectedEvent.city}` : '',
+          eventName: selectedEvent?.city || '',
           eventFlag: selectedEvent?.flag || '🏇',
           eventDates: selectedEvent?.dates || '',
           lockTime: lockTime || null,
@@ -109,8 +126,6 @@ export default function NotificationsEditor() {
     marginBottom: 4,
   };
 
-  const total = allRecipients().length;
-
   return (
     <div>
       <h2 className="font-cinzel text-sm tracking-widest mb-1" style={{ color: 'var(--gold)' }}>NOTIFICATIONS</h2>
@@ -118,36 +133,29 @@ export default function NotificationsEditor() {
         Send event emails to registered users.
       </p>
 
-      {/* Recipients */}
+      {/* Recipients summary */}
       <div className="flex items-center gap-2 mb-4 px-3 py-2.5 rounded-lg"
         style={{ background: 'rgba(180,149,48,0.06)', border: '1px solid rgba(180,149,48,0.15)' }}>
         <Users size={14} style={{ color: 'var(--gold)' }} />
-        <span className="font-cormorant text-sm" style={{ color: 'var(--cream)' }}>
-          {loadingRecipients ? 'Loading…' : `${recipients.length} registered users found`}
-        </span>
-        <button onClick={loadRecipients} className="ml-auto font-cinzel text-xs" style={{ color: 'var(--mid)', fontSize: 9, letterSpacing: '0.08em' }}>
+        <div className="flex-1">
+          <span className="font-cormorant text-sm" style={{ color: 'var(--cream)' }}>
+            {loadingRecipients ? 'Loading…' : `${recipients.length} users · ${unsubscribed.length} unsubscribed · ${total} will receive`}
+          </span>
+        </div>
+        <button onClick={loadRecipients} className="font-cinzel text-xs" style={{ color: 'var(--mid)', fontSize: 9, letterSpacing: '0.08em' }}>
           REFRESH
         </button>
       </div>
 
-      {/* Manual email override */}
+      {/* Manual emails */}
       <div className="mb-5">
-        <label style={labelStyle}>ADDITIONAL EMAILS (optional — comma or line separated)</label>
-        <textarea
-          value={manualEmails}
-          onChange={e => setManualEmails(e.target.value)}
+        <label style={labelStyle}>ADDITIONAL EMAILS (comma or line separated)</label>
+        <textarea value={manualEmails} onChange={e => setManualEmails(e.target.value)}
           placeholder="user@example.com, another@example.com"
-          rows={2}
-          style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }}
-        />
-        {total > 0 && (
-          <p className="font-cormorant italic text-xs mt-1" style={{ color: 'var(--gold-lt)' }}>
-            Total recipients: {total}
-          </p>
-        )}
+          rows={2} style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }} />
       </div>
 
-      {/* Notification type */}
+      {/* Type */}
       <div className="mb-5">
         <label style={labelStyle}>NOTIFICATION TYPE</label>
         <div className="grid grid-cols-2 gap-2">
@@ -229,7 +237,7 @@ export default function NotificationsEditor() {
                 </p>
                 <p style={{ fontSize: 12, color: '#b49530', lineHeight: 1.6, margin: '0 0 16px' }}>
                   {selectedType === 'draft_open' ? `Your picks for ${selectedEvent.city} are now open.${lockTime ? ` Picks lock: ${lockTime}.` : ''}` :
-                   selectedType === 'team_results' ? `Team results for ${selectedEvent.city} are posted. Lock in your GP rider picks${lockTime ? ` before ${lockTime}` : ''}.` :
+                   selectedType === 'team_results' ? `Team results for ${selectedEvent.city} are posted.${lockTime ? ` GP picks lock: ${lockTime}.` : ''}` :
                    selectedType === 'final_results' ? `${selectedEvent.city} is complete. Check the final leaderboard.` :
                    `${selectedEvent.city} ${selectedEvent.dates} is coming to EquiPrix.`}
                   {customMessage && ` ${customMessage}`}
