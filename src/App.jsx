@@ -11,6 +11,7 @@ import Admin from './pages/Admin';
 import Splash from './pages/Splash';
 import AuthCallback from './pages/AuthCallback';
 import ResetPassword from './pages/ResetPassword';
+import Terms from './pages/Terms';
 import RoomPage from './pages/RoomPage';
 
 const AuthenticatedApp = () => {
