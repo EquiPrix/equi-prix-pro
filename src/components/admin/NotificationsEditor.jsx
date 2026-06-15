@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { EVENTS_2026, sbFetch } from '@/lib/equiprix-data';
 import { supabase } from '@/lib/supabaseClient';
-import { Send, Users, CheckCircle, AlertCircle } from 'lucide-react';
+import { Send, Users, CheckCircle, AlertCircle, ChevronDown, ChevronUp, X } from 'lucide-react';
 
 const NOTIFICATION_TYPES = [
   { id: 'draft_open', label: 'Draft Open', description: 'Announce picks are open + lock time', icon: '🟢' },
   { id: 'team_results', label: 'Team Results + GP Draft', description: 'Team results posted + GP draft open + lock time', icon: '🏆' },
   { id: 'final_results', label: 'Final Results', description: 'Event complete + final leaderboard', icon: '🎯' },
   { id: 'new_event', label: 'New Event', description: 'Announce upcoming event + sponsor', icon: '📣' },
+  { id: 'custom', label: 'Custom', description: 'Write your own message', icon: '✉️' },
 ];
 
 export default function NotificationsEditor() {
@@ -15,51 +16,58 @@ export default function NotificationsEditor() {
   const [selectedEventId, setSelectedEventId] = useState('');
   const [lockTime, setLockTime] = useState('');
   const [customMessage, setCustomMessage] = useState('');
+  const [customSubject, setCustomSubject] = useState('');
   const [sponsorName, setSponsorName] = useState('');
-  const [recipients, setRecipients] = useState([]);
-  const [unsubscribed, setUnsubscribed] = useState([]);
+
+  // Recipients
+  const [allUsers, setAllUsers] = useState([]);           // { email, username, email_notifications }
+  const [rooms, setRooms] = useState([]);                  // all rooms
+  const [selectedRoomIds, setSelectedRoomIds] = useState([]); // rooms to target
   const [manualEmails, setManualEmails] = useState('');
+  const [recipientMode, setRecipientMode] = useState('all'); // 'all' | 'rooms' | 'manual'
   const [loadingRecipients, setLoadingRecipients] = useState(false);
+
+  // UI state
+  const [showUserList, setShowUserList] = useState(false);
+  const [showUnsubscribed, setShowUnsubscribed] = useState(false);
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState(null);
   const [preview, setPreview] = useState(false);
 
-  useEffect(() => { loadRecipients(); }, []);
+  useEffect(() => { loadAll(); }, []);
 
-  const loadRecipients = async () => {
+  const loadAll = async () => {
     setLoadingRecipients(true);
     try {
-      const emails = new Set();
-
-      // 1. From user_profiles table (most reliable — set on signup)
+      // Load user profiles
       const { data: profiles } = await supabase
         .from('user_profiles')
-        .select('email, email_notifications');
+        .select('email, username, email_notifications')
+        .order('username');
 
-      if (profiles?.length) {
-        const unsub = [];
-        profiles.forEach(p => {
-          if (p.email) {
-            emails.add(p.email);
-            if (!p.email_notifications) unsub.push(p.email);
-          }
-        });
-        setUnsubscribed(unsub);
-      }
-
-      // 2. From user_mapping (legacy beta users)
+      // Also pull from legacy sources
+      const legacyEmails = new Set();
       const mapping = await sbFetch('results?event=eq.user_mapping&limit=1');
       if (mapping?.[0]?.rider_results) {
-        Object.keys(mapping[0].rider_results).forEach(email => {
-          if (email.includes('@')) emails.add(email);
+        Object.entries(mapping[0].rider_results).forEach(([email, data]) => {
+          if (email.includes('@')) legacyEmails.add({ email, username: data.username || email.split('@')[0] });
         });
       }
+      const members = await sbFetch('room_members?select=user_email,username') || [];
+      members.forEach(m => { if (m.user_email?.includes('@')) legacyEmails.add({ email: m.user_email, username: m.username }) });
 
-      // 3. From room_members
-      const members = await sbFetch('room_members?select=user_email') || [];
-      members.forEach(m => { if (m.user_email?.includes('@')) emails.add(m.user_email); });
+      // Merge — profiles take precedence
+      const profileEmails = new Set((profiles || []).map(p => p.email));
+      const merged = [...(profiles || [])];
+      legacyEmails.forEach(({ email, username }) => {
+        if (!profileEmails.has(email)) merged.push({ email, username, email_notifications: true });
+      });
 
-      setRecipients([...emails]);
+      setAllUsers(merged);
+
+      // Load rooms
+      const roomList = await sbFetch('rooms?order=name.asc&select=id,name,join_code,event_id') || [];
+      setRooms(roomList);
     } catch (e) {
       console.error(e);
     } finally {
@@ -67,23 +75,39 @@ export default function NotificationsEditor() {
     }
   };
 
-  const allRecipients = () => {
-    const extra = manualEmails.split(/[\n,;]/).map(e => e.trim()).filter(e => e.includes('@'));
-    const all = [...new Set([...recipients, ...extra])];
-    // Filter out unsubscribed
-    return all.filter(e => !unsubscribed.includes(e));
+  const subscribedUsers = allUsers.filter(u => u.email_notifications !== false);
+  const unsubscribedUsers = allUsers.filter(u => u.email_notifications === false);
+
+  const getRecipients = async () => {
+    if (recipientMode === 'manual') {
+      return manualEmails.split(/[\n,;]/).map(e => e.trim()).filter(e => e.includes('@'));
+    }
+    if (recipientMode === 'rooms') {
+      if (!selectedRoomIds.length) return [];
+      const roomMembers = await Promise.all(
+        selectedRoomIds.map(id => sbFetch('room_members?room_id=eq.' + id + '&select=user_email'))
+      );
+      const emails = new Set();
+      roomMembers.flat().forEach(m => { if (m?.user_email?.includes('@')) emails.add(m.user_email); });
+      // Filter unsubscribed
+      const unsub = new Set(unsubscribedUsers.map(u => u.email));
+      return [...emails].filter(e => !unsub.has(e));
+    }
+    // 'all' — subscribed users only
+    const extras = manualEmails.split(/[\n,;]/).map(e => e.trim()).filter(e => e.includes('@'));
+    return [...new Set([...subscribedUsers.map(u => u.email), ...extras])];
   };
 
   const selectedEvent = EVENTS_2026.find(e => e.id === selectedEventId);
   const notificationType = NOTIFICATION_TYPES.find(t => t.id === selectedType);
-  const total = allRecipients().length;
 
   const send = async () => {
-    const to = allRecipients();
-    if (!selectedEventId || !to.length) return;
     setSending(true);
     setResult(null);
     try {
+      const to = await getRecipients();
+      if (!to.length) { setResult({ error: 'No recipients selected.' }); setSending(false); return; }
+
       const res = await fetch('/api/send-notification', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -95,11 +119,12 @@ export default function NotificationsEditor() {
           eventDates: selectedEvent?.dates || '',
           lockTime: lockTime || null,
           customMessage: customMessage || null,
+          customSubject: customSubject || null,
           sponsorName: sponsorName || null,
         }),
       });
       const data = await res.json();
-      setResult(data);
+      setResult({ ...data, recipientCount: to.length });
     } catch (e) {
       setResult({ error: e.message });
     } finally {
@@ -130,32 +155,166 @@ export default function NotificationsEditor() {
     <div>
       <h2 className="font-cinzel text-sm tracking-widest mb-1" style={{ color: 'var(--gold)' }}>NOTIFICATIONS</h2>
       <p className="font-cormorant text-base italic mb-6" style={{ color: 'var(--mid)' }}>
-        Send event emails to registered users.
+        Send event emails to users, rooms, or custom lists.
       </p>
 
-      {/* Recipients summary */}
-      <div className="flex items-center gap-2 mb-4 px-3 py-2.5 rounded-lg"
-        style={{ background: 'rgba(180,149,48,0.06)', border: '1px solid rgba(180,149,48,0.15)' }}>
-        <Users size={14} style={{ color: 'var(--gold)' }} />
-        <div className="flex-1">
-          <span className="font-cormorant text-sm" style={{ color: 'var(--cream)' }}>
-            {loadingRecipients ? 'Loading…' : `${recipients.length} users · ${unsubscribed.length} unsubscribed · ${total} will receive`}
+      {/* ── RECIPIENTS ─────────────────────────────────────────────── */}
+      <div className="mb-5 rounded-xl overflow-hidden" style={{ border: '1px solid rgba(180,149,48,0.2)' }}>
+        
+        {/* Summary bar */}
+        <div className="flex items-center gap-2 px-3 py-2.5" style={{ background: 'rgba(180,149,48,0.06)' }}>
+          <Users size={13} style={{ color: 'var(--gold)' }} />
+          <span className="font-cormorant text-sm flex-1" style={{ color: 'var(--cream)' }}>
+            {loadingRecipients ? 'Loading…' : `${allUsers.length} total · ${subscribedUsers.length} subscribed · ${unsubscribedUsers.length} unsubscribed`}
           </span>
+          <button onClick={loadAll} className="font-cinzel text-xs" style={{ color: 'var(--mid)', fontSize: 9, letterSpacing: '0.08em' }}>REFRESH</button>
         </div>
-        <button onClick={loadRecipients} className="font-cinzel text-xs" style={{ color: 'var(--mid)', fontSize: 9, letterSpacing: '0.08em' }}>
-          REFRESH
-        </button>
+
+        {/* Recipient mode tabs */}
+        <div className="flex" style={{ borderTop: '1px solid rgba(180,149,48,0.1)' }}>
+          {[
+            { id: 'all', label: 'All Users' },
+            { id: 'rooms', label: 'By Room' },
+            { id: 'manual', label: 'Manual' },
+          ].map(m => (
+            <button key={m.id} onClick={() => setRecipientMode(m.id)}
+              className="flex-1 py-2 font-cinzel text-xs transition-all"
+              style={{
+                background: recipientMode === m.id ? 'rgba(180,149,48,0.1)' : 'transparent',
+                borderBottom: `2px solid ${recipientMode === m.id ? 'var(--gold)' : 'transparent'}`,
+                color: recipientMode === m.id ? 'var(--gold)' : 'var(--mid)',
+                fontSize: 9, letterSpacing: '0.08em',
+              }}>
+              {m.label.toUpperCase()}
+            </button>
+          ))}
+        </div>
+
+        {/* Mode content */}
+        <div className="p-3">
+          {recipientMode === 'all' && (
+            <>
+              {/* Subscribed users dropdown */}
+              <button onClick={() => setShowUserList(p => !p)}
+                className="w-full flex items-center justify-between px-3 py-2 rounded mb-2 transition-all"
+                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(180,149,48,0.15)' }}>
+                <span className="font-cinzel text-xs" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>
+                  SUBSCRIBED ({subscribedUsers.length})
+                </span>
+                {showUserList ? <ChevronUp size={12} style={{ color: 'var(--mid)' }} /> : <ChevronDown size={12} style={{ color: 'var(--mid)' }} />}
+              </button>
+              {showUserList && (
+                <div className="rounded overflow-hidden mb-2" style={{ border: '1px solid rgba(42,40,32,0.4)', maxHeight: 200, overflowY: 'auto' }}>
+                  {subscribedUsers.map((u, i) => (
+                    <div key={u.email} className="flex items-center gap-2 px-3 py-2"
+                      style={{ borderBottom: i < subscribedUsers.length - 1 ? '1px solid rgba(42,40,32,0.3)' : 'none' }}>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-cormorant text-sm" style={{ color: 'var(--cream)' }}>{u.username || '—'}</div>
+                        <div className="font-cormorant text-xs italic" style={{ color: 'var(--mid)' }}>{u.email}</div>
+                      </div>
+                      <span className="font-cinzel text-xs px-1.5 py-0.5 rounded" style={{ background: 'rgba(76,175,125,0.1)', color: '#4caf7d', fontSize: 7 }}>✓</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Unsubscribed */}
+              <button onClick={() => setShowUnsubscribed(p => !p)}
+                className="w-full flex items-center justify-between px-3 py-2 rounded transition-all"
+                style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(180,149,48,0.1)' }}>
+                <span className="font-cinzel text-xs" style={{ color: 'var(--mid)', fontSize: 9, letterSpacing: '0.08em' }}>
+                  UNSUBSCRIBED ({unsubscribedUsers.length})
+                </span>
+                {showUnsubscribed ? <ChevronUp size={12} style={{ color: 'var(--mid)' }} /> : <ChevronDown size={12} style={{ color: 'var(--mid)' }} />}
+              </button>
+              {showUnsubscribed && unsubscribedUsers.length > 0 && (
+                <div className="rounded overflow-hidden mt-2" style={{ border: '1px solid rgba(42,40,32,0.4)', maxHeight: 150, overflowY: 'auto' }}>
+                  {unsubscribedUsers.map((u, i) => (
+                    <div key={u.email} className="flex items-center gap-2 px-3 py-2"
+                      style={{ borderBottom: i < unsubscribedUsers.length - 1 ? '1px solid rgba(42,40,32,0.3)' : 'none', opacity: 0.6 }}>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-cormorant text-sm" style={{ color: 'var(--cream)' }}>{u.username || '—'}</div>
+                        <div className="font-cormorant text-xs italic" style={{ color: 'var(--mid)' }}>{u.email}</div>
+                      </div>
+                      <span className="font-cinzel text-xs px-1.5 py-0.5 rounded" style={{ background: 'rgba(224,112,112,0.1)', color: '#e07070', fontSize: 7 }}>OFF</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {showUnsubscribed && unsubscribedUsers.length === 0 && (
+                <p className="font-cormorant italic text-xs mt-2 text-center" style={{ color: 'var(--mid)' }}>No unsubscribed users</p>
+              )}
+
+              {/* Additional emails */}
+              <div className="mt-3">
+                <label style={{ ...labelStyle, marginBottom: 4 }}>ALSO SEND TO (optional)</label>
+                <textarea value={manualEmails} onChange={e => setManualEmails(e.target.value)}
+                  placeholder="extra@example.com" rows={2}
+                  style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }} />
+              </div>
+            </>
+          )}
+
+          {recipientMode === 'rooms' && (
+            <>
+              <p className="font-cormorant italic text-xs mb-3" style={{ color: 'var(--mid)' }}>
+                Select one or more rooms — all members will receive the email (excluding unsubscribed).
+              </p>
+              {rooms.length === 0 ? (
+                <p className="font-cormorant italic text-sm text-center py-2" style={{ color: 'var(--mid)' }}>No rooms created yet.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {rooms.map(room => {
+                    const ev = EVENTS_2026.find(e => e.id === room.event_id);
+                    const selected = selectedRoomIds.includes(room.id);
+                    return (
+                      <button key={room.id}
+                        onClick={() => setSelectedRoomIds(prev =>
+                          selected ? prev.filter(id => id !== room.id) : [...prev, room.id]
+                        )}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all"
+                        style={{
+                          background: selected ? 'rgba(180,149,48,0.12)' : 'rgba(255,255,255,0.02)',
+                          border: `1px solid ${selected ? 'rgba(180,149,48,0.4)' : 'rgba(180,149,48,0.1)'}`,
+                        }}>
+                        <div className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0"
+                          style={{ background: selected ? 'var(--gold)' : 'transparent', border: `1px solid ${selected ? 'var(--gold)' : 'rgba(180,149,48,0.3)'}` }}>
+                          {selected && <span style={{ color: 'var(--ink)', fontSize: 8 }}>✓</span>}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-cormorant text-sm" style={{ color: selected ? 'var(--gold-lt)' : 'var(--cream)' }}>{room.name}</div>
+                          <div className="font-cinzel text-xs" style={{ color: 'var(--mid)', fontSize: 8 }}>
+                            {ev ? `${ev.flag} ${ev.city}` : room.event_id} · #{room.join_code}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {selectedRoomIds.length > 0 && (
+                <p className="font-cormorant italic text-xs mt-2" style={{ color: 'var(--gold-lt)' }}>
+                  {selectedRoomIds.length} room{selectedRoomIds.length > 1 ? 's' : ''} selected
+                </p>
+              )}
+            </>
+          )}
+
+          {recipientMode === 'manual' && (
+            <div>
+              <label style={labelStyle}>EMAIL ADDRESSES (comma, semicolon, or line separated)</label>
+              <textarea value={manualEmails} onChange={e => setManualEmails(e.target.value)}
+                placeholder="user@example.com&#10;another@example.com"
+                rows={5} style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.6 }} />
+              <p className="font-cormorant italic text-xs mt-1" style={{ color: 'var(--mid)' }}>
+                {manualEmails.split(/[\n,;]/).filter(e => e.trim().includes('@')).length} valid emails
+              </p>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Manual emails */}
-      <div className="mb-5">
-        <label style={labelStyle}>ADDITIONAL EMAILS (comma or line separated)</label>
-        <textarea value={manualEmails} onChange={e => setManualEmails(e.target.value)}
-          placeholder="user@example.com, another@example.com"
-          rows={2} style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }} />
-      </div>
-
-      {/* Type */}
+      {/* ── NOTIFICATION TYPE ───────────────────────────────────────── */}
       <div className="mb-5">
         <label style={labelStyle}>NOTIFICATION TYPE</label>
         <div className="grid grid-cols-2 gap-2">
@@ -174,16 +333,18 @@ export default function NotificationsEditor() {
         </div>
       </div>
 
-      {/* Event */}
-      <div className="mb-4">
-        <label style={labelStyle}>EVENT</label>
-        <select value={selectedEventId} onChange={e => setSelectedEventId(e.target.value)} style={inputStyle}>
-          <option value="">— Select Event —</option>
-          {EVENTS_2026.map(ev => (
-            <option key={ev.id} value={ev.id}>{ev.flag} {ev.city} · {ev.dates}</option>
-          ))}
-        </select>
-      </div>
+      {/* ── EVENT (not needed for custom) ──────────────────────────── */}
+      {selectedType !== 'custom' && (
+        <div className="mb-4">
+          <label style={labelStyle}>EVENT</label>
+          <select value={selectedEventId} onChange={e => setSelectedEventId(e.target.value)} style={inputStyle}>
+            <option value="">— Select Event —</option>
+            {EVENTS_2026.map(ev => (
+              <option key={ev.id} value={ev.id}>{ev.flag} {ev.city} · {ev.dates}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {(selectedType === 'draft_open' || selectedType === 'team_results') && (
         <div className="mb-4">
@@ -201,10 +362,18 @@ export default function NotificationsEditor() {
         </div>
       )}
 
+      {selectedType === 'custom' && (
+        <div className="mb-4">
+          <label style={labelStyle}>EMAIL SUBJECT</label>
+          <input value={customSubject} onChange={e => setCustomSubject(e.target.value)}
+            placeholder="e.g. Important update from EquiPrix" style={{ ...inputStyle, marginBottom: 8 }} />
+        </div>
+      )}
+
       <div className="mb-6">
-        <label style={labelStyle}>CUSTOM MESSAGE (optional)</label>
+        <label style={labelStyle}>{selectedType === 'custom' ? 'MESSAGE BODY' : 'CUSTOM MESSAGE (optional)'}</label>
         <textarea value={customMessage} onChange={e => setCustomMessage(e.target.value)}
-          placeholder="Add a personal note or extra details…"
+          placeholder={selectedType === 'custom' ? 'Write your message here…' : 'Add a personal note or extra details…'}
           rows={3} style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }} />
       </div>
 
@@ -220,7 +389,7 @@ export default function NotificationsEditor() {
         {preview ? 'HIDE PREVIEW' : 'PREVIEW EMAIL'}
       </button>
 
-      {preview && selectedEvent && (
+      {preview && (
         <div className="mb-6 rounded-lg overflow-hidden" style={{ border: '1px solid rgba(180,149,48,0.2)' }}>
           <div style={{ background: '#0f0e0a', padding: '16px' }}>
             <div style={{ maxWidth: 360, margin: '0 auto', background: '#14130e', border: '1px solid rgba(180,149,48,0.25)', borderRadius: 6, overflow: 'hidden', fontFamily: 'Georgia,serif' }}>
@@ -233,20 +402,23 @@ export default function NotificationsEditor() {
                   {selectedType === 'draft_open' ? 'The draft is open.' :
                    selectedType === 'team_results' ? 'Team results are in.' :
                    selectedType === 'final_results' ? 'Final results are in.' :
-                   `${selectedEvent.city} is coming.`}
+                   selectedType === 'custom' ? (customSubject || 'Custom message.') :
+                   selectedEvent ? `${selectedEvent.city} is coming.` : 'New event.'}
                 </p>
                 <p style={{ fontSize: 12, color: '#b49530', lineHeight: 1.6, margin: '0 0 16px' }}>
-                  {selectedType === 'draft_open' ? `Your picks for ${selectedEvent.city} are now open.${lockTime ? ` Picks lock: ${lockTime}.` : ''}` :
-                   selectedType === 'team_results' ? `Team results for ${selectedEvent.city} are posted.${lockTime ? ` GP picks lock: ${lockTime}.` : ''}` :
-                   selectedType === 'final_results' ? `${selectedEvent.city} is complete. Check the final leaderboard.` :
-                   `${selectedEvent.city} ${selectedEvent.dates} is coming to EquiPrix.`}
-                  {customMessage && ` ${customMessage}`}
+                  {selectedType === 'draft_open' && selectedEvent ? `Your picks for ${selectedEvent.city} are now open.${lockTime ? ` Picks lock: ${lockTime}.` : ''}` :
+                   selectedType === 'team_results' && selectedEvent ? `Team results for ${selectedEvent.city} are posted.${lockTime ? ` GP picks lock: ${lockTime}.` : ''}` :
+                   selectedType === 'final_results' && selectedEvent ? `${selectedEvent.city} is complete. Check the final leaderboard.` :
+                   selectedType === 'custom' ? customMessage || 'Your message here…' :
+                   selectedEvent ? `${selectedEvent.city} ${selectedEvent.dates} is coming to EquiPrix.` : ''}
+                  {selectedType !== 'custom' && customMessage ? ` ${customMessage}` : ''}
                 </p>
                 <div style={{ textAlign: 'center' }}>
                   <span style={{ display: 'inline-block', background: '#b49530', color: '#0f0e0a', padding: '10px 24px', borderRadius: 3, fontSize: 10, fontWeight: 'bold', letterSpacing: '0.12em' }}>
                     {selectedType === 'draft_open' ? 'MAKE YOUR PICKS' :
                      selectedType === 'team_results' ? 'VIEW RESULTS & PICK RIDERS' :
-                     selectedType === 'final_results' ? 'VIEW FINAL LEADERBOARD' : 'OPEN EQUIPRIX'}
+                     selectedType === 'final_results' ? 'VIEW FINAL LEADERBOARD' :
+                     selectedType === 'custom' ? 'OPEN EQUIPRIX' : 'OPEN EQUIPRIX'}
                   </span>
                 </div>
               </div>
@@ -255,16 +427,16 @@ export default function NotificationsEditor() {
         </div>
       )}
 
-      <button onClick={send} disabled={sending || !selectedEventId || !total}
+      {/* Send button */}
+      <button onClick={send} disabled={sending}
         className="w-full py-3 rounded font-cinzel text-xs tracking-widest flex items-center justify-center gap-2 transition-all"
         style={{
           background: sending ? 'rgba(180,149,48,0.1)' : 'var(--gold)',
           color: sending ? 'var(--mid)' : 'var(--ink)',
           letterSpacing: '0.1em',
-          opacity: (!selectedEventId || !total) ? 0.4 : 1,
         }}>
         <Send size={13} />
-        {sending ? 'SENDING…' : `SEND TO ${total} USER${total !== 1 ? 'S' : ''}`}
+        {sending ? 'SENDING…' : 'SEND NOTIFICATION'}
       </button>
 
       {result && (
