@@ -36,6 +36,9 @@ export default function RoomPage() {
   const [sending, setSending] = useState(false);
   const [notifResult, setNotifResult] = useState(null);
   const [copied, setCopied] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviting, setInviting] = useState(false);
+  const [inviteResult, setInviteResult] = useState(null);
 
   useEffect(() => { loadRoom(); }, [code]);
 
@@ -141,6 +144,39 @@ export default function RoomPage() {
     finally { setSending(false); }
   };
 
+  const sendInvite = async () => {
+    if (!inviteEmail.trim() || !inviteEmail.includes('@')) return;
+    setInviting(true);
+    setInviteResult(null);
+    const event = EVENTS_2026.find(e => e.id === room.event_id);
+    try {
+      const res = await fetch('/api/send-room-invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: inviteEmail.trim(),
+          roomName: room.name,
+          prize: room.prize_description || null,
+          eventName: event?.city || null,
+          eventFlag: event?.flag || null,
+          joinUrl: `${window.location.origin}/room/${room.join_code}`,
+          managerName: user?.user_metadata?.username || user?.email?.split('@')[0] || null,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setInviteResult({ success: true, msg: `✓ Invite sent to ${inviteEmail.trim()}` });
+        setInviteEmail('');
+      } else {
+        setInviteResult({ success: false, msg: data.error || 'Failed to send invite' });
+      }
+    } catch (e) {
+      setInviteResult({ success: false, msg: e.message });
+    } finally {
+      setInviting(false);
+    }
+  };
+
   const copyLink = (type) => {
     const url = type === 'member'
       ? `${window.location.origin}/room/${code}`
@@ -200,6 +236,8 @@ export default function RoomPage() {
             {isManager && editingName ? (
               <div className="flex items-center gap-2 mb-1">
                 <input value={nameVal} onChange={e => setNameVal(e.target.value)}
+                  onBlur={() => saveField('name', nameVal)}
+                  onKeyDown={e => { if (e.key === 'Enter') saveField('name', nameVal); if (e.key === 'Escape') { setEditingName(false); setNameVal(room.name); }}}
                   style={{ ...inputStyle, flex: 1, fontSize: 16 }} autoFocus />
                 <button onClick={() => saveField('name', nameVal)} disabled={savingEdit}
                   style={{ color: '#4caf7d' }}><Check size={16} /></button>
@@ -249,6 +287,8 @@ export default function RoomPage() {
               {isManager && editingPrize ? (
                 <div className="flex items-center gap-2">
                   <input value={prizeVal} onChange={e => setPrizeVal(e.target.value)}
+                    onBlur={() => saveField('prize_description', prizeVal)}
+                    onKeyDown={e => { if (e.key === 'Enter') saveField('prize_description', prizeVal); if (e.key === 'Escape') { setEditingPrize(false); setPrizeVal(room.prize_description || ''); }}}
                     style={{ ...inputStyle, flex: 1 }} autoFocus
                     placeholder="e.g. €500 gift voucher" />
                   <button onClick={() => saveField('prize_description', prizeVal)} disabled={savingEdit}
@@ -333,12 +373,7 @@ export default function RoomPage() {
                 <Copy size={12} />
                 {copied === 'member' ? '✓ COPIED!' : 'COPY MEMBER INVITE LINK'}
               </button>
-              <button onClick={() => copyLink('manager')}
-                className="flex items-center gap-2 px-3 py-2.5 rounded font-cinzel text-xs transition-all"
-                style={{ background: 'rgba(180,149,48,0.04)', border: '1px solid rgba(180,149,48,0.1)', color: 'var(--mid)', letterSpacing: '0.08em' }}>
-                <Copy size={12} />
-                {copied === 'manager' ? '✓ COPIED!' : 'COPY MY MANAGER LINK'}
-              </button>
+
             </div>
           </div>
         )}
@@ -379,7 +414,59 @@ export default function RoomPage() {
           </div>
         )}
 
-        {/* Manager notification panel */}
+        {/* Manager invite panel */}
+        {isManager && (
+          <div className="rounded-xl overflow-hidden mb-4" style={{ border: '1px solid rgba(180,149,48,0.2)', background: '#14130e' }}>
+            <div className="px-5 py-3" style={{ borderBottom: '1px solid rgba(180,149,48,0.1)', background: 'rgba(180,149,48,0.04)' }}>
+              <div className="font-cinzel text-xs tracking-widest" style={{ color: 'var(--gold)', fontSize: 9 }}>INVITE A MEMBER</div>
+              <div className="font-cormorant italic text-xs mt-0.5" style={{ color: 'var(--mid)' }}>
+                Send a branded invite email with the room link
+              </div>
+            </div>
+            <div className="px-5 py-4">
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={e => setInviteEmail(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && sendInvite()}
+                  placeholder="member@example.com"
+                  style={{
+                    flex: 1,
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(180,149,48,0.2)',
+                    color: 'var(--cream)',
+                    borderRadius: 4,
+                    padding: '8px 12px',
+                    fontSize: '16px',
+                    outline: 'none',
+                  }}
+                />
+                <button
+                  onClick={sendInvite}
+                  disabled={inviting || !inviteEmail.trim()}
+                  className="px-4 py-2 rounded font-cinzel text-xs tracking-widest flex items-center gap-1.5 transition-all flex-shrink-0"
+                  style={{
+                    background: inviting ? 'rgba(180,149,48,0.1)' : 'var(--gold)',
+                    color: inviting ? 'var(--mid)' : 'var(--ink)',
+                    letterSpacing: '0.08em',
+                    opacity: !inviteEmail.trim() ? 0.4 : 1,
+                  }}>
+                  <Send size={12} />
+                  {inviting ? '…' : 'SEND'}
+                </button>
+              </div>
+              {inviteResult && (
+                <p className="font-cormorant italic text-sm mt-2"
+                  style={{ color: inviteResult.success ? '#4caf7d' : '#e07070' }}>
+                  {inviteResult.msg}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Manager notification panel */}}
         {isManager && (
           <div className="rounded-xl overflow-hidden mb-6" style={{ border: '1px solid rgba(180,149,48,0.2)', background: '#14130e' }}>
             <div className="px-5 py-3" style={{ borderBottom: '1px solid rgba(180,149,48,0.1)', background: 'rgba(180,149,48,0.04)' }}>
