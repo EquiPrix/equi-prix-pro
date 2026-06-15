@@ -35,6 +35,7 @@ const AuthenticatedApp = () => {
         <Route path="/" element={<Splash />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/terms" element={<Terms />} />
         <Route path="/room/:code" element={<RoomPage />} />
         <Route path="/play" element={<EquiPrix />} />
         <Route path="/admin" element={<Admin />} />
