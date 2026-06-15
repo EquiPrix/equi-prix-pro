@@ -10,16 +10,36 @@ const SUB_TABS = [
   { id: 'gp', label: 'Grand Prix' },
 ];
 
+// Statuses where we should attempt to load results
+const RESULTS_STATUSES = ['past', 'riders', 'live'];
+
 export default function ResultsTab() {
   const { currentEvent } = useEquiPrix();
-  const [subTab, setSubTab] = useState('gp');
+  const [subTab, setSubTab] = useState('final');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!currentEvent || currentEvent.status !== 'past') { setData(null); return; }
+    if (!currentEvent || !RESULTS_STATUSES.includes(currentEvent.status)) {
+      setData(null);
+      return;
+    }
     loadResults();
   }, [currentEvent]);
+
+  // Auto-select best tab based on available data
+  useEffect(() => {
+    if (!data) return;
+    const tr = data.team_results || {};
+    const rr = data.rider_results || {};
+    const hasTeamResults = Object.keys(tr).length > 0;
+    const hasGPResults = Object.keys(rr).length > 0;
+    const hasFinal = Object.values(tr).some(r => r?.finalPos);
+
+    if (hasGPResults && currentEvent?.status === 'past') setSubTab('gp');
+    else if (hasFinal) setSubTab('final');
+    else if (hasTeamResults) setSubTab('r1');
+  }, [data]);
 
   const loadResults = async () => {
     if (!currentEvent) return;
@@ -42,7 +62,7 @@ export default function ResultsTab() {
     );
   }
 
-  if (currentEvent.status !== 'past') {
+  if (!RESULTS_STATUSES.includes(currentEvent.status)) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center px-6 text-center gap-4">
         <div className="text-5xl">🏟️</div>
@@ -50,7 +70,7 @@ export default function ResultsTab() {
           {currentEvent.flag} {currentEvent.city}
         </div>
         <div className="font-cormorant text-base italic" style={{ color: 'rgba(242,237,226,0.5)' }}>
-          Results available after the event completes
+          Results available after the event begins
         </div>
         <div className="font-cinzel text-xs tracking-widest" style={{ color: 'var(--gold)' }}>
           {currentEvent.dateLabel}
@@ -61,6 +81,11 @@ export default function ResultsTab() {
 
   const riderResults = data?.rider_results || {};
   const teamResults = data?.team_results || {};
+  const hasTeamResults = Object.keys(teamResults).length > 0;
+  const hasGPResults = Object.keys(riderResults).length > 0;
+  const hasFinal = Object.values(teamResults).some(r => r?.finalPos);
+  const isComplete = currentEvent.status === 'past';
+
   const displayTeams = (currentEvent.teams && currentEvent.teams.length) ? currentEvent.teams : GCL_TEAMS_2026;
   const displayRiders = currentEvent.gpRiders && currentEvent.gpRiders.length
     ? currentEvent.gpRiders
@@ -70,15 +95,35 @@ export default function ResultsTab() {
       return pr ? { ...pr, horse: horse || pr.horse } : { id: parseInt(id) || id, name: 'Rider #' + id, horse, nat: '' };
     });
 
+  // Filter tabs based on what data is available
+  const availableTabs = SUB_TABS.filter(tab => {
+    if (tab.id === 'r1') return hasTeamResults;
+    if (tab.id === 'r2') return hasTeamResults && Object.values(teamResults).some(r => r?.r2Faults != null || r?.r2Riders?.length);
+    if (tab.id === 'final') return hasFinal;
+    if (tab.id === 'gp') return hasGPResults;
+    return true;
+  });
+
   return (
     <div className="flex-1 flex flex-col min-h-0" style={{ background: 'var(--ink)' }}>
       <div className="px-4 pt-4 pb-0" style={{ borderBottom: '1px solid var(--ep-border)' }}>
         <div className="font-cinzel text-xs tracking-widest mb-0.5" style={{ color: 'var(--gold)' }}>RESULTS</div>
-        <div className="font-cormorant text-xl mb-3" style={{ color: 'var(--cream)' }}>
+        <div className="font-cormorant text-xl mb-1" style={{ color: 'var(--cream)' }}>
           {currentEvent.flag} {currentEvent.city} · {currentEvent.dates}
         </div>
+
+        {/* Status badge */}
+        {!isComplete && hasTeamResults && (
+          <div className="mb-2">
+            <span className="font-cinzel text-xs px-2 py-0.5 rounded"
+              style={{ background: 'rgba(180,149,48,0.12)', color: 'var(--gold)', fontSize: 9, letterSpacing: '0.1em' }}>
+              {hasGPResults ? 'GP IN PROGRESS' : 'TEAM RESULTS IN · GP DRAFT OPEN'}
+            </span>
+          </div>
+        )}
+
         <div className="flex gap-1 overflow-x-auto scrollbar-hide pb-0">
-          {SUB_TABS.map(tab => (
+          {availableTabs.map(tab => (
             <button key={tab.id} onClick={() => setSubTab(tab.id)}
               className="flex-shrink-0 px-3 py-1.5 rounded-t font-cinzel text-xs transition-all"
               style={{
@@ -96,8 +141,15 @@ export default function ResultsTab() {
       <div className="flex-1 overflow-y-auto pb-24">
         {loading ? (
           <div className="text-center py-12 font-cormorant text-lg italic" style={{ color: 'var(--mid)' }}>Loading…</div>
-        ) : !data ? (
-          <div className="text-center py-12 font-cormorant text-lg italic" style={{ color: 'var(--mid)' }}>Results not yet entered</div>
+        ) : !data || (!hasTeamResults && !hasGPResults) ? (
+          <div className="text-center py-12">
+            <p className="font-cormorant text-lg italic mb-2" style={{ color: 'var(--mid)' }}>
+              Results not yet entered
+            </p>
+            <p className="font-cormorant text-sm italic" style={{ color: 'var(--mid)', opacity: 0.6 }}>
+              Team results will appear here as soon as they're posted
+            </p>
+          </div>
         ) : subTab === 'gp' ? (
           <GPResults riderResults={riderResults} displayRiders={displayRiders} />
         ) : subTab === 'r1' ? (
@@ -142,7 +194,6 @@ function GPResults({ riderResults, displayRiders }) {
           initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
           transition={{ delay: i * 0.02 }}
           className="border-b" style={{ borderColor: 'rgba(42,40,32,0.4)' }}>
-
           <div className="flex items-center gap-2.5 px-3 py-2.5"
             style={{ background: clr ? 'rgba(76,175,61,0.03)' : 'transparent' }}>
             <div className="font-cinzel text-xs w-6 text-center flex-shrink-0"
@@ -168,29 +219,23 @@ function GPResults({ riderResults, displayRiders }) {
               )}
             </div>
           </div>
-
           {hasJO && (
             <div className="flex items-center gap-2.5 px-3 py-1.5"
               style={{ background: 'rgba(180,149,48,0.04)', borderTop: '1px solid rgba(42,40,32,0.3)' }}>
-              <div className="font-cinzel text-xs w-6 text-center flex-shrink-0"
-                style={{ color: 'var(--gold)', fontSize: 9 }}>↳ JO</div>
+              <div className="font-cinzel text-xs w-6 text-center flex-shrink-0" style={{ color: 'var(--gold)', fontSize: 9 }}>↳ JO</div>
               <div className="flex-1 font-cormorant text-xs italic" style={{ color: 'var(--mid)' }}>
                 Jump-off
                 {joRet && <span className="ml-1" style={{ color: '#e07070' }}>· RET</span>}
                 {joEl && <span className="ml-1" style={{ color: '#e07070' }}>· EL</span>}
               </div>
               <div className="text-right flex-shrink-0 flex items-center gap-2">
-                {joTime != null && (
-                  <span className="text-xs" style={{ color: 'var(--mid)' }}>{Number(joTime).toFixed(2)}s</span>
-                )}
+                {joTime != null && <span className="text-xs" style={{ color: 'var(--mid)' }}>{Number(joTime).toFixed(2)}s</span>}
                 {joFaults != null && (
                   <span className="font-cormorant text-sm" style={{ color: joFaults === 0 ? '#4caf7d' : '#e88a3a' }}>
                     {joFaults === 0 ? '0 faults' : `${joFaults} faults`}
                   </span>
                 )}
-                {joPos && (
-                  <span className="font-cinzel text-xs font-bold" style={{ color: 'var(--gold)' }}>{joPos}</span>
-                )}
+                {joPos && <span className="font-cinzel text-xs font-bold" style={{ color: 'var(--gold)' }}>{joPos}</span>}
               </div>
             </div>
           )}
@@ -231,17 +276,13 @@ function TeamRoundResults({ teamResults, displayTeams, round }) {
             <div className="font-cinzel text-xs w-5 flex-shrink-0" style={{ color: 'var(--gold-lt)' }}>
               {ret ? 'RET' : el ? 'EL' : pos + 1}
             </div>
-            <div className="flex-1 font-cormorant text-base font-semibold" style={{ color: 'var(--cream)' }}>
-              {t.name}
-            </div>
+            <div className="flex-1 font-cormorant text-base font-semibold" style={{ color: 'var(--cream)' }}>{t.name}</div>
             {teamFaults != null && (
               <div className="font-cormorant text-sm" style={{ color: teamFaults === 0 ? '#4caf7d' : 'var(--gold-lt)' }}>
                 {teamFaults} faults
               </div>
             )}
-            {teamTime != null && (
-              <div className="text-xs" style={{ color: 'var(--mid)' }}>{Number(teamTime).toFixed(2)}s</div>
-            )}
+            {teamTime != null && <div className="text-xs" style={{ color: 'var(--mid)' }}>{Number(teamTime).toFixed(2)}s</div>}
           </div>
           {roundRiders.map((r, ri) => (
             <div key={ri} className="flex items-center gap-2 px-3 py-1.5 border-t" style={{ borderColor: 'rgba(42,40,32,0.3)' }}>
@@ -251,9 +292,7 @@ function TeamRoundResults({ teamResults, displayTeams, round }) {
                 {r.horse && <span className="ml-1 text-xs italic" style={{ color: 'var(--gold-lt)' }}>/ {r.horse}</span>}
               </div>
               {r.faults != null && (
-                <span className="text-xs font-cormorant" style={{ color: r.faults === 0 ? '#4caf7d' : r.faults > 0 ? '#e88a3a' : 'var(--mid)' }}>
-                  {r.faults}
-                </span>
+                <span className="text-xs font-cormorant" style={{ color: r.faults === 0 ? '#4caf7d' : r.faults > 0 ? '#e88a3a' : 'var(--mid)' }}>{r.faults}</span>
               )}
               {r.time != null && <span className="text-xs" style={{ color: 'var(--mid)' }}>{Number(r.time).toFixed(2)}s</span>}
             </div>
@@ -292,39 +331,26 @@ function TeamFinalResults({ teamResults, displayTeams }) {
           initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
           transition={{ delay: i * 0.02 }}
           className="flex items-center gap-2.5 px-3 py-2.5 border-b"
-          style={{
-            borderColor: 'rgba(42,40,32,0.4)',
-            background: madeR2 ? 'rgba(76,175,61,0.03)' : 'transparent',
-          }}>
-
+          style={{ borderColor: 'rgba(42,40,32,0.4)', background: madeR2 ? 'rgba(76,175,61,0.03)' : 'transparent' }}>
           <div className="font-cinzel text-xs w-5 text-center flex-shrink-0"
             style={{ color: pos <= 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>
             {ret ? 'RET' : el ? 'EL' : pos}
           </div>
-
           <div className="flex-1 font-cormorant text-base font-semibold flex items-center gap-1.5"
             style={{ color: madeR2 ? '#6aad8a' : 'var(--cream)' }}>
             {t.name}
             {madeR2 && (
               <span className="font-cinzel text-xs px-1"
-                style={{ background: 'rgba(76,175,61,0.15)', color: '#4caf7d', borderRadius: 2, fontSize: 8, letterSpacing: '0.06em' }}>
-                R2
-              </span>
+                style={{ background: 'rgba(76,175,61,0.15)', color: '#4caf7d', borderRadius: 2, fontSize: 8, letterSpacing: '0.06em' }}>R2</span>
             )}
           </div>
-
           <div className="flex items-center gap-3 flex-shrink-0">
-            {madeR2 && combined != null && (
-              <div className="text-xs" style={{ color: 'var(--mid)' }}>{combined} faults</div>
-            )}
-            {madeR2 && r2Time != null && (
-              <div className="text-xs" style={{ color: 'var(--mid)' }}>{Number(r2Time).toFixed(2)}s</div>
-            )}
+            {madeR2 && combined != null && <div className="text-xs" style={{ color: 'var(--mid)' }}>{combined} faults</div>}
+            {madeR2 && r2Time != null && <div className="text-xs" style={{ color: 'var(--mid)' }}>{Number(r2Time).toFixed(2)}s</div>}
             <div className="font-cormorant text-base font-semibold" style={{ color: 'var(--gold-lt)' }}>
               {pts > 0 ? pts + ' pts' : '—'}
             </div>
           </div>
-
         </motion.div>
       ))}
     </div>
@@ -332,9 +358,5 @@ function TeamFinalResults({ teamResults, displayTeams }) {
 }
 
 function Empty({ msg }) {
-  return (
-    <div className="text-center py-12 font-cormorant text-lg italic" style={{ color: 'var(--mid)' }}>
-      {msg}
-    </div>
-  );
+  return <div className="text-center py-12 font-cormorant text-lg italic" style={{ color: 'var(--mid)' }}>{msg}</div>;
 }
