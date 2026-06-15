@@ -108,7 +108,7 @@ EquiPrix reserves the right to suspend or permanently disqualify any user found 
     title: '8. Intellectual Property',
     content: `All content on EquiPrix, including but not limited to the platform name, logo, design, scoring system, and copy, is the intellectual property of EquiPrix and may not be reproduced, distributed, or used without prior written permission.
 
-EquiPrix is not affiliated with, endorsed by, or in partnership with the Longines Global Champions Tour, Global Champions League, Postillion Hotels & Resorts Jumping League, Major League Show Jumping, or the FEI unless explicitly stated. Rider names, team names, and competition results used within the platform are for informational and entertainment purposes within the context of a fantasy sports game.
+EquiPrix is not affiliated with, endorsed by, or in partnership with the Longines Global Champions Tour, Global Champions League, The Premier Jumping League, Major League Show Jumping, or the FEI unless explicitly stated. Rider names, team names, and competition results used within the platform are for informational and entertainment purposes within the context of a fantasy sports game.
 
 The EquiPrix platform and its content are protected by applicable intellectual property laws.`
   },
