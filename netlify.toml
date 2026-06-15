@@ -3,9 +3,6 @@
   publish = "dist"
   functions = "netlify/functions"
 
-[[functions]]
-  path = "/api/*"
-
 [[redirects]]
   from = "/*"
   to = "/index.html"
