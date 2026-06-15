@@ -259,6 +259,44 @@ export default function LeaderboardTab() {
 }
 
 function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode, setJoinCode, joinWithCode, joining, joinMsg, user }) {
+  const [showRequest, setShowRequest] = useState(false);
+  const [reqEvent, setReqEvent] = useState('');
+  const [reqName, setReqName] = useState('');
+  const [reqMax, setReqMax] = useState(20);
+  const [reqPrize, setReqPrize] = useState('');
+  const [reqNotes, setReqNotes] = useState('');
+  const [reqSending, setReqSending] = useState(false);
+  const [reqResult, setReqResult] = useState(null);
+
+  const submitRequest = async () => {
+    if (!reqEvent) return;
+    setReqSending(true);
+    setReqResult(null);
+    try {
+      const res = await fetch('/api/send-room-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestorEmail: user?.email || '',
+          requestorName: user?.user_metadata?.username || user?.email?.split('@')[0] || '',
+          eventName: reqEvent,
+          maxMembers: reqMax,
+          roomName: reqName,
+          prizeIdea: reqPrize || null,
+          notes: reqNotes || null,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setReqResult({ success: true });
+        setReqEvent(''); setReqName(''); setReqMax(20); setReqPrize(''); setReqNotes('');
+      } else {
+        setReqResult({ success: false, msg: data.error });
+      }
+    } catch (e) { setReqResult({ success: false, msg: e.message }); }
+    finally { setReqSending(false); }
+  };
+
   return (
     <div>
       {/* Join with code */}
@@ -284,6 +322,88 @@ function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode
           <p className="font-cormorant italic text-sm mt-2" style={{ color: joinMsg.startsWith('✓') ? '#4caf7d' : '#e07070' }}>
             {joinMsg}
           </p>
+        )}
+      </div>
+
+      {/* Request new room */}
+      <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--ep-border)' }}>
+        <button onClick={() => { setShowRequest(p => !p); setReqResult(null); }}
+          className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition-all"
+          style={{ background: showRequest ? 'rgba(180,149,48,0.1)' : 'rgba(180,149,48,0.04)', border: '1px solid rgba(180,149,48,0.2)' }}>
+          <div>
+            <div className="font-cinzel text-xs text-left" style={{ color: 'var(--gold)', fontSize: 9, letterSpacing: '0.1em' }}>REQUEST A PRIVATE ROOM</div>
+            <div className="font-cormorant italic text-xs text-left mt-0.5" style={{ color: 'var(--mid)' }}>Ask EquiPrix to create a room for your group</div>
+          </div>
+          <span className="font-cinzel text-xs" style={{ color: 'var(--gold)', fontSize: 12 }}>{showRequest ? '▲' : '+'}</span>
+        </button>
+
+        {showRequest && (
+          <div className="mt-3 space-y-3">
+            {reqResult?.success ? (
+              <div className="px-4 py-4 rounded-lg text-center" style={{ background: 'rgba(76,175,125,0.08)', border: '1px solid rgba(76,175,125,0.2)' }}>
+                <div className="text-2xl mb-2">🏇</div>
+                <div className="font-cormorant text-base font-semibold mb-1" style={{ color: '#4caf7d' }}>Request sent!</div>
+                <div className="font-cormorant italic text-sm" style={{ color: 'var(--mid)' }}>We'll create your room and send you the invite link shortly.</div>
+                <button onClick={() => { setShowRequest(false); setReqResult(null); }}
+                  className="mt-3 font-cinzel text-xs px-4 py-1.5 rounded"
+                  style={{ background: 'rgba(76,175,125,0.15)', color: '#4caf7d', border: '1px solid rgba(76,175,125,0.3)', letterSpacing: '0.08em' }}>
+                  CLOSE
+                </button>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label className="font-cinzel text-xs block mb-1" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>EVENT *</label>
+                  <select value={reqEvent} onChange={e => setReqEvent(e.target.value)}
+                    style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(180,149,48,0.2)', color: reqEvent ? 'var(--cream)' : 'var(--mid)', borderRadius: 4, padding: '8px 12px', fontSize: 13, outline: 'none' }}>
+                    <option value="">— Select Event —</option>
+                    {EVENTS_2026.map(ev => <option key={ev.id} value={`${ev.flag} ${ev.city} · ${ev.dates}`}>{ev.flag} {ev.city} · {ev.dates}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="font-cinzel text-xs block mb-1" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>ROOM NAME</label>
+                  <input value={reqName} onChange={e => setReqName(e.target.value)}
+                    placeholder="e.g. My Barn League"
+                    style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(180,149,48,0.2)', color: 'var(--cream)', borderRadius: 4, padding: '8px 12px', fontSize: '16px', outline: 'none' }} />
+                </div>
+                <div>
+                  <label className="font-cinzel text-xs block mb-1" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>MAX MEMBERS</label>
+                  <div className="flex items-center gap-3">
+                    {[5, 10, 20, 50].map(n => (
+                      <button key={n} onClick={() => setReqMax(n)}
+                        className="flex-1 py-2 rounded font-cinzel text-xs transition-all"
+                        style={{ background: reqMax === n ? 'var(--gold)' : 'rgba(255,255,255,0.04)', color: reqMax === n ? 'var(--ink)' : 'var(--mid)', border: `1px solid ${reqMax === n ? 'var(--gold)' : 'rgba(180,149,48,0.2)'}`, fontSize: 10 }}>
+                        {n}
+                      </button>
+                    ))}
+                    <input type="number" value={reqMax} onChange={e => setReqMax(parseInt(e.target.value) || 20)}
+                      min={2} max={500} placeholder="Other"
+                      style={{ width: 60, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(180,149,48,0.2)', color: 'var(--cream)', borderRadius: 4, padding: '8px', fontSize: 13, outline: 'none', textAlign: 'center' }} />
+                  </div>
+                </div>
+                <div>
+                  <label className="font-cinzel text-xs block mb-1" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>PRIZE IDEA (optional)</label>
+                  <input value={reqPrize} onChange={e => setReqPrize(e.target.value)}
+                    placeholder="e.g. Bottle of wine for the winner"
+                    style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(180,149,48,0.2)', color: 'var(--cream)', borderRadius: 4, padding: '8px 12px', fontSize: '16px', outline: 'none' }} />
+                </div>
+                <div>
+                  <label className="font-cinzel text-xs block mb-1" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>NOTES (optional)</label>
+                  <textarea value={reqNotes} onChange={e => setReqNotes(e.target.value)}
+                    placeholder="Any other details…" rows={2}
+                    style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(180,149,48,0.2)', color: 'var(--cream)', borderRadius: 4, padding: '8px 12px', fontSize: 13, outline: 'none', resize: 'vertical', lineHeight: 1.5 }} />
+                </div>
+                {reqResult?.success === false && (
+                  <p className="font-cormorant italic text-sm" style={{ color: '#e07070' }}>{reqResult.msg || 'Failed to send request.'}</p>
+                )}
+                <button onClick={submitRequest} disabled={reqSending || !reqEvent}
+                  className="w-full py-3 rounded font-cinzel text-xs tracking-widest flex items-center justify-center gap-2 transition-all"
+                  style={{ background: reqSending ? 'rgba(180,149,48,0.1)' : 'var(--gold)', color: reqSending ? 'var(--mid)' : 'var(--ink)', letterSpacing: '0.1em', opacity: !reqEvent ? 0.4 : 1 }}>
+                  {reqSending ? 'SENDING…' : 'SUBMIT REQUEST'}
+                </button>
+              </>
+            )}
+          </div>
         )}
       </div>
 
