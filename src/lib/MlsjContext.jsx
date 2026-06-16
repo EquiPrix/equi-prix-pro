@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import {
-  MLSJ_EVENTS_2026_27, MLSJ_TEAMS_2026, sbFetch, calcMlsjTeamSalaries,
+  MLSJ_EVENTS_2026_27, MLSJ_TEAMS_2026, MLSJ_PREVIEW_RIDERS, sbFetch, calcMlsjTeamSalaries,
 } from './mlsj-data';
 
 const MlsjContext = createContext(null);
@@ -15,6 +15,7 @@ export function MlsjProvider({ children }) {
 
   const [riders, setRiders] = useState([]);       // available GP riders for current event
   const [mlsjTeams, setMlsjTeams] = useState([]); // available MLSJ teams (priced) for current event
+  const [mlsjRiderRankings, setMlsjRiderRankings] = useState(MLSJ_PREVIEW_RIDERS); // updated by Rankings import
 
   const [isLoading, setIsLoading] = useState(true);
   const [toast, setToast] = useState(null);
@@ -25,10 +26,20 @@ export function MlsjProvider({ children }) {
     setTimeout(() => setToast(null), 2200);
   }, []);
 
-  // Apply combined-trio pricing to whichever team list this event carries
-  const getPricedTeams = (ev) => {
-    const baseTeams = ev.declaredTeams?.length ? ev.declaredTeams : MLSJ_TEAMS_2026;
-    return calcMlsjTeamSalaries(baseTeams);
+  // Build each team's declaredTrio with resolved rank (from latest rankings),
+  // then price by combined trio strength. Teams with no declared trio yet
+  // (declaredTrioIds missing/empty) fall back to a neutral "worst-case" price
+  // via calcMlsjTeamSalaries' default-strength branch.
+  const getPricedTeams = (ev, riderList = mlsjRiderRankings) => {
+    const declaredByTeam = ev.declaredTrioIds || {}; // { [teamId]: [id, id, id] }
+    const withTrio = MLSJ_TEAMS_2026.map(team => {
+      const ids = declaredByTeam[team.id] || [];
+      const declaredTrio = ids
+        .map(id => riderList.find(r => r.id === id))
+        .filter(Boolean);
+      return { ...team, declaredTrio };
+    });
+    return calcMlsjTeamSalaries(withTrio);
   };
 
   const getRiderList = (ev) => {
@@ -41,10 +52,10 @@ export function MlsjProvider({ children }) {
   const doSelectEvent = useCallback((ev) => {
     setCurrentEventState(ev);
     setRiders(getRiderList(ev));
-    setMlsjTeams(getPricedTeams(ev));
+    setMlsjTeams(getPricedTeams(ev, mlsjRiderRankings));
     setGpTeam([]);
     setTeamPicks([]);
-  }, []);
+  }, [mlsjRiderRankings]);
 
   const selectEvent = useCallback((id) => {
     setEvents(prev => {
@@ -56,11 +67,24 @@ export function MlsjProvider({ children }) {
 
   const loadEventData = useCallback(async () => {
     try {
+      // Shared rankings row (mirrors GCL's fei_rankings pattern) — updated by
+      // the MLSJ twin of RankingsImport. Stored as: { event: 'mlsj_rankings', gp_riders: [{id, rank}, ...] }
+      const rankRows = await sbFetch("results?event=eq.mlsj_rankings&limit=1");
+      let updatedRankings = MLSJ_PREVIEW_RIDERS.map(r => ({ ...r }));
+      if (rankRows && rankRows.length && rankRows[0].gp_riders?.length) {
+        rankRows[0].gp_riders.forEach(sr => {
+          const r = updatedRankings.find(pr => pr.id === sr.id);
+          if (r && sr.rank) r.rank = sr.rank;
+          if (r && sr.salary) r.salary = sr.salary;
+        });
+      }
+      setMlsjRiderRankings(updatedRankings);
+
       // Each leg's row in `results` (event = mlsj supabaseKey) carries:
-      //   event_status, gp_riders (start list), declared_teams (8 teams w/ declaredTrio),
+      //   event_status, gp_riders (start list), declared_trio_ids ({teamId: [id,id,id]}),
       //   team_results (per-team round outcomes), gp_lock_iso, team_lock_iso
       const rows = await sbFetch(
-        'results?select=event,event_status,gp_riders,declared_teams,team_results,gp_lock_iso,team_lock_iso'
+        'results?select=event,event_status,gp_riders,declared_trio_ids,team_results,gp_lock_iso,team_lock_iso'
       );
 
       let updatedEvents = MLSJ_EVENTS_2026_27.map(e => ({ ...e }));
@@ -75,7 +99,7 @@ export function MlsjProvider({ children }) {
             ...(row.gp_lock_iso ? { gpLockISO: row.gp_lock_iso } : {}),
             ...(row.team_lock_iso ? { teamLockISO: row.team_lock_iso } : {}),
             ...(row.gp_riders?.length ? { gpRiders: row.gp_riders } : {}),
-            ...(row.declared_teams?.length ? { declaredTeams: row.declared_teams } : {}),
+            ...(row.declared_trio_ids ? { declaredTrioIds: row.declared_trio_ids } : {}),
             ...(row.team_results ? { teamResults: row.team_results } : {}),
           };
         });
@@ -95,13 +119,19 @@ export function MlsjProvider({ children }) {
           const pastEvents = updatedEvents.filter(e => e.status === 'past');
           best = pastEvents[pastEvents.length - 1];
         }
-        if (best) doSelectEvent(best);
+        if (best) {
+          setCurrentEventState(best);
+          setRiders(getRiderList(best));
+          setMlsjTeams(getPricedTeams(best, updatedRankings));
+          setGpTeam([]);
+          setTeamPicks([]);
+        }
       } else {
         setCurrentEventState(cur => {
           if (!cur) return cur;
           const ev = updatedEvents.find(e => e.id === cur.id) || cur;
           setRiders(getRiderList(ev));
-          setMlsjTeams(getPricedTeams(ev));
+          setMlsjTeams(getPricedTeams(ev, updatedRankings));
           return ev;
         });
       }
@@ -181,6 +211,7 @@ export function MlsjProvider({ children }) {
       teamPicks, setTeamPicks,
       riders, setRiders,
       mlsjTeams, setMlsjTeams,
+      mlsjRiderRankings, setMlsjRiderRankings,
       isLoading,
       toast, showToast,
       loadSavedPicks, savePicks,

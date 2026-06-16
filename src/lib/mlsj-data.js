@@ -2,15 +2,16 @@
 // 2026-27 Season ("Season 6")
 //
 // Mirrors the conventions in equiprix-data.js (CAP, salary banding, sbFetch,
-// fmt/ordinal helpers) so the two series feel like one product.
+// fmt/ordinal helpers, rankToSalary) so the two series feel like one product
+// and share the same admin tooling (Rankings import, etc).
 //
 // SCOPE (v1): GP scoring + Team Competition scoring (3 rounds). Qualifier is
 // intentionally NOT scored yet — see scoreQualifier() stub at the bottom if/when
 // that's needed.
 
-import { SUPABASE_URL, SUPABASE_KEY, sbFetch, fmt, ordinal } from './equiprix-data';
+import { SUPABASE_URL, SUPABASE_KEY, sbFetch, fmt, ordinal, rankToSalary } from './equiprix-data';
 
-export { SUPABASE_URL, SUPABASE_KEY, sbFetch, fmt, ordinal };
+export { SUPABASE_URL, SUPABASE_KEY, sbFetch, fmt, ordinal, rankToSalary };
 
 // ───────────────────────── Core constants ─────────────────────────
 
@@ -103,30 +104,25 @@ export function calcMlsjTeamSalaries(mlsjTeams) {
   const withStrength = mlsjTeams.map(t => {
     const trio = (t.declaredTrio || []).filter(r => r && r.rank != null);
     const ranks = trio.map(r => (!r.rank || r.rank >= 999) ? 600 : r.rank);
-    // Combined strength = sum of declared trio's FEI ranks (lower sum = stronger team)
-    const strength = ranks.length ? ranks.reduce((a, b) => a + b, 0) : 1800; // worst-case default
+    const strength = ranks.length ? ranks.reduce((a, b) => a + b, 0) : 1800;
     return { ...t, _strength: strength };
   });
 
-  // Sort by strength ascending — rank 1 (lowest sum) is the strongest team
   const sorted = [...withStrength].sort((a, b) => a._strength - b._strength);
 
   return sorted.map((t, i) => {
-    const fieldRank = i + 1; // 1 = strongest declared trio this leg, 8 = weakest
+    const fieldRank = i + 1;
     let raw;
 
     if (fieldRank === 1) {
-      raw = 11000; // top trio premium
+      raw = 11000;
     } else if (fieldRank === 2) {
       raw = 9500;
     } else if (fieldRank <= 4) {
-      // ranks 3-4: $8,500 → $7,500, bracketing the $7,500 average
       raw = 8500 - (fieldRank - 3) * 1000;
     } else if (fieldRank <= 6) {
-      // ranks 5-6: $7,000 → $6,000
       raw = 7000 - (fieldRank - 5) * 1000;
     } else {
-      // ranks 7-8: $5,000 → $4,000, weakest team extra cheap
       raw = 5000 - (fieldRank - 7) * 1000;
     }
 
@@ -136,113 +132,115 @@ export function calcMlsjTeamSalaries(mlsjTeams) {
   });
 }
 
+// ───────────────────────── MLSJ Master Rider List ─────────────────────────
+// Every rider across all 8 MLSJ franchise rosters, flattened with a stable
+// integer id (1001+, clear of GCL's 1-230 range), default rank 999 (unranked
+// placeholder, same convention as GCL) and salary via the shared rankToSalary
+// curve. This is the MLSJ twin of PREVIEW_RIDERS_2026 — the Rankings import
+// tool updates rank/salary here the same way it does for GCL.
+//
+// id assignment is sequential by team then roster order below — DO NOT
+// reorder existing entries once ids are referenced in saved picks/results;
+// only append new riders at the end.
+
+export const MLSJ_PREVIEW_RIDERS = [
+  { id: 1001, name: 'Nicola Philippaerts', nat: '🇧🇪 Belgium', rank: 999, salary: rankToSalary(999), teamId: 'mt01' },
+  { id: 1002, name: 'Alex Matz', nat: '🇺🇸 USA', rank: 999, salary: rankToSalary(999), teamId: 'mt01' },
+  { id: 1003, name: 'Amy Millar', nat: '🇨🇦 Canada', rank: 999, salary: rankToSalary(999), teamId: 'mt01' },
+  { id: 1004, name: 'Callie Schott', nat: '🇺🇸 USA', rank: 999, salary: rankToSalary(999), teamId: 'mt01' },
+  { id: 1005, name: 'Aaron Vale', nat: '🇺🇸 USA', rank: 999, salary: rankToSalary(999), teamId: 'mt01' },
+  { id: 1006, name: 'Francisco Goyoaga Mollet', nat: '🇪🇸 Spain', rank: 999, salary: rankToSalary(999), teamId: 'mt01' },
+
+  { id: 1007, name: 'Natalie Dean', nat: '🇺🇸 USA', rank: 999, salary: rankToSalary(999), teamId: 'mt02' },
+  { id: 1008, name: 'Lillie Keenan', nat: '🇺🇸 USA', rank: 999, salary: rankToSalary(999), teamId: 'mt02' },
+  { id: 1009, name: 'Nayel Nassar', nat: '🇪🇬 Egypt', rank: 999, salary: rankToSalary(999), teamId: 'mt02' },
+  { id: 1010, name: 'Charlotte Jacobs', nat: '🇺🇸 USA', rank: 999, salary: rankToSalary(999), teamId: 'mt02' },
+  { id: 1011, name: 'Conor Swail', nat: '🇮🇪 Ireland', rank: 999, salary: rankToSalary(999), teamId: 'mt02' },
+  { id: 1012, name: 'Abdel Saïd', nat: '🇧🇪 Belgium', rank: 999, salary: rankToSalary(999), teamId: 'mt02' },
+
+  { id: 1013, name: 'Daniel Bluman', nat: '🇮🇱 Israel', rank: 999, salary: rankToSalary(999), teamId: 'mt03' },
+  { id: 1014, name: 'Mark Bluman', nat: '🇨🇴 Colombia', rank: 999, salary: rankToSalary(999), teamId: 'mt03' },
+  { id: 1015, name: "Uma O'Niell", nat: '🇳🇿 New Zealand', rank: 999, salary: rankToSalary(999), teamId: 'mt03' },
+  { id: 1016, name: 'Thaisa Erwin', nat: '🇦🇺 Australia', rank: 999, salary: rankToSalary(999), teamId: 'mt03' },
+  { id: 1017, name: 'Vanessa Hood', nat: '🇮🇱 Israel', rank: 999, salary: rankToSalary(999), teamId: 'mt03' },
+  { id: 1018, name: 'Gabriel de Matos Machado', nat: '🇧🇷 Brazil', rank: 999, salary: rankToSalary(999), teamId: 'mt03' },
+
+  { id: 1019, name: 'Kyle Timm', nat: '🇨🇦 Canada', rank: 999, salary: rankToSalary(999), teamId: 'mt04' },
+  { id: 1020, name: 'Cassidy Rein', nat: '🇨🇦 Canada', rank: 999, salary: rankToSalary(999), teamId: 'mt04' },
+  { id: 1021, name: 'Nina Mallevaey', nat: '🇫🇷 France', rank: 999, salary: rankToSalary(999), teamId: 'mt04' },
+  { id: 1022, name: 'Nikki Walker', nat: '🇨🇦 Canada', rank: 999, salary: rankToSalary(999), teamId: 'mt04' },
+  { id: 1023, name: 'Jessica Springsteen', nat: '🇺🇸 USA', rank: 999, salary: rankToSalary(999), teamId: 'mt04' },
+  { id: 1024, name: 'Kyle King', nat: '🇺🇸 USA', rank: 999, salary: rankToSalary(999), teamId: 'mt04' },
+
+  { id: 1025, name: 'Mclain Ward', nat: '🇺🇸 USA', rank: 999, salary: rankToSalary(999), teamId: 'mt05' },
+  { id: 1026, name: 'Kaitlin Campbell', nat: '🇺🇸 USA', rank: 999, salary: rankToSalary(999), teamId: 'mt05' },
+  { id: 1027, name: 'Erynn Ballard', nat: '🇨🇦 Canada', rank: 999, salary: rankToSalary(999), teamId: 'mt05' },
+  { id: 1028, name: 'Laura Kraut', nat: '🇺🇸 USA', rank: 999, salary: rankToSalary(999), teamId: 'mt05' },
+  { id: 1029, name: 'Gregory Wathelet', nat: '🇧🇪 Belgium', rank: 999, salary: rankToSalary(999), teamId: 'mt05' },
+  { id: 1030, name: 'Elisa Broz', nat: '🇺🇸 USA', rank: 999, salary: rankToSalary(999), teamId: 'mt05' },
+
+  { id: 1031, name: 'Jeanne Sadran', nat: '🇫🇷 France', rank: 999, salary: rankToSalary(999), teamId: 'mt06' },
+  { id: 1032, name: 'Jordan Coyle', nat: '🇮🇪 Ireland', rank: 999, salary: rankToSalary(999), teamId: 'mt06' },
+  { id: 1033, name: 'Skylar Wireman', nat: '🇺🇸 USA', rank: 999, salary: rankToSalary(999), teamId: 'mt06' },
+  { id: 1034, name: 'Marilyn Little', nat: '🇺🇸 USA', rank: 999, salary: rankToSalary(999), teamId: 'mt06' },
+  { id: 1035, name: 'Elena A Haas', nat: '🇺🇸 USA', rank: 999, salary: rankToSalary(999), teamId: 'mt06' },
+  { id: 1036, name: 'Eduardo Pereira De Menezes', nat: '🇧🇷 Brazil', rank: 999, salary: rankToSalary(999), teamId: 'mt06' },
+
+  { id: 1037, name: 'Roberto Teran', nat: '🇨🇴 Colombia', rank: 999, salary: rankToSalary(999), teamId: 'mt07' },
+  { id: 1038, name: 'Rene Dittmer', nat: '🇩🇪 Germany', rank: 999, salary: rankToSalary(999), teamId: 'mt07' },
+  { id: 1039, name: 'Tony Stormanns', nat: '🇩🇪 Germany', rank: 999, salary: rankToSalary(999), teamId: 'mt07' },
+  { id: 1040, name: 'Michael Duffy', nat: '🇮🇪 Ireland', rank: 999, salary: rankToSalary(999), teamId: 'mt07' },
+  { id: 1041, name: 'Genevieve Meyer', nat: '🇺🇸 USA', rank: 999, salary: rankToSalary(999), teamId: 'mt07' },
+  { id: 1042, name: 'Richard Vogel', nat: '🇩🇪 Germany', rank: 999, salary: rankToSalary(999), teamId: 'mt07' },
+
+  { id: 1043, name: 'Kent Farrington', nat: '🇺🇸 USA', rank: 999, salary: rankToSalary(999), teamId: 'mt08' },
+  { id: 1044, name: 'Cassio Rivetti', nat: '🇧🇷 Brazil', rank: 999, salary: rankToSalary(999), teamId: 'mt08' },
+  { id: 1045, name: "David O'Brien", nat: '🇮🇪 Ireland', rank: 999, salary: rankToSalary(999), teamId: 'mt08' },
+  { id: 1046, name: 'Stella Wasserman', nat: '🇺🇸 USA', rank: 999, salary: rankToSalary(999), teamId: 'mt08' },
+  { id: 1047, name: 'Mario Deslauriers', nat: '🇨🇦 Canada', rank: 999, salary: rankToSalary(999), teamId: 'mt08' },
+  { id: 1048, name: 'Rodrigo Pessoa', nat: '🇧🇷 Brazil', rank: 999, salary: rankToSalary(999), teamId: 'mt08' },
+];
+
 // ───────────────────────── MLSJ Teams (Season 6 roster pool) ─────────────────────────
-// Six to seven riders per franchise; team manager declares 3 for Round 1 each leg.
+// Rosters reference MLSJ_PREVIEW_RIDERS by id — single source of truth for
+// rider rank/salary lives in the master list above, not duplicated here.
 // Source: majorleagueshowjumping.com/teams (current as of this build).
 
 export const MLSJ_TEAMS_2026 = [
-  {
-    id: 'mt01', name: 'Archers',
-    roster: [
-      { name: 'Nicola Philippaerts', nat: '🇧🇪 Belgium' },
-      { name: 'Alex Matz', nat: '🇺🇸 USA' },
-      { name: 'Amy Millar', nat: '🇨🇦 Canada' },
-      { name: 'Callie Schott', nat: '🇺🇸 USA' },
-      { name: 'Aaron Vale', nat: '🇺🇸 USA' },
-      { name: 'Francisco Goyoaga Mollet', nat: '🇪🇸 Spain' },
-    ],
-  },
-  {
-    id: 'mt02', name: 'Trelawny Trailblazers',
-    roster: [
-      { name: 'Natalie Dean', nat: '🇺🇸 USA' },
-      { name: 'Lillie Keenan', nat: '🇺🇸 USA' },
-      { name: 'Nayel Nassar', nat: '🇪🇬 Egypt' },
-      { name: 'Charlotte Jacobs', nat: '🇺🇸 USA' },
-      { name: 'Conor Swail', nat: '🇮🇪 Ireland' },
-      { name: 'Abdel Saïd', nat: '🇧🇪 Belgium' },
-    ],
-  },
-  {
-    id: 'mt03', name: 'Maccabi United',
-    roster: [
-      { name: 'Daniel Bluman', nat: '🇮🇱 Israel' },
-      { name: 'Mark Bluman', nat: '🇨🇴 Colombia' },
-      { name: "Uma O'Niell", nat: '🇳🇿 New Zealand' },
-      { name: 'Thaisa Erwin', nat: '🇦🇺 Australia' },
-      { name: 'Vanessa Hood', nat: '🇮🇱 Israel' },
-      { name: 'Gabriel de Matos Machado', nat: '🇧🇷 Brazil' },
-    ],
-  },
-  {
-    id: 'mt04', name: 'Northern Lights',
-    roster: [
-      { name: 'Kyle Timm', nat: '🇨🇦 Canada' },
-      { name: 'Cassidy Rein', nat: '🇨🇦 Canada' },
-      { name: 'Nina Mallevaey', nat: '🇫🇷 France' },
-      { name: 'Nikki Walker', nat: '🇨🇦 Canada' },
-      { name: 'Jessica Springsteen', nat: '🇺🇸 USA' },
-      { name: 'Kyle King', nat: '🇺🇸 USA' },
-    ],
-  },
-  {
-    id: 'mt05', name: 'DIHP Roadrunners',
-    roster: [
-      { name: 'Mclain Ward', nat: '🇺🇸 USA' },
-      { name: 'Kaitlin Campbell', nat: '🇺🇸 USA' },
-      { name: 'Erynn Ballard', nat: '🇨🇦 Canada' },
-      { name: 'Laura Kraut', nat: '🇺🇸 USA' },
-      { name: 'Gregory Wathelet', nat: '🇧🇪 Belgium' },
-      { name: 'Elisa Broz', nat: '🇺🇸 USA' },
-    ],
-  },
-  {
-    id: 'mt06', name: 'Rainmakers',
-    roster: [
-      { name: 'Jeanne Sadran', nat: '🇫🇷 France' },
-      { name: 'Jordan Coyle', nat: '🇮🇪 Ireland' },
-      { name: 'Skylar Wireman', nat: '🇺🇸 USA' },
-      { name: 'Marilyn Little', nat: '🇺🇸 USA' },
-      { name: 'Elena A Haas', nat: '🇺🇸 USA' },
-      { name: 'Eduardo Pereira De Menezes', nat: '🇧🇷 Brazil' },
-    ],
-  },
-  {
-    id: 'mt07', name: 'Helios',
-    roster: [
-      { name: 'Roberto Teran', nat: '🇨🇴 Colombia' },
-      { name: 'Rene Dittmer', nat: '🇩🇪 Germany' },
-      { name: 'Tony Stormanns', nat: '🇩🇪 Germany' },
-      { name: 'Michael Duffy', nat: '🇮🇪 Ireland' },
-      { name: 'Genevieve Meyer', nat: '🇺🇸 USA' },
-      { name: 'Richard Vogel', nat: '🇩🇪 Germany' },
-    ],
-  },
-  {
-    id: 'mt08', name: 'Team KPF',
-    roster: [
-      { name: 'Kent Farrington', nat: '🇺🇸 USA' },
-      { name: 'Cassio Rivetti', nat: '🇧🇷 Brazil' },
-      { name: "David O'Brien", nat: '🇮🇪 Ireland' },
-      { name: 'Stella Wasserman', nat: '🇺🇸 USA' },
-      { name: 'Mario Deslauriers', nat: '🇨🇦 Canada' },
-      { name: 'Rodrigo Pessoa', nat: '🇧🇷 Brazil' },
-    ],
-  },
+  { id: 'mt01', name: 'Archers', rosterIds: [1001, 1002, 1003, 1004, 1005, 1006] },
+  { id: 'mt02', name: 'Trelawny Trailblazers', rosterIds: [1007, 1008, 1009, 1010, 1011, 1012] },
+  { id: 'mt03', name: 'Maccabi United', rosterIds: [1013, 1014, 1015, 1016, 1017, 1018] },
+  { id: 'mt04', name: 'Northern Lights', rosterIds: [1019, 1020, 1021, 1022, 1023, 1024] },
+  { id: 'mt05', name: 'DIHP Roadrunners', rosterIds: [1025, 1026, 1027, 1028, 1029, 1030] },
+  { id: 'mt06', name: 'Rainmakers', rosterIds: [1031, 1032, 1033, 1034, 1035, 1036] },
+  { id: 'mt07', name: 'Helios', rosterIds: [1037, 1038, 1039, 1040, 1041, 1042] },
+  { id: 'mt08', name: 'Team KPF', rosterIds: [1043, 1044, 1045, 1046, 1047, 1048] },
 ];
+
+// Helper: get a team's full roster as rider objects (id, name, nat, rank, salary)
+// joining against the master list. Use this anywhere you need "team X's riders"
+// rather than re-deriving from rosterIds by hand.
+export function getMlsjTeamRoster(teamId, riderList = MLSJ_PREVIEW_RIDERS) {
+  const team = MLSJ_TEAMS_2026.find(t => t.id === teamId);
+  if (!team) return [];
+  return team.rosterIds
+    .map(id => riderList.find(r => r.id === id))
+    .filter(Boolean);
+}
 
 // ───────────────────────── 2026-27 Schedule ─────────────────────────
 // supabaseKey format mirrors GCL: [city]_mlsj_[season]
-// rosterLockISO = night-before-event lock for GP rider draft AND team draft
-// (both open the night before their respective class; see status field)
+// gpLockISO / teamLockISO = night-before-event lock for GP rider draft and
+// Team Competition draft respectively (both open the night before their
+// respective class; see status field)
 
 export const MLSJ_EVENTS_2026_27 = [
   {
     id: 'toronto_mlsj_26', city: 'Toronto (Angelstone)', flag: '🇨🇦',
     dates: '3–5 Sep', dateLabel: '3–5 September 2026', status: 'future',
     supabaseKey: 'toronto_mlsj_26',
-    gpLockISO: '2026-09-04T23:00:00Z',   // night before GP
-    teamLockISO: '2026-09-04T23:00:00Z', // night before Team Competition (once R1 trios declared)
+    gpLockISO: '2026-09-04T23:00:00Z',
+    teamLockISO: '2026-09-04T23:00:00Z',
     gpRiders: [], teams: [],
   },
   {
@@ -308,7 +306,7 @@ export const MLSJ_EVENTS_2026_27 = [
     gpLockISO: '2027-05-01T23:00:00Z',
     teamLockISO: '2027-05-01T23:00:00Z',
     gpRiders: [], teams: [],
-    isFinal: true, // note for future: MLSJ doubles points at the Final — not yet implemented in scoreMlsjTeam
+    isFinal: true,
   },
 ];
 

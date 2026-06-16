@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MLSJ_TEAMS_2026, MLSJ_EVENTS_2026_27, sbFetch, scoreMlsjTeam } from '@/lib/mlsj-data';
+import { MLSJ_TEAMS_2026, MLSJ_EVENTS_2026_27, MLSJ_PREVIEW_RIDERS, sbFetch, scoreMlsjTeam } from '@/lib/mlsj-data';
 
 // Self-contained admin tab: picks its own MLSJ leg, no props required.
 // Usage: <MlsjResultsEditor />
@@ -9,19 +9,27 @@ export function MlsjResultsEditor() {
   const event = MLSJ_EVENTS_2026_27.find(e => e.id === eventId);
 
   const [results, setResults] = useState({}); // { [teamId]: {...} }
+  const [declaredTrioIds, setDeclaredTrioIds] = useState({});
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!event) return;
     (async () => {
       const rows = await sbFetch('results?event=eq.' + encodeURIComponent(event.supabaseKey) + '&limit=1');
-      if (rows && rows.length && rows[0].team_results) {
-        setResults(rows[0].team_results);
+      if (rows && rows.length) {
+        setResults(rows[0].team_results || {});
+        setDeclaredTrioIds(rows[0].declared_trio_ids || {});
       } else {
         setResults({});
+        setDeclaredTrioIds({});
       }
     })();
   }, [eventId]);
+
+  const trioNames = (teamId) => (declaredTrioIds[teamId] || [])
+    .map(id => MLSJ_PREVIEW_RIDERS.find(r => r.id === id)?.name)
+    .filter(Boolean)
+    .join(' · ');
 
   function updateTeam(teamId, patch) {
     setResults(prev => ({ ...prev, [teamId]: { ...prev[teamId], ...patch } }));
@@ -80,7 +88,12 @@ export function MlsjResultsEditor() {
         return (
           <div key={team.id} className="px-3 py-3 rounded space-y-2" style={{ background: 'var(--ep-card)', border: '1px solid rgba(180,149,48,0.2)' }}>
             <div className="flex items-center justify-between">
-              <div className="font-medium text-sm">{team.name}</div>
+              <div>
+                <div className="font-medium text-sm">{team.name}</div>
+                {trioNames(team.id) && (
+                  <div className="text-xs opacity-50">{trioNames(team.id)}</div>
+                )}
+              </div>
               <div className="text-xs" style={{ color: 'var(--gold-lt)' }}>{scoreMlsjTeam(r)} pts</div>
             </div>
 

@@ -9,10 +9,17 @@ import EventStatusEditor from '@/components/admin/EventStatusEditor';
 import TeamStandingsEditor from '@/components/admin/TeamStandingsEditor';
 import RoomsEditor from '@/components/admin/RoomsEditor';
 import NotificationsEditor from '@/components/admin/NotificationsEditor';
+import MlsjRankingsImport from '@/components/admin/MlsjRankingsImport';
+import MlsjStartListEditor from '@/components/admin/MlsjStartListEditor';
 import { MlsjResultsEditor } from '@/components/admin/MlsjResultsEditor';
-import { Lock, BarChart3, Users, ListOrdered, Trophy, ShieldHalf, CalendarCog, TrendingUp, DoorOpen, Bell, Medal } from 'lucide-react';
+import { Lock, BarChart3, Users, ListOrdered, Trophy, ShieldHalf, CalendarCog, TrendingUp, DoorOpen, Bell } from 'lucide-react';
 
-const TABS = [
+// Tabs that exist per-league — rendered differently based on the league toggle.
+// "Status", "Standings", legacy "Teams", and "Rooms" stay GCL-only for now
+// since MLSJ has no equivalent yet. "Rankings", "Start List", and "Results"
+// have real MLSJ twins below. MLSJ "Riders" was folded into Start List (trio
+// declaration + GP field) since that's the actual data-entry surface.
+const GCL_TABS = [
   { id: 'status', label: 'Status', icon: CalendarCog },
   { id: 'rankings', label: 'Rankings', icon: BarChart3 },
   { id: 'standings', label: 'Standings', icon: TrendingUp },
@@ -20,15 +27,44 @@ const TABS = [
   { id: 'riders', label: 'Riders', icon: Users },
   { id: 'startlist', label: 'Start List', icon: ListOrdered },
   { id: 'results', label: 'Results', icon: Trophy },
-  { id: 'mlsj-results', label: 'MLSJ Results', icon: Medal },
   { id: 'rooms', label: 'Rooms', icon: DoorOpen },
   { id: 'notifications', label: 'Notify', icon: Bell },
 ];
+
+const MLSJ_TABS = [
+  { id: 'rankings', label: 'Rankings', icon: BarChart3 },
+  { id: 'startlist', label: 'Start List', icon: ListOrdered },
+  { id: 'results', label: 'Results', icon: Trophy },
+  { id: 'notifications', label: 'Notify', icon: Bell },
+];
+
+function LeagueToggle({ league, onChange }) {
+  return (
+    <div className="flex items-center rounded overflow-hidden" style={{ border: '1px solid rgba(180,149,48,0.3)' }}>
+      {[{ id: 'gcl', label: 'GCL' }, { id: 'mlsj', label: 'MLSJ' }].map(l => (
+        <button
+          key={l.id}
+          onClick={() => onChange(l.id)}
+          className="font-cinzel text-xs px-3 py-1.5"
+          style={{
+            letterSpacing: '0.08em',
+            background: league === l.id ? 'var(--gold)' : 'transparent',
+            color: league === l.id ? 'var(--ink)' : 'var(--mid)',
+            border: 'none',
+          }}
+        >
+          {l.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export default function Admin() {
   const [password, setPassword] = useState('');
   const [authed, setAuthed] = useState(false);
   const [error, setError] = useState('');
+  const [league, setLeague] = useState('gcl'); // 'gcl' | 'mlsj'
   const [activeTab, setActiveTab] = useState('status');
 
   const handleLogin = (e) => {
@@ -37,6 +73,14 @@ export default function Admin() {
       setAuthed(true);
     } else {
       setError('Incorrect password');
+    }
+  };
+
+  const handleLeagueChange = (next) => {
+    setLeague(next);
+    const validTabs = next === 'gcl' ? GCL_TABS : MLSJ_TABS;
+    if (!validTabs.find(t => t.id === activeTab)) {
+      setActiveTab(validTabs[0].id);
     }
   };
 
@@ -64,11 +108,16 @@ export default function Admin() {
     );
   }
 
+  const TABS = league === 'gcl' ? GCL_TABS : MLSJ_TABS;
+
   return (
     <div className="min-h-screen" style={{ background: 'var(--ink)' }}>
       <div className="px-4 py-3 flex items-center justify-between"
         style={{ borderBottom: '1px solid var(--ep-border)', background: '#0a0907' }}>
-        <span className="font-cinzel text-sm tracking-widest" style={{ color: 'var(--gold)' }}>ADMIN PANEL</span>
+        <div className="flex items-center gap-3">
+          <span className="font-cinzel text-sm tracking-widest" style={{ color: 'var(--gold)' }}>ADMIN PANEL</span>
+          <LeagueToggle league={league} onChange={handleLeagueChange} />
+        </div>
         <button onClick={() => setAuthed(false)} className="text-xs font-cinzel tracking-widest" style={{ color: 'var(--mid)' }}>LOCK</button>
       </div>
 
@@ -89,16 +138,20 @@ export default function Admin() {
       </div>
 
       <div className="p-4">
-        {activeTab === 'status' && <EventStatusEditor />}
-        {activeTab === 'rankings' && <RankingsImport />}
-        {activeTab === 'standings' && <TeamStandingsEditor />}
-        {activeTab === 'teams' && <TeamsEditor />}
-        {activeTab === 'riders' && <RidersEditor />}
-        {activeTab === 'startlist' && <StartListEditor />}
-        {activeTab === 'results' && <ResultsEditor />}
-        {activeTab === 'mlsj-results' && <MlsjResultsEditor />}
-        {activeTab === 'rooms' && <RoomsEditor />}
-        {activeTab === 'notifications' && <NotificationsEditor />}
+        {league === 'gcl' && activeTab === 'status' && <EventStatusEditor />}
+        {league === 'gcl' && activeTab === 'rankings' && <RankingsImport />}
+        {league === 'gcl' && activeTab === 'standings' && <TeamStandingsEditor />}
+        {league === 'gcl' && activeTab === 'teams' && <TeamsEditor />}
+        {league === 'gcl' && activeTab === 'riders' && <RidersEditor />}
+        {league === 'gcl' && activeTab === 'startlist' && <StartListEditor />}
+        {league === 'gcl' && activeTab === 'results' && <ResultsEditor />}
+        {league === 'gcl' && activeTab === 'rooms' && <RoomsEditor />}
+        {league === 'gcl' && activeTab === 'notifications' && <NotificationsEditor />}
+
+        {league === 'mlsj' && activeTab === 'rankings' && <MlsjRankingsImport />}
+        {league === 'mlsj' && activeTab === 'startlist' && <MlsjStartListEditor />}
+        {league === 'mlsj' && activeTab === 'results' && <MlsjResultsEditor />}
+        {league === 'mlsj' && activeTab === 'notifications' && <NotificationsEditor />}
       </div>
     </div>
   );
