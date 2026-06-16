@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { MLSJ_TEAMS_2026, MLSJ_EVENTS_2026_27, MLSJ_PREVIEW_RIDERS, sbFetch, scoreMlsjTeam } from '@/lib/mlsj-data';
+import { MLSJ_TEAMS_2026, MLSJ_EVENTS_2026_27, sbFetch, scoreMlsjTeam } from '@/lib/mlsj-data';
+import { PREVIEW_RIDERS_2026 } from '@/lib/equiprix-data';
 
 // Self-contained admin tab: picks its own MLSJ leg, no props required.
 // Usage: <MlsjResultsEditor />
@@ -27,7 +28,7 @@ export function MlsjResultsEditor() {
   }, [eventId]);
 
   const trioNames = (teamId) => (declaredTrioIds[teamId] || [])
-    .map(id => MLSJ_PREVIEW_RIDERS.find(r => r.id === id)?.name)
+    .map(id => PREVIEW_RIDERS_2026.find(r => r.id === id)?.name)
     .filter(Boolean)
     .join(' · ');
 

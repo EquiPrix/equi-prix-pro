@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import {
-  MLSJ_EVENTS_2026_27, MLSJ_TEAMS_2026, MLSJ_PREVIEW_RIDERS,
+  MLSJ_EVENTS_2026_27, MLSJ_TEAMS_2026,
   getMlsjTeamRoster, sbFetch,
 } from '@/lib/mlsj-data';
+import { PREVIEW_RIDERS_2026 } from '@/lib/equiprix-data';
 import { Plus, X, Save } from 'lucide-react';
 
 function HorseInput({ riderName, value, onChange, horseDB, onAddHorse }) {
@@ -203,18 +204,18 @@ export default function MlsjStartListEditor() {
   const [loading, setLoading] = useState(false);
 
   // Latest rankings (rank/salary) — read once for the picker/trio displays.
-  const [riderList, setRiderList] = useState(MLSJ_PREVIEW_RIDERS);
+  // Pulls from the SAME fei_rankings row GCL's RankingsImport writes to.
+  const [riderList, setRiderList] = useState(PREVIEW_RIDERS_2026);
 
   const event = MLSJ_EVENTS_2026_27.find(e => e.id === selectedEventId);
 
   useEffect(() => {
-    sbFetch('results?event=eq.mlsj_rankings&limit=1').then(rows => {
+    sbFetch('results?event=eq.fei_rankings&limit=1').then(rows => {
       if (rows && rows.length && rows[0].gp_riders?.length) {
-        const updated = MLSJ_PREVIEW_RIDERS.map(r => ({ ...r }));
+        const updated = PREVIEW_RIDERS_2026.map(r => ({ ...r }));
         rows[0].gp_riders.forEach(sr => {
           const r = updated.find(pr => pr.id === sr.id);
           if (r && sr.rank) r.rank = sr.rank;
-          if (r && sr.salary) r.salary = sr.salary;
         });
         setRiderList(updated);
       }

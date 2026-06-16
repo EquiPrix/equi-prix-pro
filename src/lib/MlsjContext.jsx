@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import {
-  MLSJ_EVENTS_2026_27, MLSJ_TEAMS_2026, MLSJ_PREVIEW_RIDERS, sbFetch, calcMlsjTeamSalaries,
+  MLSJ_EVENTS_2026_27, MLSJ_TEAMS_2026, sbFetch, calcMlsjTeamSalaries,
 } from './mlsj-data';
+import { PREVIEW_RIDERS_2026 } from './equiprix-data';
 
 const MlsjContext = createContext(null);
 
@@ -15,7 +16,9 @@ export function MlsjProvider({ children }) {
 
   const [riders, setRiders] = useState([]);       // available GP riders for current event
   const [mlsjTeams, setMlsjTeams] = useState([]); // available MLSJ teams (priced) for current event
-  const [mlsjRiderRankings, setMlsjRiderRankings] = useState(MLSJ_PREVIEW_RIDERS); // updated by Rankings import
+  // Shared rider list (rank/salary) — same underlying data as GCL's rankings,
+  // since a rider's FEI rank doesn't change depending on which league reads it.
+  const [mlsjRiderRankings, setMlsjRiderRankings] = useState(PREVIEW_RIDERS_2026);
 
   const [isLoading, setIsLoading] = useState(true);
   const [toast, setToast] = useState(null);
@@ -26,10 +29,9 @@ export function MlsjProvider({ children }) {
     setTimeout(() => setToast(null), 2200);
   }, []);
 
-  // Build each team's declaredTrio with resolved rank (from latest rankings),
-  // then price by combined trio strength. Teams with no declared trio yet
-  // (declaredTrioIds missing/empty) fall back to a neutral "worst-case" price
-  // via calcMlsjTeamSalaries' default-strength branch.
+  // Build each team's declaredTrio with resolved rank (from latest shared
+  // rankings), then price by combined trio strength. Teams with no declared
+  // trio yet fall back to a neutral "worst-case" price via calcMlsjTeamSalaries.
   const getPricedTeams = (ev, riderList = mlsjRiderRankings) => {
     const declaredByTeam = ev.declaredTrioIds || {}; // { [teamId]: [id, id, id] }
     const withTrio = MLSJ_TEAMS_2026.map(team => {
@@ -67,15 +69,15 @@ export function MlsjProvider({ children }) {
 
   const loadEventData = useCallback(async () => {
     try {
-      // Shared rankings row (mirrors GCL's fei_rankings pattern) — updated by
-      // the MLSJ twin of RankingsImport. Stored as: { event: 'mlsj_rankings', gp_riders: [{id, rank}, ...] }
-      const rankRows = await sbFetch("results?event=eq.mlsj_rankings&limit=1");
-      let updatedRankings = MLSJ_PREVIEW_RIDERS.map(r => ({ ...r }));
+      // Shared rankings row — SAME row GCL's RankingsImport writes to
+      // (event = 'fei_rankings'). One upload updates every rider, in both
+      // leagues, since FEI rank doesn't depend on which league is reading it.
+      const rankRows = await sbFetch("results?event=eq.fei_rankings&limit=1");
+      let updatedRankings = PREVIEW_RIDERS_2026.map(r => ({ ...r }));
       if (rankRows && rankRows.length && rankRows[0].gp_riders?.length) {
         rankRows[0].gp_riders.forEach(sr => {
           const r = updatedRankings.find(pr => pr.id === sr.id);
           if (r && sr.rank) r.rank = sr.rank;
-          if (r && sr.salary) r.salary = sr.salary;
         });
       }
       setMlsjRiderRankings(updatedRankings);

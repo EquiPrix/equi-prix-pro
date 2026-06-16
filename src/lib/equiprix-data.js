@@ -278,7 +278,58 @@ export const PREVIEW_RIDERS_2026 = [
   { id: 227, name: "Julien Anquetin", nat: "🇫🇷 France", rank: 99, salary: 3000, region: "europe" },
   { id: 228, name: "Arthur Le Vot", nat: "🇫🇷 France", rank: 999, salary: 1000, region: "europe" },
   { id: 229, name: "Alexa Ferrer", nat: "🇫🇷 France", rank: 999, salary: 1000, region: "europe" },
-  { id: 230, name: "Jean-Luc Mourier", nat: "🇫🇷 France", rank: 999, salary: 1000, region: "europe" },
+  { id: 230, name: "Jean-Luc Mourier", nat: "🇫🇷 France", rank: 999, salary: 1000, region: "europe" },// ─────────────────────────────────────────────────────────────────
+// PASTE THIS BLOCK: append these 33 entries to the END of the
+// PREVIEW_RIDERS_2026 array in equiprix-data.js (just before the closing `];`).
+//
+// These are MLSJ-only riders who don't already exist in the GCL list.
+// 15 other MLSJ roster riders (Nicola Philippaerts, Aaron Vale, Nayel Nassar,
+// Abdel Saïd, Daniel Bluman, Nina Mallevaey, Mclain Ward, Kaitlin Campbell,
+// Erynn Ballard, Laura Kraut, Gregory Wathelet, Jeanne Sadran, Jordan Coyle,
+// Richard Vogel, Kent Farrington) already exist in PREVIEW_RIDERS_2026 under
+// their existing ids and are NOT duplicated here — mlsj-data.js's
+// MLSJ_TEAMS_2026 rosters reference those existing ids directly.
+//
+// region: "mlsj" is a new tag (distinct from "europe"/"americas") so these
+// riders are easy to filter/identify; it doesn't affect scoring or pricing.
+// rank: 999 / salary: 1000 are placeholders — run the MLSJ Rankings import
+// (or just the regular Rankings import now, since this is the SAME list) to
+// set real values.
+// ─────────────────────────────────────────────────────────────────
+
+  { id: 1001, name: "Alex Matz", nat: "🇺🇸 USA", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1002, name: "Amy Millar", nat: "🇨🇦 Canada", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1003, name: "Callie Schott", nat: "🇺🇸 USA", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1004, name: "Francisco Goyoaga Mollet", nat: "🇪🇸 Spain", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1005, name: "Natalie Dean", nat: "🇺🇸 USA", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1006, name: "Lillie Keenan", nat: "🇺🇸 USA", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1007, name: "Charlotte Jacobs", nat: "🇺🇸 USA", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1008, name: "Conor Swail", nat: "🇮🇪 Ireland", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1009, name: "Mark Bluman", nat: "🇨🇴 Colombia", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1010, name: "Uma O'Niell", nat: "🇳🇿 New Zealand", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1011, name: "Thaisa Erwin", nat: "🇦🇺 Australia", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1012, name: "Vanessa Hood", nat: "🇮🇱 Israel", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1013, name: "Gabriel de Matos Machado", nat: "🇧🇷 Brazil", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1014, name: "Kyle Timm", nat: "🇨🇦 Canada", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1015, name: "Cassidy Rein", nat: "🇨🇦 Canada", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1016, name: "Nikki Walker", nat: "🇨🇦 Canada", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1017, name: "Jessica Springsteen", nat: "🇺🇸 USA", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1018, name: "Kyle King", nat: "🇺🇸 USA", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1019, name: "Elisa Broz", nat: "🇺🇸 USA", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1020, name: "Skylar Wireman", nat: "🇺🇸 USA", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1021, name: "Marilyn Little", nat: "🇺🇸 USA", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1022, name: "Elena A Haas", nat: "🇺🇸 USA", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1023, name: "Eduardo Pereira De Menezes", nat: "🇧🇷 Brazil", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1024, name: "Roberto Teran", nat: "🇨🇴 Colombia", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1025, name: "Rene Dittmer", nat: "🇩🇪 Germany", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1026, name: "Tony Stormanns", nat: "🇩🇪 Germany", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1027, name: "Michael Duffy", nat: "🇮🇪 Ireland", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1028, name: "Genevieve Meyer", nat: "🇺🇸 USA", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1029, name: "Cassio Rivetti", nat: "🇧🇷 Brazil", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1030, name: "David O'Brien", nat: "🇮🇪 Ireland", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1031, name: "Stella Wasserman", nat: "🇺🇸 USA", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1032, name: "Mario Deslauriers", nat: "🇨🇦 Canada", rank: 999, salary: 1000, region: "mlsj" },
+  { id: 1033, name: "Rodrigo Pessoa", nat: "🇧🇷 Brazil", rank: 999, salary: 1000, region: "mlsj" },
 ];
 
 export const GCL_TEAMS_2026 = [
