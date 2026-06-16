@@ -39,10 +39,6 @@ export default function Splash() {
         if (error) throw error;
         if (data?.session) {
           localStorage.removeItem('ep_code');
-          // Offer to register passkey after successful password login
-          if (passkeySupported && !passkeyRegistered) {
-            registerPasskey(data.session);
-          }
           navigate(redirectTo);
         }
       }
@@ -65,7 +61,6 @@ export default function Splash() {
           The world's first fantasy platform for elite show jumping
         </p>
 
-        {/* Email/password form */}
         <form onSubmit={handleAuthAction} className="w-full flex flex-col gap-4 text-left">
           <div className="flex flex-col gap-1.5">
             <label className="text-2xs uppercase tracking-wider font-cinzel font-semibold" style={{ color: 'var(--gold-lt)' }}>
