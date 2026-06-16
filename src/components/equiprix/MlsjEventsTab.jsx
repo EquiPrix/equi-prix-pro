@@ -1,5 +1,5 @@
 import React from 'react';
-import { useMlsj } from '../../lib/MlsjContext';
+import { useMlsj } from '@/lib/MlsjContext';
 
 export function MlsjEventsTab({ onSelectEvent }) {
   const { events, currentEvent, selectEvent } = useMlsj();

@@ -1,11 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useEquiPrix } from '@/lib/EquiPrixContext';
+import { MlsjProvider, useMlsj } from '@/lib/MlsjContext';
 import GateScreen from '@/components/equiprix/GateScreen';
 import BottomNav from '@/components/equiprix/BottomNav';
 import EventsTab from '@/components/equiprix/EventsTab';
 import DraftTab from '@/components/equiprix/DraftTab';
 import ResultsTab from '@/components/equiprix/ResultsTab';
 import LeaderboardTab from '@/components/equiprix/LeaderboardTab';
+import { MlsjEventsTab } from '@/components/equiprix/MlsjEventsTab';
+import { MlsjDraftTab } from '@/components/equiprix/MlsjDraftTab';
+import { MlsjResultsTab } from '@/components/equiprix/MlsjResultsTab';
+import { MlsjLeaderboardTab } from '@/components/equiprix/MlsjLeaderboardTab';
 import AccountModal from '@/components/equiprix/AccountModal';
 import PWAInstallModal, { usePWAInstallModal } from '@/components/equiprix/PWAInstallModal';
 import PWABanner from '@/components/equiprix/PWABanner';
@@ -54,9 +59,40 @@ function CountdownBadge({ event }) {
   );
 }
 
-export default function EquiPrix() {
+// Small pill toggle between GCL and MLSJ — sits in the header next to the logo.
+function SeriesToggle({ series, onChange }) {
+  return (
+    <div className="flex items-center rounded overflow-hidden" style={{ border: '1px solid rgba(180,149,48,0.3)' }}>
+      {[{ id: 'gcl', label: 'GCL' }, { id: 'mlsj', label: 'MLSJ' }].map(s => (
+        <button
+          key={s.id}
+          onClick={() => onChange(s.id)}
+          className="font-cinzel text-xs px-2.5 py-1"
+          style={{
+            letterSpacing: '0.08em',
+            background: series === s.id ? 'var(--gold)' : 'transparent',
+            color: series === s.id ? '#0f0e0a' : 'var(--mid)',
+            border: 'none',
+          }}
+        >
+          {s.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function EquiPrixInner() {
   const { user } = useAuth();
   const { userCode, currentEvent, toast, logout, isLoading, loadSavedPicks } = useEquiPrix();
+  const {
+    currentEvent: mlsjCurrentEvent,
+    toast: mlsjToast,
+    isLoading: mlsjLoading,
+    loadSavedPicks: loadMlsjSavedPicks,
+  } = useMlsj();
+
+  const [series, setSeries] = useState('gcl'); // 'gcl' | 'mlsj'
   const [activeTab, setActiveTab] = useState('events');
   const [showAccount, setShowAccount] = useState(false);
   const { showModal: showPWAModal, dismiss: dismissPWAModal } = usePWAInstallModal();
@@ -64,15 +100,23 @@ export default function EquiPrix() {
   const activeUserIdentity = user?.email || userCode;
   const displayName = user?.user_metadata?.username || user?.email?.split('@')[0] || '';
 
+  // GCL saved-picks load (unchanged)
   useEffect(() => {
     if (activeUserIdentity && currentEvent && ['teams', 'riders', 'open'].includes(currentEvent.status)) {
       loadSavedPicks(activeUserIdentity, currentEvent);
     }
   }, [activeUserIdentity, currentEvent?.id]);
 
+  // MLSJ saved-picks load
+  useEffect(() => {
+    if (activeUserIdentity && mlsjCurrentEvent && ['teams', 'riders', 'open'].includes(mlsjCurrentEvent.status)) {
+      loadMlsjSavedPicks(activeUserIdentity, mlsjCurrentEvent);
+    }
+  }, [activeUserIdentity, mlsjCurrentEvent?.id]);
+
   if (!user) return <GateScreen />;
 
-  if (isLoading) {
+  if (isLoading || mlsjLoading) {
     return (
       <div className="fixed inset-0 flex items-center justify-center" style={{ background: 'var(--ink)' }}>
         <div className="text-center">
@@ -88,6 +132,9 @@ export default function EquiPrix() {
     else if (['teams', 'riders', 'open'].includes(ev.status)) setActiveTab('draft');
   };
 
+  const displayEvent = series === 'gcl' ? currentEvent : mlsjCurrentEvent;
+  const displayToast = series === 'gcl' ? toast : mlsjToast;
+
   return (
     <div className="flex flex-col h-screen overflow-hidden" style={{ background: 'var(--ink)', color: 'var(--ep-text)' }}>
       {/* Header */}
@@ -102,15 +149,16 @@ export default function EquiPrix() {
       >
         <div className="flex items-center gap-3">
           <EquiPrixLogo width={110} compact={true} />
-          {currentEvent && (
+          <SeriesToggle series={series} onChange={setSeries} />
+          {displayEvent && (
             <div className="font-cinzel text-xs" style={{ color: 'var(--mid)', letterSpacing: '0.1em' }}>
-              <span style={{ color: 'var(--gold-lt)' }}>{currentEvent.flag} {currentEvent.city}</span>
+              <span style={{ color: 'var(--gold-lt)' }}>{displayEvent.flag} {displayEvent.city}</span>
             </div>
           )}
         </div>
 
         <div className="flex items-center gap-2">
-          {currentEvent && <CountdownBadge event={currentEvent} />}
+          {displayEvent && <CountdownBadge event={displayEvent} />}
           {displayName && (
             <button onClick={() => setShowAccount(true)}
               className="font-cinzel text-xs px-2 py-1 rounded transition-all"
@@ -128,14 +176,19 @@ export default function EquiPrix() {
       </header>
 
       {/* PWA Banner */}
-      <PWABanner eventId={currentEvent?.id} />
+      <PWABanner eventId={displayEvent?.id} />
 
       {/* Main content */}
       <main className="flex-1 overflow-hidden flex flex-col">
-        {activeTab === 'events' && <EventsTab onSelectEvent={handleSelectEvent} />}
-        {activeTab === 'draft' && <DraftTab />}
-        {activeTab === 'results' && <ResultsTab />}
-        {activeTab === 'leaderboard' && <LeaderboardTab />}
+        {series === 'gcl' && activeTab === 'events' && <EventsTab onSelectEvent={handleSelectEvent} />}
+        {series === 'gcl' && activeTab === 'draft' && <DraftTab />}
+        {series === 'gcl' && activeTab === 'results' && <ResultsTab />}
+        {series === 'gcl' && activeTab === 'leaderboard' && <LeaderboardTab />}
+
+        {series === 'mlsj' && activeTab === 'events' && <MlsjEventsTab onSelectEvent={handleSelectEvent} />}
+        {series === 'mlsj' && activeTab === 'draft' && <MlsjDraftTab />}
+        {series === 'mlsj' && activeTab === 'results' && <MlsjResultsTab />}
+        {series === 'mlsj' && activeTab === 'leaderboard' && <MlsjLeaderboardTab />}
       </main>
 
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
@@ -144,15 +197,23 @@ export default function EquiPrix() {
       {showPWAModal && <PWAInstallModal onClose={dismissPWAModal} />}
 
       <AnimatePresence>
-        {toast && (
+        {displayToast && (
           <motion.div
             initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 40 }}
             className="fixed bottom-24 left-1/2 -translate-x-1/2 px-4 py-2 rounded z-50 text-sm pointer-events-none"
             style={{ background: 'var(--ep-card)', border: '1px solid var(--gold)', color: 'var(--gold-lt)', whiteSpace: 'nowrap' }}>
-            {toast}
+            {displayToast}
           </motion.div>
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+export default function EquiPrix() {
+  return (
+    <MlsjProvider>
+      <EquiPrixInner />
+    </MlsjProvider>
   );
 }

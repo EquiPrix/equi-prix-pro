@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { useMlsj } from '../../lib/MlsjContext';
-import { MLSJ_CAP, MLSJ_CPT_PREMIUM } from '../../lib/mlsj-data';
-import { fmt } from '../../lib/equiprix-data';
+import { useMlsj } from '@/lib/MlsjContext';
+import { MLSJ_CAP, MLSJ_CPT_PREMIUM } from '@/lib/mlsj-data';
+import { fmt } from '@/lib/equiprix-data';
 
 export function MlsjDraftTab() {
   const { currentEvent, riders, mlsjTeams, gpTeam, setGpTeam, teamPicks, setTeamPicks, userCode, savePicks, showToast } = useMlsj();

@@ -2,14 +2,12 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import {
   MLSJ_EVENTS_2026_27, MLSJ_TEAMS_2026, sbFetch, calcMlsjTeamSalaries,
 } from './mlsj-data';
-import { NAMES, VALID_CODES } from './equiprix-data';
 
 const MlsjContext = createContext(null);
 
 export function MlsjProvider({ children }) {
   const [events, setEvents] = useState(() => MLSJ_EVENTS_2026_27.map(e => ({ ...e })));
   const [currentEvent, setCurrentEventState] = useState(null);
-  const [userCode, setUserCode] = useState(() => localStorage.getItem('ep_code') || null);
 
   // Combined roster: GP riders (with captain) + 2 picked real MLSJ teams, single cap
   const [gpTeam, setGpTeam] = useState([]);       // [{ rider, slotId, isCpt }]
@@ -21,8 +19,6 @@ export function MlsjProvider({ children }) {
   const [isLoading, setIsLoading] = useState(true);
   const [toast, setToast] = useState(null);
   const hasAutoSelected = useRef(false);
-
-  const userName = userCode ? (NAMES[userCode] || (userCode === 'EQUIPRIX' || userCode === 'BETA2026' ? 'Beta User' : userCode)) : null;
 
   const showToast = useCallback((msg) => {
     setToast(msg);
@@ -120,11 +116,11 @@ export function MlsjProvider({ children }) {
     loadEventData();
   }, [loadEventData]);
 
-  const loadSavedPicks = useCallback(async (code, ev) => {
+  const loadSavedPicks = useCallback(async (identity, ev) => {
     if (!ev || !['preview', 'teams', 'riders', 'open'].includes(ev.status)) return;
     try {
       let rows = await sbFetch(
-        'mlsj_picks?access_code=eq.' + encodeURIComponent(code) + '&event=eq.' + ev.id + '&limit=1'
+        'mlsj_picks?user_email=eq.' + encodeURIComponent(identity) + '&event=eq.' + ev.id + '&limit=1'
       );
       if (!rows || !rows.length) return;
 
@@ -153,18 +149,18 @@ export function MlsjProvider({ children }) {
     }
   }, [showToast]);
 
-  const savePicks = useCallback(async (code, ev) => {
-    if (!code || !ev) return false;
+  const savePicks = useCallback(async (identity, ev) => {
+    if (!identity || !ev) return false;
     try {
       const body = [{
-        access_code: code,
+        user_email: identity,
         event: ev.id,
         picks_json: {
           riders: gpTeam.map(t => ({ id: t.rider.id, isCpt: !!t.isCpt })),
           teams: teamPicks.map(t => ({ id: t.id })),
         },
       }];
-      await sbFetch('mlsj_picks?on_conflict=access_code,event', {
+      await sbFetch('mlsj_picks?on_conflict=user_email,event', {
         method: 'POST',
         body: JSON.stringify(body),
       });
@@ -177,29 +173,10 @@ export function MlsjProvider({ children }) {
     }
   }, [gpTeam, teamPicks, showToast]);
 
-  const login = useCallback((code) => {
-    const upper = code.trim().toUpperCase();
-    const isNamedCode = VALID_CODES.includes(upper);
-    const isEqprixCode = /^EQPRIX\d{2}$/.test(upper);
-    const isDemoCode = upper === 'EQUIPRIX' || upper === 'BETA2026';
-    if (isNamedCode || isEqprixCode || isDemoCode) {
-      setUserCode(upper);
-      localStorage.setItem('ep_code', upper);
-      return true;
-    }
-    return false;
-  }, []);
-
-  const logout = useCallback(() => {
-    setUserCode(null);
-    localStorage.removeItem('ep_code');
-  }, []);
-
   return (
     <MlsjContext.Provider value={{
       events, setEvents,
       currentEvent, selectEvent,
-      userCode, userName, login, logout,
       gpTeam, setGpTeam,
       teamPicks, setTeamPicks,
       riders, setRiders,

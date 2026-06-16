@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { useMlsj } from '../../lib/MlsjContext';
-import { mlsjGpPosPts, scoreMlsjTeam } from '../../lib/mlsj-data';
-import { ordinal } from '../../lib/equiprix-data';
+import { useMlsj } from '@/lib/MlsjContext';
+import { mlsjGpPosPts, scoreMlsjTeam } from '@/lib/mlsj-data';
+import { ordinal } from '@/lib/equiprix-data';
 
 export function MlsjResultsTab() {
   const { currentEvent } = useMlsj();
