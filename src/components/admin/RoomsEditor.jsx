@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { EVENTS_2026, sbFetch } from '@/lib/equiprix-data';
 import { Copy, Check, Plus, Trash2, CheckCircle, XCircle, Clock } from 'lucide-react';
 
+// Numeric only - no letter/number ambiguity (0, 1, I, O, l all look different in digits)
 function generateCode() {
-  return Math.random().toString(36).substring(2, 8).toUpperCase();
+  return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
 export default function RoomsEditor() {
