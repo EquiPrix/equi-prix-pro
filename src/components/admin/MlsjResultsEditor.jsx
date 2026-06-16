@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { MLSJ_TEAMS_2026, sbFetch, scoreMlsjTeam } from '../../lib/mlsj-data';
+import { MLSJ_TEAMS_2026, MLSJ_EVENTS_2026_27, sbFetch, scoreMlsjTeam } from '@/lib/mlsj-data';
 
-// Drop this in alongside your existing admin tabs (e.g. as a tab in the same
-// password-gated admin panel that has TeamStandingsEditor / ResultsEditor).
-//
-// Usage: <MlsjResultsEditor event={currentEvent} />
+// Self-contained admin tab: picks its own MLSJ leg, no props required.
+// Usage: <MlsjResultsEditor />
 
-export function MlsjResultsEditor({ event }) {
+export function MlsjResultsEditor() {
+  const [eventId, setEventId] = useState(MLSJ_EVENTS_2026_27[0]?.id || '');
+  const event = MLSJ_EVENTS_2026_27.find(e => e.id === eventId);
+
   const [results, setResults] = useState({}); // { [teamId]: {...} }
   const [saving, setSaving] = useState(false);
 
@@ -20,7 +21,7 @@ export function MlsjResultsEditor({ event }) {
         setResults({});
       }
     })();
-  }, [event]);
+  }, [eventId]);
 
   function updateTeam(teamId, patch) {
     setResults(prev => ({ ...prev, [teamId]: { ...prev[teamId], ...patch } }));
@@ -43,23 +44,32 @@ export function MlsjResultsEditor({ event }) {
     }
   }
 
-  if (!event) return <div className="p-4 opacity-60">Select an event first.</div>;
-
   return (
     <div className="p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="font-cormorant text-lg" style={{ color: 'var(--gold-lt)' }}>
-          {event.city} — Team Competition Results
-        </h3>
+      <div className="flex items-center justify-between gap-3">
+        <select
+          value={eventId}
+          onChange={e => setEventId(e.target.value)}
+          className="bg-transparent border rounded px-2 py-1.5 text-sm flex-1"
+          style={{ borderColor: 'rgba(180,149,48,0.3)', color: 'var(--gold-lt)' }}
+        >
+          {MLSJ_EVENTS_2026_27.map(ev => (
+            <option key={ev.id} value={ev.id}>{ev.flag} {ev.city} — {ev.dates}</option>
+          ))}
+        </select>
         <button
           onClick={handleSave}
           disabled={saving}
-          className="px-3 py-1.5 rounded text-sm font-medium"
+          className="px-3 py-1.5 rounded text-sm font-medium whitespace-nowrap"
           style={{ background: 'var(--gold)', color: '#0f0e0a' }}
         >
           {saving ? 'Saving…' : 'Save Results'}
         </button>
       </div>
+
+      <h3 className="font-cormorant text-lg" style={{ color: 'var(--gold-lt)' }}>
+        {event?.city} — Team Competition Results
+      </h3>
 
       <div className="text-xs opacity-60 mb-2">
         R1 place 1-4 = advanced; 5-8 = eliminated. R2 side only applies if advanced. Final result only applies if reached Round 3.

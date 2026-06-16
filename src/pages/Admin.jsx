@@ -9,7 +9,8 @@ import EventStatusEditor from '@/components/admin/EventStatusEditor';
 import TeamStandingsEditor from '@/components/admin/TeamStandingsEditor';
 import RoomsEditor from '@/components/admin/RoomsEditor';
 import NotificationsEditor from '@/components/admin/NotificationsEditor';
-import { Lock, BarChart3, Users, ListOrdered, Trophy, ShieldHalf, CalendarCog, TrendingUp, DoorOpen, Bell } from 'lucide-react';
+import { MlsjResultsEditor } from '@/components/admin/MlsjResultsEditor';
+import { Lock, BarChart3, Users, ListOrdered, Trophy, ShieldHalf, CalendarCog, TrendingUp, DoorOpen, Bell, Medal } from 'lucide-react';
 
 const TABS = [
   { id: 'status', label: 'Status', icon: CalendarCog },
@@ -19,6 +20,7 @@ const TABS = [
   { id: 'riders', label: 'Riders', icon: Users },
   { id: 'startlist', label: 'Start List', icon: ListOrdered },
   { id: 'results', label: 'Results', icon: Trophy },
+  { id: 'mlsj-results', label: 'MLSJ Results', icon: Medal },
   { id: 'rooms', label: 'Rooms', icon: DoorOpen },
   { id: 'notifications', label: 'Notify', icon: Bell },
 ];
@@ -94,6 +96,7 @@ export default function Admin() {
         {activeTab === 'riders' && <RidersEditor />}
         {activeTab === 'startlist' && <StartListEditor />}
         {activeTab === 'results' && <ResultsEditor />}
+        {activeTab === 'mlsj-results' && <MlsjResultsEditor />}
         {activeTab === 'rooms' && <RoomsEditor />}
         {activeTab === 'notifications' && <NotificationsEditor />}
       </div>
