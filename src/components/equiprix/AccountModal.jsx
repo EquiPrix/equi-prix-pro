@@ -40,15 +40,26 @@ export default function AccountModal({ onClose }) {
     setSaving(true);
     setError('');
     try {
+      const trimmed = username.trim();
       const { error } = await supabase.auth.updateUser({
-        data: { username: username.trim() }
+        data: { username: trimmed }
       });
       if (error) throw error;
 
-      // Also update in user_profiles
+      // Update user_profiles
       await supabase.from('user_profiles')
-        .upsert({ email: user.email, username: username.trim(), updated_at: new Date().toISOString() },
+        .upsert({ email: user.email, username: trimmed, updated_at: new Date().toISOString() },
           { onConflict: 'email' });
+
+      // Update existing picks rows so leaderboard reflects the new name
+      await supabase.from('picks')
+        .update({ username: trimmed })
+        .eq('access_code', user.email);
+
+      // Update room_members rows so room leaderboards reflect the new name
+      await supabase.from('room_members')
+        .update({ username: trimmed })
+        .eq('user_email', user.email);
 
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
