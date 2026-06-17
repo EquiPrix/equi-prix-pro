@@ -11,8 +11,15 @@ const EquiPrixContext = createContext(null);
 // for rank/pts, which could silently drift out of sync with real results.
 // Salary remains a separate, genuinely manual override (still read from the
 // team_salaries row), since pricing is a draft decision, not a result.
-export async function computeLiveGclStandings() {
-  const pastEvents = EVENTS_2026.filter(e => e.status === 'past');
+//
+// IMPORTANT: takes the live `events` array (with Supabase status overrides
+// already merged in) as a parameter — NOT the static EVENTS_2026 import,
+// which never reflects status changes made via the admin Status tab. Pass
+// the `events` state from EquiPrixContext (or fetch it fresh) when calling
+// this from outside the provider, e.g. from TeamStandingsEditor.
+export async function computeLiveGclStandings(eventsList) {
+  const sourceEvents = eventsList || EVENTS_2026;
+  const pastEvents = sourceEvents.filter(e => e.status === 'past');
   const teamTotals = {};
 
   for (const ev of pastEvents) {
@@ -92,9 +99,35 @@ export function EquiPrixProvider({ children }) {
 
   const loadEventData = useCallback(async () => {
     try {
-      // Compute live GCL rank/pts/wins from actual entered results — this
-      // is the single source of truth now, not a hand-maintained Supabase row.
-      const liveStandings = await computeLiveGclStandings();
+      // Build the live events list FIRST (with Supabase status overrides
+      // merged in) — standings computation below depends on knowing which
+      // events are ACTUALLY 'past' right now, not just what the static
+      // EVENTS_2026 file says.
+      const rows = await sbFetch('results?select=event,event_status,gp_riders,preview_riders,team_lock_iso,gp_lock_iso');
+
+      let updatedEvents = EVENTS_2026.map(e => ({ ...e }));
+
+      if (rows && rows.length) {
+        updatedEvents = updatedEvents.map(ev => {
+          const row = rows.find(r => r.event === ev.supabaseKey);
+          if (!row) return ev;
+          return {
+            ...ev,
+            ...(row.event_status ? { status: row.event_status } : {}),
+            ...(row.team_lock_iso ? { teamLockISO: row.team_lock_iso } : {}),
+            ...(row.gp_lock_iso ? { gpLockISO: row.gp_lock_iso } : {}),
+            ...(!ev.gpRiders?.length && row.gp_riders?.length ? { gpRiders: row.gp_riders } : {}),
+            ...(row.preview_riders?.length ? { previewRiders: row.preview_riders } : {}),
+          };
+        });
+      }
+
+      setEvents(updatedEvents);
+
+      // Compute live GCL rank/pts/wins from actual entered results, using
+      // the SAME live-status event list the rest of the app now uses — this
+      // is the single source of truth, not a hand-maintained Supabase row.
+      const liveStandings = await computeLiveGclStandings(updatedEvents);
       liveStandings.forEach(({ id, rank, pts }) => {
         const t = GCL_TEAMS_2026.find(x => x.id === id);
         if (t) { t.rank = rank; t.pts = pts; }
@@ -121,27 +154,6 @@ export function EquiPrixProvider({ children }) {
           // Note: salary is now calculated dynamically, not stored
         });
       }
-
-      const rows = await sbFetch('results?select=event,event_status,gp_riders,preview_riders,team_lock_iso,gp_lock_iso');
-
-      let updatedEvents = EVENTS_2026.map(e => ({ ...e }));
-
-      if (rows && rows.length) {
-        updatedEvents = updatedEvents.map(ev => {
-          const row = rows.find(r => r.event === ev.supabaseKey);
-          if (!row) return ev;
-          return {
-            ...ev,
-            ...(row.event_status ? { status: row.event_status } : {}),
-            ...(row.team_lock_iso ? { teamLockISO: row.team_lock_iso } : {}),
-            ...(row.gp_lock_iso ? { gpLockISO: row.gp_lock_iso } : {}),
-            ...(!ev.gpRiders?.length && row.gp_riders?.length ? { gpRiders: row.gp_riders } : {}),
-            ...(row.preview_riders?.length ? { previewRiders: row.preview_riders } : {}),
-          };
-        });
-      }
-
-      setEvents(updatedEvents);
 
       if (!hasAutoSelected.current) {
         hasAutoSelected.current = true;

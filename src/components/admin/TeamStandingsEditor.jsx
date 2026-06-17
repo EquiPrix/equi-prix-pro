@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { GCL_TEAMS_2026, sbFetch } from '@/lib/equiprix-data';
+import { GCL_TEAMS_2026, EVENTS_2026, sbFetch } from '@/lib/equiprix-data';
 import { computeLiveGclStandings } from '@/lib/EquiPrixContext';
 import { Save } from 'lucide-react';
 
@@ -17,12 +17,24 @@ export default function TeamStandingsEditor() {
   // Leaderboard's GCL Standings tab) and merge with whatever salary is
   // currently saved in the team_salaries row. Rank/pts are NEVER
   // hand-edited here anymore — they're a read-only reflection of results.
+  //
+  // This admin page is standalone (no EquiPrixProvider), so it has to fetch
+  // and merge the live event-status overrides itself, the same way
+  // EquiPrixContext's loadEventData does — otherwise computeLiveGclStandings
+  // would silently fall back to the static EVENTS_2026 file, which can be
+  // stale if an event's status was changed via the admin Status tab.
   useEffect(() => {
     (async () => {
       setLoading(true);
       try {
+        const statusRows = await sbFetch('results?select=event,event_status');
+        const liveEvents = EVENTS_2026.map(ev => {
+          const row = statusRows?.find(r => r.event === ev.supabaseKey);
+          return row?.event_status ? { ...ev, status: row.event_status } : ev;
+        });
+
         const [liveStandings, salRows] = await Promise.all([
-          computeLiveGclStandings(),
+          computeLiveGclStandings(liveEvents),
           sbFetch('results?event=eq.team_salaries&limit=1'),
         ]);
 

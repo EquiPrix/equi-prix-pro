@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useEquiPrix } from '@/lib/EquiPrixContext';
+import { computeLiveGclStandings } from '@/lib/EquiPrixContext';
 import { useAuth } from '@/lib/AuthContext';
 import {
-  sbFetch, ordinal, gclStagePts, gpPosPts, teamPosPts,
+  sbFetch, ordinal, gpPosPts, teamPosPts,
   GCL_TEAMS_2026, EVENTS_2026, PREVIEW_RIDERS_2026,
   CAP, CPT_PREMIUM, CAPTAIN_MULT, fmt
 } from '@/lib/equiprix-data';
@@ -141,26 +142,11 @@ export default function LeaderboardTab() {
   const loadGCLStandings = async () => {
     setLoading(true);
     try {
-      const pastEvents = events.filter(e => e.status === 'past');
-      const teamTotals = {};
-      for (const ev of pastEvents) {
-        const rows = await sbFetch('results?event=eq.' + ev.supabaseKey + '&limit=1') || [];
-        if (!rows.length) continue;
-        const tr = rows[0].team_results || {};
-        Object.entries(tr).forEach(([id, raw]) => {
-          const pos = typeof raw === 'object' ? raw.finalPos : raw;
-          const el = typeof raw === 'object' && (raw.el || raw.el2);
-          if (!pos && !el) return;
-          const pts = el ? 0 : gclStagePts(pos);
-          if (!teamTotals[id]) teamTotals[id] = { pts: 0, wins: 0, events: 0 };
-          teamTotals[id].pts += pts; teamTotals[id].events++;
-          if (pos === 1) teamTotals[id].wins++;
-        });
-      }
-      setGclRows(Object.entries(teamTotals).map(([id, data]) => {
+      const liveStandings = await computeLiveGclStandings(events);
+      setGclRows(liveStandings.map(({ id, pts, wins, events: evCount }) => {
         const t = GCL_TEAMS_2026.find(x => x.id === id) || { id, name: 'Team ' + id };
-        return { t, ...data };
-      }).sort((a, b) => b.pts - a.pts || b.wins - a.wins));
+        return { t, pts, wins, events: evCount };
+      }));
     } catch (e) { console.error(e); } finally { setLoading(false); }
   };
 
