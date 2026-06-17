@@ -317,12 +317,14 @@ function TeamFinalResults({ teamResults, displayTeams }) {
     const r2Time = typeof raw === 'object' ? (raw.r2Time ?? null) : null;
     const madeR2 = r2Faults != null;
     const combined = madeR2 ? r2Faults : null;
-    // FIXED: eliminated/retired teams now score points for their actual
-    // computed rank, same as any other team — elimination affects WHERE
-    // they rank (via calcFinalPositions' tiering), not whether they score
-    // once a rank is assigned. Previously this zeroed out points for any
-    // el team regardless of final position.
-    const pts = gclStagePts(pos);
+    // Per official GCL Rule 5.22: a team eliminated/retired in ROUND 1
+    // (never reached R2 — no r2Faults present) scores ZERO points and
+    // takes last place in that round's classification. A team eliminated/
+    // retired in ROUND 2 (reached R2, has r2Faults) still scores points
+    // for whatever rank they land at via calcFinalPositions' tiering — the
+    // rule only dictates placement for R2-EL teams, not point exclusion.
+    const isR1OnlyElimination = (ret || el) && !madeR2;
+    const pts = isR1OnlyElimination ? 0 : gclStagePts(pos);
     return { t, pos, ret, el, madeR2, combined, r2Time, pts };
   }).sort((a, b) => (a.pos || 999) - (b.pos || 999));
 

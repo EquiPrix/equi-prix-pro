@@ -35,9 +35,16 @@ export async function computeLiveGclStandings(eventsList) {
     const tr = rows[0].team_results || {};
     Object.entries(tr).forEach(([id, raw]) => {
       const pos = typeof raw === 'object' ? raw.finalPos : raw;
+      const ret = typeof raw === 'object' && raw.ret;
       const el = typeof raw === 'object' && (raw.el || raw.el2);
-      if (!pos && !el) return;
-      const pts = el ? 0 : gclStagePts(pos);
+      const madeR2 = typeof raw === 'object' && raw.r2Faults != null;
+      if (!pos && !el && !ret) return;
+      // Per official GCL Rule 5.22: R1-only elimination/retirement (never
+      // reached R2) scores zero points. R2 elimination/retirement still
+      // scores for whatever rank was assigned — the rule only dictates
+      // placement, not point exclusion, once a team has reached Round 2.
+      const isR1OnlyElimination = (ret || el) && !madeR2;
+      const pts = isR1OnlyElimination ? 0 : gclStagePts(pos);
       if (!teamTotals[id]) teamTotals[id] = { pts: 0, wins: 0, events: 0 };
       teamTotals[id].pts += pts;
       teamTotals[id].events++;
