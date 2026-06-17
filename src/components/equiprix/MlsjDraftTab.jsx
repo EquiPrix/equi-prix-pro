@@ -2,7 +2,6 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import {
   MLSJ_EVENTS_2026_27, MLSJ_TEAMS_2026, sbFetch, calcMlsjTeamSalaries,
 } from './mlsj-data';
-import { PREVIEW_RIDERS_2026 } from './equiprix-data';
 
 const MlsjContext = createContext(null);
 
