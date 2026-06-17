@@ -110,11 +110,6 @@ export function MlsjDraftTab() {
     if (!isTeamLocked()) setTeamPicks([]);
   };
 
-  const handleManualSave = () => {
-    if (!userCode) { showToast('Log in first'); return; }
-    doSavePicks();
-  };
-
   if (!ev) {
     return (
       <div className="flex-1 flex items-center justify-center" style={{ color: 'var(--mid)' }}>
@@ -302,13 +297,6 @@ export function MlsjDraftTab() {
                   : 'Empty'
               }
             </span>
-            <button
-              onClick={handleManualSave}
-              className="text-xs px-2 py-1 rounded font-cinzel"
-              style={{ background: 'var(--gold)', color: '#0f0e0a', letterSpacing: '0.06em' }}
-            >
-              SAVE
-            </button>
           </div>
         </div>
 
