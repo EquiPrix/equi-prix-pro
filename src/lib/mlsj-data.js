@@ -103,14 +103,14 @@ export function calcMlsjTeamSalaries(mlsjTeams) {
 // Source: majorleagueshowjumping.com/teams.
 
 export const MLSJ_TEAMS_2026 = [
-  { id: 'mt01', name: 'Archers', rosterIds: [116, 1001, 1002, 1003, 222, 1004] },
-  { id: 'mt02', name: 'Trelawny Trailblazers', rosterIds: [1005, 1006, 124, 1007, 1008, 202] },
-  { id: 'mt03', name: 'Maccabi United', rosterIds: [215, 1009, 1010, 1011, 1012, 1013] },
-  { id: 'mt04', name: 'Northern Lights', rosterIds: [1014, 1015, 213, 1016, 1017, 1018] },
-  { id: 'mt05', name: 'DIHP Roadrunners', rosterIds: [216, 168, 220, 204, 207, 1019] },
-  { id: 'mt06', name: 'Rainmakers', rosterIds: [148, 223, 1020, 1021, 1022, 1023] },
-  { id: 'mt07', name: 'Helios', rosterIds: [1024, 1025, 1026, 1027, 1028, 211] },
-  { id: 'mt08', name: 'Team KPF', rosterIds: [203, 1029, 1030, 1031, 1032, 1033] },
+  { id: 'mt01', name: 'Archers', rosterIds: [116, 1001, 1002, 1003, 222, 1004], rank: 1, pts: 0, salary: 7500 },
+  { id: 'mt02', name: 'Trelawny Trailblazers', rosterIds: [1005, 1006, 124, 1007, 1008, 202], rank: 2, pts: 0, salary: 7500 },
+  { id: 'mt03', name: 'Maccabi United', rosterIds: [215, 1009, 1010, 1011, 1012, 1013], rank: 3, pts: 0, salary: 7500 },
+  { id: 'mt04', name: 'Northern Lights', rosterIds: [1014, 1015, 213, 1016, 1017, 1018], rank: 4, pts: 0, salary: 7500 },
+  { id: 'mt05', name: 'DIHP Roadrunners', rosterIds: [216, 168, 220, 204, 207, 1019], rank: 5, pts: 0, salary: 7500 },
+  { id: 'mt06', name: 'Rainmakers', rosterIds: [148, 223, 1020, 1021, 1022, 1023], rank: 6, pts: 0, salary: 7500 },
+  { id: 'mt07', name: 'Helios', rosterIds: [1024, 1025, 1026, 1027, 1028, 211], rank: 7, pts: 0, salary: 7500 },
+  { id: 'mt08', name: 'Team KPF', rosterIds: [203, 1029, 1030, 1031, 1032, 1033], rank: 8, pts: 0, salary: 7500 },
 ];
 
 // Helper: get a team's full roster as rider objects, joining against the

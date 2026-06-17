@@ -9,17 +9,16 @@ import EventStatusEditor from '@/components/admin/EventStatusEditor';
 import TeamStandingsEditor from '@/components/admin/TeamStandingsEditor';
 import RoomsEditor from '@/components/admin/RoomsEditor';
 import NotificationsEditor from '@/components/admin/NotificationsEditor';
+import MlsjEventStatusEditor from '@/components/admin/MlsjEventStatusEditor';
+import MlsjStandingsEditor from '@/components/admin/MlsjStandingsEditor';
 import MlsjStartListEditor from '@/components/admin/MlsjStartListEditor';
 import { MlsjResultsEditor } from '@/components/admin/MlsjResultsEditor';
 import { Lock, BarChart3, Users, ListOrdered, Trophy, ShieldHalf, CalendarCog, TrendingUp, DoorOpen, Bell } from 'lucide-react';
 
 // Tabs that exist per-league — rendered differently based on the league toggle.
-// "Status", "Standings", legacy "Teams", and "Rooms" stay GCL-only for now
-// since MLSJ has no equivalent yet. "Start List" and "Results" have real
-// MLSJ twins below. There is NO separate MLSJ "Rankings" tab — rider rank/
-// salary is a single shared list across both leagues (a rider's real FEI
-// rank doesn't change depending on which league you're looking at), so the
-// one Rankings tab under GCL covers every rider in both leagues.
+// Legacy GCL "Teams" (unused squad/horse editor) and "Rooms" stay GCL-only.
+// There is NO separate MLSJ "Rankings" tab — rider rank/salary is a single
+// shared list across both leagues, covered by the one Rankings tab under GCL.
 const GCL_TABS = [
   { id: 'status', label: 'Status', icon: CalendarCog },
   { id: 'rankings', label: 'Rankings', icon: BarChart3 },
@@ -33,6 +32,8 @@ const GCL_TABS = [
 ];
 
 const MLSJ_TABS = [
+  { id: 'status', label: 'Status', icon: CalendarCog },
+  { id: 'standings', label: 'Standings', icon: TrendingUp },
   { id: 'startlist', label: 'Start List', icon: ListOrdered },
   { id: 'results', label: 'Results', icon: Trophy },
   { id: 'notifications', label: 'Notify', icon: Bell },
@@ -148,6 +149,8 @@ export default function Admin() {
         {league === 'gcl' && activeTab === 'rooms' && <RoomsEditor />}
         {league === 'gcl' && activeTab === 'notifications' && <NotificationsEditor />}
 
+        {league === 'mlsj' && activeTab === 'status' && <MlsjEventStatusEditor />}
+        {league === 'mlsj' && activeTab === 'standings' && <MlsjStandingsEditor />}
         {league === 'mlsj' && activeTab === 'startlist' && <MlsjStartListEditor />}
         {league === 'mlsj' && activeTab === 'results' && <MlsjResultsEditor />}
         {league === 'mlsj' && activeTab === 'notifications' && <NotificationsEditor />}
