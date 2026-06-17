@@ -138,8 +138,20 @@ function calcFinalPositions(teams, teamResults) {
       const r1Faults = d.r1Faults !== '' && d.r1Faults !== undefined ? Number(d.r1Faults) : 0;
       const r2Faults = d.r2Faults !== '' && d.r2Faults !== undefined ? Number(d.r2Faults) : null;
       const r2Time = d.r2Time !== '' && d.r2Time !== undefined ? Number(d.r2Time) : null;
-      const didR2 = r2Faults !== null || !!d.r2Ret || !!d.r2El;
-      const isR2Failed = didR2 && (!!d.r2Ret || !!d.r2El);
+      const hasR2Data = r2Faults !== null || r2Time !== null || (d.r2Riders && d.r2Riders.length > 0);
+      // A team only counts as "reached R2" if there's actual R2 data
+      // present (faults, time, or riders) — not just because the shared
+      // ret/el flag happens to be set, which could be left over from an
+      // R1-only elimination with no R2 attempt at all.
+      const didR2 = hasR2Data || (r2Faults !== null && (!!d.ret || !!d.el));
+      // FIXED: the RET/EL toggles in TeamRoundEditor write to d.ret/d.el
+      // (shared between R1 and R2 — whichever toggle was clicked last),
+      // NOT d.r2Ret/d.r2El, which never get set by anything. This was
+      // silently breaking R2-EL/RET tiering: a team like Doha Falcons
+      // (eliminated in R2) was falling through into Tier 0 and getting
+      // ranked as if it were a clean finisher, just sorted by its low
+      // fault count — which is exactly how it ended up ranked #2.
+      const isR2Failed = didR2 && (!!d.ret || !!d.el);
       const totalFaults = r2Faults !== null ? r2Faults : (didR2 ? 9999 : r1Faults);
       return { id: team.id, didR2, isR2Failed, totalFaults, r2Time: r2Time ?? 9999, r1Faults };
     });
@@ -190,8 +202,8 @@ function FinalEditor({ teams, data }) {
         // r2F is already the cumulative total — display it directly as the
         // team's overall total once they've reached R2.
         const totalF = r2F !== null ? r2F : r1F;
-        const hasR2 = r2F !== null || !!d.r2Ret || !!d.r2El;
-        const flag = d.r2Ret ? ' RET' : d.r2El ? ' EL' : '';
+        const hasR2 = r2F !== null || !!d.ret || !!d.el;
+        const flag = d.ret ? ' RET' : d.el ? ' EL' : '';
 
         return (
           <div key={team.id} className="grid grid-cols-12 items-center gap-2 px-3 py-2.5 rounded"
