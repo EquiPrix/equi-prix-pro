@@ -129,8 +129,8 @@ function EquiPrixInner() {
 
   const handleSelectEvent = (ev) => {
     if (ev.status === 'past') setActiveTab('results');
-    else if (['teams', 'riders', 'open'].includes(ev.status)) setActiveTab('draft');
-    else if (['preview', 'live'].includes(ev.status)) setActiveTab('leaderboard');
+    else if (ev.status === 'future' || ev.status === 'cancelled') return; // nothing open yet, stay put
+    else setActiveTab('draft'); // teams, riders, preview, live, open — anything currently active
   };
 
   const displayEvent = series === 'gcl' ? currentEvent : mlsjCurrentEvent;
