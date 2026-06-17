@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useEquiPrix } from '@/lib/EquiPrixContext';
-import { sbFetch, fmt, gclStagePts, GCL_TEAMS_2026, PREVIEW_RIDERS_2026 } from '@/lib/equiprix-data';
+import { sbFetch, fmt, GCL_TEAMS_2026, PREVIEW_RIDERS_2026 } from '@/lib/equiprix-data';
 import { motion } from 'framer-motion';
 
 const SUB_TABS = [
@@ -303,29 +303,25 @@ function TeamRoundResults({ teamResults, displayTeams, round }) {
   );
 }
 
-// FIXED: r2Faults is the CUMULATIVE R1+R2 total already (that's how it's
-// read off the PDF scoreboards) — the old `combined = r1Faults + r2Faults`
-// was double-counting Round 1. Now combined = r2Faults alone.
+// GCL points are no longer computed or shown here. The per-event Final
+// tab is now purely a record of what happened on the field (position,
+// faults, time, R2/RET/EL status) — cumulative GCL points and team rank
+// are entered manually on the Leaderboard tab and live there only, so
+// there's a single source of truth instead of two numbers that can drift
+// apart.
 function TeamFinalResults({ teamResults, displayTeams }) {
   const entries = Object.entries(teamResults).map(([id, raw]) => {
     const t = displayTeams.find(x => x.id === id) || { id, name: 'Team ' + id };
     const pos = typeof raw === 'object' ? (raw.finalPos || null) : raw;
     const ret = typeof raw === 'object' ? (raw.ret || false) : false;
     const el = typeof raw === 'object' ? (raw.el || false) : false;
-    const r1Faults = typeof raw === 'object' ? (raw.r1Faults ?? null) : null;
     const r2Faults = typeof raw === 'object' ? (raw.r2Faults ?? null) : null;
     const r2Time = typeof raw === 'object' ? (raw.r2Time ?? null) : null;
     const madeR2 = r2Faults != null;
+    // r2Faults is the CUMULATIVE R1+R2 total already (that's how it's read
+    // off the PDF scoreboards), so combined faults shown is just r2Faults.
     const combined = madeR2 ? r2Faults : null;
-    // Per official GCL Rule 5.22: a team eliminated/retired in ROUND 1
-    // (never reached R2 — no r2Faults present) scores ZERO points and
-    // takes last place in that round's classification. A team eliminated/
-    // retired in ROUND 2 (reached R2, has r2Faults) still scores points
-    // for whatever rank they land at via calcFinalPositions' tiering — the
-    // rule only dictates placement for R2-EL teams, not point exclusion.
-    const isR1OnlyElimination = (ret || el) && !madeR2;
-    const pts = isR1OnlyElimination ? 0 : gclStagePts(pos);
-    return { t, pos, ret, el, madeR2, combined, r2Time, pts };
+    return { t, pos, ret, el, madeR2, combined, r2Time };
   }).filter(e => e.pos != null)
     .sort((a, b) => (a.pos || 999) - (b.pos || 999));
 
@@ -333,7 +329,7 @@ function TeamFinalResults({ teamResults, displayTeams }) {
 
   return (
     <div>
-      {entries.map(({ t, pos, ret, el, madeR2, combined, r2Time, pts }, i) => (
+      {entries.map(({ t, pos, ret, el, madeR2, combined, r2Time }, i) => (
         <motion.div key={t.id}
           initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
           transition={{ delay: i * 0.02 }}
@@ -360,9 +356,6 @@ function TeamFinalResults({ teamResults, displayTeams }) {
             )}
             {madeR2 && combined != null && <div className="text-xs" style={{ color: 'var(--mid)' }}>{combined} faults</div>}
             {madeR2 && r2Time != null && <div className="text-xs" style={{ color: 'var(--mid)' }}>{Number(r2Time).toFixed(2)}s</div>}
-            <div className="font-cormorant text-base font-semibold" style={{ color: 'var(--gold-lt)' }}>
-              {pts > 0 ? pts + ' pts' : '—'}
-            </div>
           </div>
         </motion.div>
       ))}

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useEquiPrix } from '@/lib/EquiPrixContext';
-import { computeLiveGclStandings } from '@/lib/EquiPrixContext';
 import { useAuth } from '@/lib/AuthContext';
 import {
   sbFetch, ordinal, gpPosPts, teamPosPts,
@@ -139,14 +138,18 @@ export default function LeaderboardTab() {
     } catch (e) { console.error(e); } finally { setLoading(false); }
   };
 
+  // GCL Standings now read straight from GCL_TEAMS_2026 — rank and pts
+  // there are entirely manually entered (via the admin Leaderboard ->
+  // GCL Standings editor) and saved to the team_salaries row, then
+  // applied by EquiPrixContext.loadEventData on every load. This is the
+  // same array the admin editor and draft pricing both use, so there's
+  // one number per team everywhere, not a live-computed one here and a
+  // manual one elsewhere.
   const loadGCLStandings = async () => {
     setLoading(true);
     try {
-      const liveStandings = await computeLiveGclStandings(events);
-      setGclRows(liveStandings.map(({ id, pts, wins, events: evCount }) => {
-        const t = GCL_TEAMS_2026.find(x => x.id === id) || { id, name: 'Team ' + id };
-        return { t, pts, wins, events: evCount };
-      }));
+      const ranked = [...GCL_TEAMS_2026].sort((a, b) => (Number(a.rank) || 99) - (Number(b.rank) || 99));
+      setGclRows(ranked.map(t => ({ t, pts: t.pts })));
     } catch (e) { console.error(e); } finally { setLoading(false); }
   };
 
@@ -609,18 +612,22 @@ function SeasonLeaderboard({ rows }) {
   );
 }
 
+// GCL Standings — wins/events-played columns removed, since those came
+// from computeLiveGclStandings (now deleted) and there's no manual
+// equivalent. Position number now reflects t.rank as saved on the
+// Leaderboard editor, not just array index, so it stays correct even if
+// GCL_TEAMS_2026 ever fails to be in perfect sorted order for some reason.
 function GCLStandings({ rows }) {
-  if (!rows.length) return <Empty msg="No GCL results recorded yet" />;
+  if (!rows.length) return <Empty msg="No GCL standings entered yet" />;
   return (
     <div>
-      {rows.map(({ t, pts, wins, events }, i) => (
+      {rows.map(({ t, pts }, i) => (
         <motion.div key={t.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
           transition={{ delay: i * 0.02 }} className="flex items-center gap-2.5 px-4 py-2.5 border-b"
           style={{ borderColor: 'rgba(42,40,32,0.4)' }}>
-          <div className="font-cinzel text-xs w-5 text-center flex-shrink-0" style={{ color: i < 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>{i + 1}</div>
+          <div className="font-cinzel text-xs w-5 text-center flex-shrink-0" style={{ color: i < 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>{t.rank || i + 1}</div>
           <div className="flex-1 min-w-0">
             <div className="font-cormorant text-sm font-semibold" style={{ color: 'var(--cream)' }}>{t.name}</div>
-            <div className="text-xs" style={{ color: 'var(--mid)' }}>{events} events · {wins || 0} wins</div>
           </div>
           <div className="font-cormorant text-base font-bold" style={{ color: 'var(--gold-lt)' }}>{pts} pts</div>
         </motion.div>

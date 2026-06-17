@@ -1,64 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { EVENTS_2026, GCL_TEAMS_2026, PREVIEW_RIDERS_2026, sbFetch, NAMES, VALID_CODES, calcEventRiderSalaries, gclStagePts } from './equiprix-data';
+import { EVENTS_2026, GCL_TEAMS_2026, PREVIEW_RIDERS_2026, sbFetch, NAMES, VALID_CODES, calcEventRiderSalaries } from './equiprix-data';
 
 const EquiPrixContext = createContext(null);
-
-// Computes live GCL pts/rank/wins for every team from actual entered
-// team_results across all past events — same logic LeaderboardTab's GCL
-// Standings tab already uses. This is the SINGLE source of truth for
-// rank/pts everywhere (Draft tab pricing order, admin Standings tab display),
-// replacing the old approach of reading a static team_salaries Supabase row
-// for rank/pts, which could silently drift out of sync with real results.
-// Salary remains a separate, genuinely manual override (still read from the
-// team_salaries row), since pricing is a draft decision, not a result.
-//
-// IMPORTANT: takes the live `events` array (with Supabase status overrides
-// already merged in) as a parameter — NOT the static EVENTS_2026 import,
-// which never reflects status changes made via the admin Status tab. Pass
-// the `events` state from EquiPrixContext (or fetch it fresh) when calling
-// this from outside the provider, e.g. from TeamStandingsEditor.
-export async function computeLiveGclStandings(eventsList) {
-  const sourceEvents = eventsList || EVENTS_2026;
-  const pastEvents = sourceEvents.filter(e => e.status === 'past');
-  const teamTotals = {};
-
-  // Fetch all past events' results CONCURRENTLY instead of one at a time —
-  // sequential awaits here were adding several seconds to every page load
-  // (one Supabase round-trip per past event, six and growing). These are
-  // independent reads with no ordering dependency, so Promise.all is safe.
-  const allRows = await Promise.all(
-    pastEvents.map(ev => sbFetch('results?event=eq.' + ev.supabaseKey + '&limit=1'))
-  );
-
-  allRows.forEach(rows => {
-    if (!rows || !rows.length) return;
-    const tr = rows[0].team_results || {};
-    Object.entries(tr).forEach(([id, raw]) => {
-      const pos = typeof raw === 'object' ? raw.finalPos : raw;
-      const ret = typeof raw === 'object' && raw.ret;
-      const el = typeof raw === 'object' && (raw.el || raw.el2);
-      const madeR2 = typeof raw === 'object' && raw.r2Faults != null;
-      if (!pos && !el && !ret) return;
-      // Per official GCL Rule 5.22: R1-only elimination/retirement (never
-      // reached R2) scores zero points. R2 elimination/retirement still
-      // scores for whatever rank was assigned — the rule only dictates
-      // placement, not point exclusion, once a team has reached Round 2.
-      const isR1OnlyElimination = (ret || el) && !madeR2;
-      const pts = isR1OnlyElimination ? 0 : gclStagePts(pos);
-      if (!teamTotals[id]) teamTotals[id] = { pts: 0, wins: 0, events: 0 };
-      teamTotals[id].pts += pts;
-      teamTotals[id].events++;
-      if (pos === 1) teamTotals[id].wins++;
-    });
-  });
-
-  // Rank by pts descending, tiebreak by wins
-  const ranked = Object.entries(teamTotals)
-    .sort((a, b) => b[1].pts - a[1].pts || b[1].wins - a[1].wins)
-    .map(([id, data], i) => ({ id, rank: i + 1, ...data }));
-
-  return ranked;
-}
 
 export function EquiPrixProvider({ children }) {
   const [events, setEvents] = useState(() => EVENTS_2026.map(e => ({ ...e })));
@@ -114,9 +57,7 @@ export function EquiPrixProvider({ children }) {
   const loadEventData = useCallback(async () => {
     try {
       // Build the live events list FIRST (with Supabase status overrides
-      // merged in) — standings computation below depends on knowing which
-      // events are ACTUALLY 'past' right now, not just what the static
-      // EVENTS_2026 file says.
+      // merged in) — event status display/locking still depends on this.
       const rows = await sbFetch('results?select=event,event_status,gp_riders,preview_riders,team_lock_iso,gp_lock_iso');
 
       let updatedEvents = EVENTS_2026.map(e => ({ ...e }));
@@ -138,25 +79,28 @@ export function EquiPrixProvider({ children }) {
 
       setEvents(updatedEvents);
 
-      // Compute live GCL rank/pts/wins from actual entered results, using
-      // the SAME live-status event list the rest of the app now uses — this
-      // is the single source of truth, not a hand-maintained Supabase row.
-      const liveStandings = await computeLiveGclStandings(updatedEvents);
-      liveStandings.forEach(({ id, rank, pts }) => {
-        const t = GCL_TEAMS_2026.find(x => x.id === id);
-        if (t) { t.rank = rank; t.pts = pts; }
-      });
-
-      // Salary is a separate, genuinely manual override — still read from
-      // the team_salaries Supabase row, but ONLY for salary now (rank/pts
-      // there are ignored, since they're superseded by the live computation
-      // above and may be stale).
+      // GCL rank/pts/salary are now ENTIRELY manual — entered on the
+      // Leaderboard tab (TeamStandingsEditor) and saved into the
+      // team_salaries Supabase row. This is the single source of truth
+      // for GCL_TEAMS_2026; nothing is derived from entered event results
+      // anymore (that calculation — computeLiveGclStandings — has been
+      // removed, since it drifted from the official GCL site and produced
+      // a second, conflicting number). Draft pricing/ranking, the public
+      // Leaderboard, and this admin context all now read the same saved
+      // values, with no live-vs-manual disagreement possible.
       const salRows = await sbFetch('results?event=eq.team_salaries&limit=1');
       if (salRows && salRows.length && salRows[0].gp_riders) {
         salRows[0].gp_riders.forEach(sv => {
           const t = GCL_TEAMS_2026.find(x => x.id === sv.id);
-          if (t && sv.salary) t.salary = sv.salary;
+          if (!t) return;
+          if (sv.rank !== undefined && sv.rank !== '') t.rank = Number(sv.rank);
+          if (sv.pts !== undefined && sv.pts !== '') t.pts = Number(sv.pts);
+          if (sv.salary) t.salary = sv.salary;
         });
+        // Keep GCL_TEAMS_2026 sorted by rank so every consumer that reads
+        // it directly (Draft tab pricing order, public Leaderboard, etc.)
+        // sees the manually-entered order.
+        GCL_TEAMS_2026.sort((a, b) => (Number(a.rank) || 99) - (Number(b.rank) || 99));
       }
 
       // Load FEI rankings (updates PREVIEW_RIDERS_2026 base ranks)

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { GCL_TEAMS_2026, EVENTS_2026, sbFetch } from '@/lib/equiprix-data';
-import { computeLiveGclStandings } from '@/lib/EquiPrixContext';
+import { GCL_TEAMS_2026, sbFetch } from '@/lib/equiprix-data';
 import { Save } from 'lucide-react';
 
 export default function TeamStandingsEditor() {
@@ -13,75 +12,74 @@ export default function TeamStandingsEditor() {
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Pull live rank/pts (computed from actual entered results, same as the
-  // Leaderboard's GCL Standings tab) and merge with whatever salary is
-  // currently saved in the team_salaries row. Rank/pts are NEVER
-  // hand-edited here anymore — they're a read-only reflection of results.
-  //
-  // This admin page is standalone (no EquiPrixProvider), so it has to fetch
-  // and merge the live event-status overrides itself, the same way
-  // EquiPrixContext's loadEventData does — otherwise computeLiveGclStandings
-  // would silently fall back to the static EVENTS_2026 file, which can be
-  // stale if an event's status was changed via the admin Status tab.
+  // Pos, pts, and salary are now all hand-edited overrides stored in the
+  // team_salaries row. We no longer pull live rank/pts from
+  // computeLiveGclStandings — that calc drifted from the real GCL site
+  // (Riesenbeck, Basel, Cannes Stars etc. were all off), so this page is
+  // now the source of truth: whatever is typed in here and saved is what
+  // displays everywhere else. On load we just merge in whatever was last
+  // saved, falling back to the static GCL_TEAMS_2026 defaults for any
+  // team that's never been touched.
   useEffect(() => {
     (async () => {
       setLoading(true);
       try {
-        const statusRows = await sbFetch('results?select=event,event_status');
-        const liveEvents = EVENTS_2026.map(ev => {
-          const row = statusRows?.find(r => r.event === ev.supabaseKey);
-          return row?.event_status ? { ...ev, status: row.event_status } : ev;
-        });
-
-        const [liveStandings, salRows] = await Promise.all([
-          computeLiveGclStandings(liveEvents),
-          sbFetch('results?event=eq.team_salaries&limit=1'),
-        ]);
-
-        const savedSalaries = (salRows && salRows.length && salRows[0].gp_riders) || [];
+        const salRows = await sbFetch('results?event=eq.team_salaries&limit=1');
+        const savedTeams = (salRows && salRows.length && salRows[0].gp_riders) || [];
 
         setTeams(prev => {
           const merged = prev.map(t => {
-            const live = liveStandings.find(l => l.id === t.id);
-            const sal = savedSalaries.find(s => s.id === t.id);
+            const savedT = savedTeams.find(s => s.id === t.id);
             return {
               ...t,
-              ...(live ? { rank: live.rank, pts: live.pts, wins: live.wins, events: live.events } : {}),
-              ...(sal?.salary ? { salary: sal.salary } : {}),
+              ...(savedT?.rank !== undefined ? { rank: savedT.rank } : {}),
+              ...(savedT?.pts !== undefined ? { pts: savedT.pts } : {}),
+              ...(savedT?.salary !== undefined ? { salary: savedT.salary } : {}),
             };
           });
-          return merged.sort((a, b) => a.rank - b.rank);
+          return merged.sort((a, b) => (Number(a.rank) || 99) - (Number(b.rank) || 99));
         });
       } catch (e) {
-        console.error('Failed to load live standings:', e);
+        console.error('Failed to load saved standings:', e);
       } finally {
         setLoading(false);
       }
     })();
   }, []);
 
-  const updateSalary = (id, value) => {
-    setTeams(prev => prev.map(t => t.id === id ? { ...t, salary: value === '' ? '' : Number(value) } : t));
+  const updateField = (id, field, value) => {
+    setTeams(prev => prev.map(t => {
+      if (t.id !== id) return t;
+      if (value === '') return { ...t, [field]: '' };
+      // rank is an integer, pts/salary can have decimals (GCL pts use .50 etc)
+      const num = field === 'rank' ? parseInt(value, 10) : Number(value);
+      return { ...t, [field]: Number.isNaN(num) ? '' : num };
+    }));
   };
 
+  // Sort by whatever is currently typed into the # field, so re-ordering
+  // pos updates the on-screen order immediately (live preview of the
+  // re-rank), same way the public standings page would re-render.
   const sorted = [...teams].sort((a, b) => (Number(a.rank) || 99) - (Number(b.rank) || 99));
 
   const save = async () => {
     setSaving(true);
     try {
-      // Only salary is ever written back — rank/pts are always derived live
-      // from results and never persisted as a separate override anymore.
       await sbFetch('results', {
         method: 'POST',
         body: JSON.stringify({
           event: 'team_salaries',
-          gp_riders: teams.map(t => ({ id: t.id, salary: t.salary })),
+          gp_riders: teams.map(t => ({ id: t.id, rank: t.rank, pts: t.pts, salary: t.salary })),
           updated_at: new Date().toISOString()
         })
       });
       teams.forEach(t => {
         const orig = GCL_TEAMS_2026.find(x => x.id === t.id);
-        if (orig && t.salary !== '') orig.salary = Number(t.salary);
+        if (orig) {
+          if (t.rank !== '') orig.rank = Number(t.rank);
+          if (t.pts !== '') orig.pts = Number(t.pts);
+          if (t.salary !== '') orig.salary = Number(t.salary);
+        }
       });
     } catch (e) {
       console.error('Save error:', e);
@@ -96,18 +94,18 @@ export default function TeamStandingsEditor() {
     <div className="max-w-2xl">
       <h2 className="font-cinzel text-sm tracking-widest mb-1" style={{ color: 'var(--gold)' }}>GCL STANDINGS</h2>
       <p className="font-cormorant text-base italic mb-4" style={{ color: 'var(--mid)' }}>
-        Rank and points are computed live from entered results — same numbers shown on the public Leaderboard. Adjust draft salaries here if needed.
+        Position, GCL points, and salary are all editable here — enter them to match the official GCL standings, then save.
       </p>
 
       {loading ? (
-        <div className="text-center py-8 font-cormorant italic" style={{ color: 'var(--mid)' }}>Loading live standings…</div>
+        <div className="text-center py-8 font-cormorant italic" style={{ color: 'var(--mid)' }}>Loading standings…</div>
       ) : (
         <>
           {/* Header */}
           <div className="grid grid-cols-12 gap-2 px-3 py-1.5 text-xs font-cinzel"
             style={{ color: 'var(--mid)', fontSize: 9, borderBottom: '1px solid var(--ep-border)' }}>
-            <div className="col-span-1 text-center">#</div>
-            <div className="col-span-5">TEAM</div>
+            <div className="col-span-2 text-center">#</div>
+            <div className="col-span-4">TEAM</div>
             <div className="col-span-3 text-center">GCL PTS</div>
             <div className="col-span-3 text-center">SALARY ($)</div>
           </div>
@@ -123,21 +121,34 @@ export default function TeamStandingsEditor() {
                   borderRadius: 4
                 }}>
 
-                {/* Rank — read only, live-computed */}
-                <div className="col-span-1 font-cinzel text-sm text-center font-bold"
-                  style={{ color: 'var(--gold)' }}>
-                  {team.rank}
+                {/* Pos — editable */}
+                <div className="col-span-2">
+                  <input
+                    type="number"
+                    value={team.rank}
+                    onChange={e => updateField(team.id, 'rank', e.target.value)}
+                    placeholder="#"
+                    className="w-full rounded px-1 py-1 text-sm text-center font-cinzel font-bold outline-none"
+                    style={{ background: 'rgba(180,149,48,0.08)', border: '1px solid rgba(180,149,48,0.2)', color: 'var(--gold)' }}
+                  />
                 </div>
 
                 {/* Name */}
-                <div className="col-span-5 font-cormorant text-sm truncate" style={{ color: 'var(--cream)' }}>
+                <div className="col-span-4 font-cormorant text-sm truncate" style={{ color: 'var(--cream)' }}>
                   {team.name}
                 </div>
 
-                {/* GCL pts — read only, live-computed */}
-                <div className="col-span-3 text-center font-cormorant text-sm"
-                  style={{ color: 'var(--mid)' }}>
-                  {team.pts}
+                {/* GCL pts — editable */}
+                <div className="col-span-3">
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={team.pts}
+                    onChange={e => updateField(team.id, 'pts', e.target.value)}
+                    placeholder="pts"
+                    className="w-full rounded px-1 py-1 text-xs text-center outline-none"
+                    style={{ background: 'rgba(180,149,48,0.08)', border: '1px solid rgba(180,149,48,0.2)', color: 'var(--cream)' }}
+                  />
                 </div>
 
                 {/* Salary — editable */}
@@ -145,7 +156,7 @@ export default function TeamStandingsEditor() {
                   <input
                     type="number"
                     value={team.salary}
-                    onChange={e => updateSalary(team.id, e.target.value)}
+                    onChange={e => updateField(team.id, 'salary', e.target.value)}
                     placeholder="salary"
                     className="w-full rounded px-1 py-1 text-xs text-center outline-none"
                     style={{ background: 'rgba(180,149,48,0.08)', border: '1px solid rgba(180,149,48,0.2)', color: 'var(--gold)' }}
@@ -163,7 +174,7 @@ export default function TeamStandingsEditor() {
               border: saved ? '1px solid #4caf7d' : 'none'
             }}>
             <Save size={13} />
-            {saved ? 'SAVED ✓' : saving ? 'SAVING…' : 'SAVE SALARIES'}
+            {saved ? 'SAVED ✓' : saving ? 'SAVING…' : 'SAVE STANDINGS'}
           </button>
         </>
       )}
