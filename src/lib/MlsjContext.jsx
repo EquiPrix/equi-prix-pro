@@ -181,15 +181,17 @@ export function MlsjProvider({ children }) {
     }
   }, [showToast]);
 
-  const savePicks = useCallback(async (identity, ev) => {
+  const savePicks = useCallback(async (identity, ev, explicitGpTeam, explicitTeamPicks) => {
     if (!identity || !ev) return false;
+    const gt = explicitGpTeam ?? gpTeam;
+    const tp = explicitTeamPicks ?? teamPicks;
     try {
       const body = [{
         user_email: identity,
         event: ev.id,
         picks_json: {
-          riders: gpTeam.map(t => ({ id: t.rider.id, isCpt: !!t.isCpt })),
-          teams: teamPicks.map(t => ({ id: t.id })),
+          riders: gt.map(t => ({ id: t.rider.id, isCpt: !!t.isCpt })),
+          teams: tp.map(t => ({ id: t.id })),
         },
       }];
       await sbFetch('mlsj_picks?on_conflict=user_email,event', {

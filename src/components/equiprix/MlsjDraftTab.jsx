@@ -1,184 +1,233 @@
-import React, { useState } from 'react';
-import { useMlsj } from '@/lib/MlsjContext';
-import { MLSJ_CAP, MLSJ_CPT_PREMIUM } from '@/lib/mlsj-data';
-import { fmt } from '@/lib/equiprix-data';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import {
+  MLSJ_EVENTS_2026_27, MLSJ_TEAMS_2026, sbFetch, calcMlsjTeamSalaries,
+} from './mlsj-data';
+import { PREVIEW_RIDERS_2026 } from './equiprix-data';
 
-export function MlsjDraftTab() {
-  const { currentEvent, riders, mlsjTeams, gpTeam, setGpTeam, teamPicks, setTeamPicks, userCode, savePicks, showToast } = useMlsj();
-  const [subTab, setSubTab] = useState('gp'); // 'gp' | 'teams'
+const MlsjContext = createContext(null);
 
-  const spentRiders = gpTeam.reduce((sum, t) => sum + t.rider.salary + (t.isCpt ? MLSJ_CPT_PREMIUM : 0), 0);
-  const spentTeams = teamPicks.reduce((sum, t) => sum + t.salary, 0);
-  const spent = spentRiders + spentTeams;
-  const remaining = MLSJ_CAP - spent;
+export function MlsjProvider({ children }) {
+  const [events, setEvents] = useState(() => MLSJ_EVENTS_2026_27.map(e => ({ ...e })));
+  const [currentEvent, setCurrentEventState] = useState(null);
 
-  const gpLocked = currentEvent && new Date() >= new Date(currentEvent.gpLockISO);
-  const teamLocked = currentEvent && new Date() >= new Date(currentEvent.teamLockISO);
+  // Combined roster: GP riders (with captain) + 2 picked real MLSJ teams, single cap
+  const [gpTeam, setGpTeam] = useState([]);       // [{ rider, slotId, isCpt }]
+  const [teamPicks, setTeamPicks] = useState([]); // [{ ...mlsjTeam, slotId: 'mt1' | 'mt2' }]
 
-  const SLOT_IDS = ['cpt', 'r1', 'r2', 'r3', 'r4'];
+  const [riders, setRiders] = useState([]);       // available GP riders for current event
+  const [mlsjTeams, setMlsjTeams] = useState([]); // available MLSJ teams (priced) for current event
+  // Shared rider list (rank/salary) — same underlying data as GCL's rankings,
+  // since a rider's FEI rank doesn't change depending on which league reads it.
+  const [mlsjRiderRankings, setMlsjRiderRankings] = useState(PREVIEW_RIDERS_2026);
 
-  function toggleRider(rider) {
-    if (gpLocked) return;
-    const exists = gpTeam.find(t => t.rider.id === rider.id);
-    if (exists) {
-      setGpTeam(gpTeam.filter(t => t.rider.id !== rider.id));
-      return;
+  const [isLoading, setIsLoading] = useState(true);
+  const [toast, setToast] = useState(null);
+  const hasAutoSelected = useRef(false);
+
+  const showToast = useCallback((msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2200);
+  }, []);
+
+  // Build each team's declaredTrio with resolved rank (from latest shared
+  // rankings), then price by combined trio strength. Teams with no declared
+  // trio yet fall back to a neutral "worst-case" price via calcMlsjTeamSalaries.
+  const getPricedTeams = (ev, riderList = mlsjRiderRankings) => {
+    const declaredByTeam = ev.declaredTrioIds || {}; // { [teamId]: [id, id, id] }
+    const withTrio = MLSJ_TEAMS_2026.map(team => {
+      const ids = declaredByTeam[team.id] || [];
+      const declaredTrio = ids
+        .map(id => riderList.find(r => r.id === id))
+        .filter(Boolean);
+      return { ...team, declaredTrio };
+    });
+    return calcMlsjTeamSalaries(withTrio);
+  };
+
+  const getRiderList = (ev) => {
+    if (ev.status === 'past') return ev.riders || [];
+    if (ev.gpRiders?.length) return ev.gpRiders;
+    if (ev.previewRiders?.length) return ev.previewRiders;
+    return ev.riders || [];
+  };
+
+  const doSelectEvent = useCallback((ev) => {
+    setCurrentEventState(ev);
+    setRiders(getRiderList(ev));
+    setMlsjTeams(getPricedTeams(ev, mlsjRiderRankings));
+    setGpTeam([]);
+    setTeamPicks([]);
+  }, [mlsjRiderRankings]);
+
+  const selectEvent = useCallback((id) => {
+    setEvents(prev => {
+      const ev = prev.find(e => e.id === id);
+      if (ev) doSelectEvent(ev);
+      return prev;
+    });
+  }, [doSelectEvent]);
+
+  const loadEventData = useCallback(async () => {
+    try {
+      // Shared rankings row — SAME row GCL's RankingsImport writes to
+      // (event = 'fei_rankings'). One upload updates every rider, in both
+      // leagues, since FEI rank doesn't depend on which league is reading it.
+      const rankRows = await sbFetch("results?event=eq.fei_rankings&limit=1");
+      let updatedRankings = PREVIEW_RIDERS_2026.map(r => ({ ...r }));
+      if (rankRows && rankRows.length && rankRows[0].gp_riders?.length) {
+        rankRows[0].gp_riders.forEach(sr => {
+          const r = updatedRankings.find(pr => pr.id === sr.id);
+          if (r && sr.rank) r.rank = sr.rank;
+        });
+      }
+      setMlsjRiderRankings(updatedRankings);
+
+      // Each leg's row in `results` (event = mlsj supabaseKey) carries:
+      //   event_status, gp_riders (start list), declared_trio_ids ({teamId: [id,id,id]}),
+      //   team_results (per-team round outcomes), gp_lock_iso, team_lock_iso
+      const rows = await sbFetch(
+        'results?select=event,event_status,gp_riders,declared_trio_ids,team_results,gp_lock_iso,team_lock_iso'
+      );
+
+      let updatedEvents = MLSJ_EVENTS_2026_27.map(e => ({ ...e }));
+
+      if (rows && rows.length) {
+        updatedEvents = updatedEvents.map(ev => {
+          const row = rows.find(r => r.event === ev.supabaseKey);
+          if (!row) return ev;
+          return {
+            ...ev,
+            ...(row.event_status ? { status: row.event_status } : {}),
+            ...(row.gp_lock_iso ? { gpLockISO: row.gp_lock_iso } : {}),
+            ...(row.team_lock_iso ? { teamLockISO: row.team_lock_iso } : {}),
+            ...(row.gp_riders?.length ? { gpRiders: row.gp_riders } : {}),
+            ...(row.declared_trio_ids ? { declaredTrioIds: row.declared_trio_ids } : {}),
+            ...(row.team_results ? { teamResults: row.team_results } : {}),
+          };
+        });
+      }
+
+      setEvents(updatedEvents);
+
+      if (!hasAutoSelected.current) {
+        hasAutoSelected.current = true;
+        const priority = ['live', 'riders', 'teams', 'preview', 'future'];
+        let best = null;
+        for (const s of priority) {
+          best = updatedEvents.find(e => e.status === s);
+          if (best) break;
+        }
+        if (!best) {
+          const pastEvents = updatedEvents.filter(e => e.status === 'past');
+          best = pastEvents[pastEvents.length - 1];
+        }
+        if (best) {
+          setCurrentEventState(best);
+          setRiders(getRiderList(best));
+          setMlsjTeams(getPricedTeams(best, updatedRankings));
+          setGpTeam([]);
+          setTeamPicks([]);
+        }
+      } else {
+        setCurrentEventState(cur => {
+          if (!cur) return cur;
+          const ev = updatedEvents.find(e => e.id === cur.id) || cur;
+          setRiders(getRiderList(ev));
+          setMlsjTeams(getPricedTeams(ev, updatedRankings));
+          return ev;
+        });
+      }
+    } catch (e) {
+      console.error('MLSJ loadEventData error:', e);
+    } finally {
+      setIsLoading(false);
     }
-    if (gpTeam.length >= 5) { showToast('Roster full — 5 riders max'); return; }
-    const cost = rider.salary + (gpTeam.length === 0 ? MLSJ_CPT_PREMIUM : 0);
-    if (cost > remaining) { showToast('Over budget'); return; }
-    const slotId = SLOT_IDS[gpTeam.length];
-    setGpTeam([...gpTeam, { rider, slotId, isCpt: gpTeam.length === 0 }]);
-  }
+  }, [doSelectEvent]);
 
-  function setCaptain(riderId) {
-    if (gpLocked) return;
-    setGpTeam(gpTeam.map(t => ({ ...t, isCpt: t.rider.id === riderId })));
-  }
+  useEffect(() => {
+    loadEventData();
+  }, [loadEventData]);
 
-  function toggleMlsjTeam(team) {
-    if (teamLocked) return;
-    const exists = teamPicks.find(t => t.id === team.id);
-    if (exists) {
-      setTeamPicks(teamPicks.filter(t => t.id !== team.id));
-      return;
+  const loadSavedPicks = useCallback(async (identity, ev) => {
+    if (!ev || !['preview', 'teams', 'riders', 'open'].includes(ev.status)) return;
+    try {
+      let rows = await sbFetch(
+        'mlsj_picks?user_email=eq.' + encodeURIComponent(identity) + '&event=eq.' + ev.id + '&limit=1'
+      );
+      if (!rows || !rows.length) return;
+
+      const p = rows[0].picks_json;
+      const evRiders = getRiderList(ev);
+      const evTeams = getPricedTeams(ev);
+
+      const SLOT_IDS = ['cpt', 'r1', 'r2', 'r3', 'r4'];
+      const newGpTeam = [];
+      (p.riders || []).forEach(s => {
+        const rider = evRiders.find(r => r.id === s.id);
+        if (rider) newGpTeam.push({ rider, slotId: SLOT_IDS[newGpTeam.length], isCpt: s.isCpt });
+      });
+
+      const newTeamPicks = [];
+      (p.teams || []).forEach((s, i) => {
+        const t = evTeams.find(t => t.id === s.id);
+        if (t) newTeamPicks.push({ ...t, slotId: 'mt' + (i + 1) });
+      });
+
+      setGpTeam(newGpTeam);
+      setTeamPicks(newTeamPicks);
+      showToast('MLSJ picks restored ✓');
+    } catch (e) {
+      console.warn('Could not load MLSJ picks:', e);
     }
-    if (teamPicks.length >= 2) { showToast('Pick 2 teams max'); return; }
-    if (team.salary > remaining) { showToast('Over budget'); return; }
-    setTeamPicks([...teamPicks, { ...team, slotId: 'mt' + (teamPicks.length + 1) }]);
-  }
+  }, [showToast]);
 
-  async function handleSave() {
-    if (!userCode) { showToast('Log in first'); return; }
-    await savePicks(userCode, currentEvent);
-  }
-
-  if (!currentEvent) {
-    return <div className="flex-1 flex items-center justify-center opacity-60">Select an event first.</div>;
-  }
+  const savePicks = useCallback(async (identity, ev, explicitGpTeam, explicitTeamPicks) => {
+    if (!identity || !ev) return false;
+    const gt = explicitGpTeam ?? gpTeam;
+    const tp = explicitTeamPicks ?? teamPicks;
+    try {
+      const body = [{
+        user_email: identity,
+        event: ev.id,
+        picks_json: {
+          riders: gt.map(t => ({ id: t.rider.id, isCpt: !!t.isCpt })),
+          teams: tp.map(t => ({ id: t.id })),
+        },
+      }];
+      await sbFetch('mlsj_picks?on_conflict=user_email,event', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      showToast('Picks saved ✓');
+      return true;
+    } catch (e) {
+      console.error('MLSJ savePicks error:', e);
+      showToast('Save failed — try again');
+      return false;
+    }
+  }, [gpTeam, teamPicks, showToast]);
 
   return (
-    <div className="flex-1 overflow-y-auto flex flex-col">
-      {/* Cap bar */}
-      <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(180,149,48,0.2)' }}>
-        <div className="text-sm">
-          <span style={{ color: 'var(--gold-lt)' }}>{fmt(remaining)}</span>
-          <span className="opacity-60"> remaining of {fmt(MLSJ_CAP)}</span>
-        </div>
-        <button
-          onClick={handleSave}
-          className="px-3 py-1.5 rounded text-sm font-medium"
-          style={{ background: 'var(--gold)', color: '#0f0e0a' }}
-        >
-          Save Picks
-        </button>
-      </div>
-
-      {/* Sub-tabs */}
-      <div className="flex px-4 pt-3 gap-2">
-        <button
-          onClick={() => setSubTab('gp')}
-          className="px-3 py-1.5 rounded text-sm"
-          style={{ background: subTab === 'gp' ? 'var(--gold)' : 'var(--ep-card)', color: subTab === 'gp' ? '#0f0e0a' : 'inherit' }}
-        >
-          GP Riders ({gpTeam.length}/5) {gpLocked && '🔒'}
-        </button>
-        <button
-          onClick={() => setSubTab('teams')}
-          className="px-3 py-1.5 rounded text-sm"
-          style={{ background: subTab === 'teams' ? 'var(--gold)' : 'var(--ep-card)', color: subTab === 'teams' ? '#0f0e0a' : 'inherit' }}
-        >
-          MLSJ Teams ({teamPicks.length}/2) {teamLocked && '🔒'}
-        </button>
-      </div>
-
-      {subTab === 'gp' && (
-        <div className="p-4 space-y-2">
-          {gpLocked && (
-            <div className="text-xs px-3 py-2 rounded mb-2" style={{ background: 'rgba(180,149,48,0.1)', color: 'var(--gold-lt)' }}>
-              GP picks are locked for this leg.
-            </div>
-          )}
-          {riders.length === 0 && (
-            <div className="opacity-60 text-sm py-6 text-center">
-              Start list not published yet — draft opens the night before the GP.
-            </div>
-          )}
-          {riders.map(rider => {
-            const picked = gpTeam.find(t => t.rider.id === rider.id);
-            return (
-              <div
-                key={rider.id}
-                className="px-3 py-2 rounded flex items-center justify-between"
-                style={{
-                  background: picked ? 'var(--ep-card-active)' : 'var(--ep-card)',
-                  border: '1px solid rgba(180,149,48,0.2)',
-                  opacity: gpLocked ? 0.6 : 1,
-                }}
-              >
-                <div onClick={() => toggleRider(rider)} className="flex-1 cursor-pointer">
-                  <div className="text-sm font-medium">{rider.name} <span className="opacity-60">{rider.nat}</span></div>
-                  <div className="text-xs opacity-60">Rank #{rider.rank} · {fmt(rider.salary)}</div>
-                </div>
-                {picked && (
-                  <button
-                    disabled={gpLocked}
-                    onClick={() => setCaptain(rider.id)}
-                    className="text-xs px-2 py-1 rounded ml-2"
-                    style={{
-                      background: picked.isCpt ? 'var(--gold)' : 'transparent',
-                      color: picked.isCpt ? '#0f0e0a' : 'var(--gold-lt)',
-                      border: '1px solid var(--gold)',
-                    }}
-                  >
-                    {picked.isCpt ? 'CPT' : 'Make CPT'}
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {subTab === 'teams' && (
-        <div className="p-4 space-y-2">
-          {teamLocked && (
-            <div className="text-xs px-3 py-2 rounded mb-2" style={{ background: 'rgba(180,149,48,0.1)', color: 'var(--gold-lt)' }}>
-              Team picks are locked for this leg.
-            </div>
-          )}
-          {mlsjTeams.length === 0 && (
-            <div className="opacity-60 text-sm py-6 text-center">
-              Round 1 trios not declared yet — draft opens the night before the Team Competition.
-            </div>
-          )}
-          {mlsjTeams.map(team => {
-            const picked = teamPicks.find(t => t.id === team.id);
-            return (
-              <div
-                key={team.id}
-                onClick={() => toggleMlsjTeam(team)}
-                className="px-3 py-2 rounded cursor-pointer"
-                style={{
-                  background: picked ? 'var(--ep-card-active)' : 'var(--ep-card)',
-                  border: '1px solid rgba(180,149,48,0.2)',
-                  opacity: teamLocked ? 0.6 : 1,
-                }}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-medium">{team.name}</div>
-                  <div className="text-xs opacity-70">{fmt(team.salary)}</div>
-                </div>
-                {team.declaredTrio?.length > 0 && (
-                  <div className="text-xs opacity-60 mt-0.5">
-                    {team.declaredTrio.map(r => r.name).join(' · ')}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
+    <MlsjContext.Provider value={{
+      events, setEvents,
+      currentEvent, selectEvent,
+      gpTeam, setGpTeam,
+      teamPicks, setTeamPicks,
+      riders, setRiders,
+      mlsjTeams, setMlsjTeams,
+      mlsjRiderRankings, setMlsjRiderRankings,
+      isLoading,
+      toast, showToast,
+      loadSavedPicks, savePicks,
+      loadEventData,
+    }}>
+      {children}
+    </MlsjContext.Provider>
   );
+}
+
+export function useMlsj() {
+  const ctx = useContext(MlsjContext);
+  if (!ctx) throw new Error('useMlsj must be used within MlsjProvider');
+  return ctx;
 }
