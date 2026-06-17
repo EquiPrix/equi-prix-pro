@@ -359,8 +359,22 @@ export default function ResultsEditor() {
     setSaving(true);
     const posMap = calcFinalPositions(teams, teamResults);
     const teamResultsWithPos = { ...teamResults };
+    // Assign the freshly-computed position to every team that has one.
     Object.entries(posMap).forEach(([teamId, pos]) => {
       teamResultsWithPos[teamId] = { ...(teamResultsWithPos[teamId] || {}), finalPos: pos };
+    });
+    // FIXED: explicitly clear finalPos for any team calcFinalPositions
+    // excluded (no meaningful data — didn't compete). Previously these
+    // teams' stale finalPos from a PRIOR save was left untouched forever,
+    // since the forEach above only ever writes new values, never removes
+    // old ones — so a team like Riyadh Knights, once excluded going
+    // forward, would keep showing its old finalPos indefinitely even
+    // after re-saving with correct (empty) data.
+    teams.forEach(team => {
+      if (posMap[team.id] === undefined && teamResultsWithPos[team.id]?.finalPos !== undefined) {
+        const { finalPos, ...rest } = teamResultsWithPos[team.id];
+        teamResultsWithPos[team.id] = rest;
+      }
     });
 
     const payload = {

@@ -326,7 +326,8 @@ function TeamFinalResults({ teamResults, displayTeams }) {
     const isR1OnlyElimination = (ret || el) && !madeR2;
     const pts = isR1OnlyElimination ? 0 : gclStagePts(pos);
     return { t, pos, ret, el, madeR2, combined, r2Time, pts };
-  }).sort((a, b) => (a.pos || 999) - (b.pos || 999));
+  }).filter(e => e.pos != null)
+    .sort((a, b) => (a.pos || 999) - (b.pos || 999));
 
   if (!entries.length) return <Empty msg="Final standings not yet entered" />;
 
