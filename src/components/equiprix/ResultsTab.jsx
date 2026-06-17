@@ -303,6 +303,9 @@ function TeamRoundResults({ teamResults, displayTeams, round }) {
   );
 }
 
+// FIXED: r2Faults is the CUMULATIVE R1+R2 total already (that's how it's
+// read off the PDF scoreboards) — the old `combined = r1Faults + r2Faults`
+// was double-counting Round 1. Now combined = r2Faults alone.
 function TeamFinalResults({ teamResults, displayTeams }) {
   const entries = Object.entries(teamResults).map(([id, raw]) => {
     const t = displayTeams.find(x => x.id === id) || { id, name: 'Team ' + id };
@@ -313,7 +316,7 @@ function TeamFinalResults({ teamResults, displayTeams }) {
     const r2Faults = typeof raw === 'object' ? (raw.r2Faults ?? null) : null;
     const r2Time = typeof raw === 'object' ? (raw.r2Time ?? null) : null;
     const madeR2 = r2Faults != null;
-    const combined = madeR2 ? r1Faults + r2Faults : null;
+    const combined = madeR2 ? r2Faults : null;
     const pts = el ? 0 : gclStagePts(pos);
     return { t, pos, ret, el, madeR2, combined, r2Time, pts };
   }).sort((a, b) => {

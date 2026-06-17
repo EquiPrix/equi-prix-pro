@@ -114,19 +114,37 @@ function TeamRoundEditor({ teams, round, data, onChange, startList }) {
   );
 }
 
+// FIXED: r2Faults is entered as the CUMULATIVE total (R1+R2 combined) when
+// reading PDF scoreboards, NOT a standalone R2-only number. The old formula
+// (r1Faults + r2Faults) was double-counting Round 1 for every team that
+// advanced. Now: r2Faults alone IS the team's running total once they've
+// completed Round 2; only fall back to r1Faults for teams that didn't
+// advance (where there's no R2 cumulative number to read).
+//
+// ALSO FIXED: teams with NO data entered for this event (e.g. Rome/Riyadh
+// in Miami, who simply didn't compete) are now skipped entirely — no
+// synthetic finalPos, no points, not in the ranking at all. Previously
+// every team in the roster got a position assigned regardless of whether
+// they actually competed, defaulting missing fields to 0/9999.
 function calcFinalPositions(teams, teamResults) {
-  const withData = teams.map(team => {
-    const d = teamResults[team.id] || {};
-    const r1Faults = d.r1Faults !== '' && d.r1Faults !== undefined ? Number(d.r1Faults) : 0;
-    const r2Faults = d.r2Faults !== '' && d.r2Faults !== undefined ? Number(d.r2Faults) : null;
-    const r2Time = d.r2Time !== '' && d.r2Time !== undefined ? Number(d.r2Time) : null;
-    const didR2 = r2Faults !== null || !!d.r2Ret || !!d.r2El;
-    const isR2Failed = didR2 && (!!d.r2Ret || !!d.r2El);
-    const totalFaults = r1Faults + (r2Faults ?? 9999);
-    return { id: team.id, didR2, isR2Failed, totalFaults, r2Time: r2Time ?? 9999, r1Faults };
-  });
+  const withData = teams
+    .filter(team => {
+      const d = teamResults[team.id];
+      // Skip teams with no entry at all for this event — they didn't compete.
+      return d && Object.keys(d).length > 0;
+    })
+    .map(team => {
+      const d = teamResults[team.id];
+      const r1Faults = d.r1Faults !== '' && d.r1Faults !== undefined ? Number(d.r1Faults) : 0;
+      const r2Faults = d.r2Faults !== '' && d.r2Faults !== undefined ? Number(d.r2Faults) : null;
+      const r2Time = d.r2Time !== '' && d.r2Time !== undefined ? Number(d.r2Time) : null;
+      const didR2 = r2Faults !== null || !!d.r2Ret || !!d.r2El;
+      const isR2Failed = didR2 && (!!d.r2Ret || !!d.r2El);
+      const totalFaults = r2Faults !== null ? r2Faults : (didR2 ? 9999 : r1Faults);
+      return { id: team.id, didR2, isR2Failed, totalFaults, r2Time: r2Time ?? 9999, r1Faults };
+    });
 
-  // Tier 0: completed R2 — sort by R1+R2 total faults, then R2 time
+  // Tier 0: completed R2 — sort by cumulative total faults, then R2 time
   const tier0 = withData.filter(t => t.didR2 && !t.isR2Failed)
     .sort((a, b) => a.totalFaults - b.totalFaults || a.r2Time - b.r2Time);
   // Tier 1: R2 ret/el — rank above R1-only teams
@@ -145,12 +163,17 @@ function calcFinalPositions(teams, teamResults) {
 function FinalEditor({ teams, data }) {
   const get = (teamId) => data[teamId] || {};
   const posMap = calcFinalPositions(teams, data);
-  const sortedTeams = [...teams].sort((a, b) => (posMap[a.id] || 99) - (posMap[b.id] || 99));
+  // Only show teams that actually competed (have an entry in posMap) —
+  // teams with no data for this event (didn't compete) are excluded
+  // entirely rather than shown with a blank position.
+  const sortedTeams = teams
+    .filter(t => posMap[t.id] !== undefined)
+    .sort((a, b) => posMap[a.id] - posMap[b.id]);
 
   return (
     <div className="space-y-1">
       <p className="font-cormorant italic text-xs mb-2" style={{ color: 'var(--mid)' }}>
-        Auto-calculated from R1 + R2 total faults, R2 time as tiebreaker. Enter results in Team R1 and Team R2 tabs.
+        Auto-calculated from cumulative R2 faults (R1+R2 combined, as read off the scoreboard), R2 time as tiebreaker. Enter results in Team R1 and Team R2 tabs.
       </p>
       <div className="grid grid-cols-12 gap-2 px-3 py-1 text-xs font-cinzel" style={{ color: 'var(--mid)', fontSize: 9 }}>
         <div className="col-span-1 text-center">POS</div>
@@ -164,7 +187,9 @@ function FinalEditor({ teams, data }) {
         const pos = posMap[team.id];
         const r1F = d.r1Faults !== '' && d.r1Faults !== undefined ? Number(d.r1Faults) : null;
         const r2F = d.r2Faults !== '' && d.r2Faults !== undefined ? Number(d.r2Faults) : null;
-        const totalF = r1F !== null && r2F !== null ? r1F + r2F : r1F !== null ? r1F : null;
+        // r2F is already the cumulative total — display it directly as the
+        // team's overall total once they've reached R2.
+        const totalF = r2F !== null ? r2F : r1F;
         const hasR2 = r2F !== null || !!d.r2Ret || !!d.r2El;
         const flag = d.r2Ret ? ' RET' : d.r2El ? ' EL' : '';
 
