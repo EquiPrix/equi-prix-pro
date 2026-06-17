@@ -130,6 +130,7 @@ function EquiPrixInner() {
   const handleSelectEvent = (ev) => {
     if (ev.status === 'past') setActiveTab('results');
     else if (['teams', 'riders', 'open'].includes(ev.status)) setActiveTab('draft');
+    else if (['preview', 'live'].includes(ev.status)) setActiveTab('leaderboard');
   };
 
   const displayEvent = series === 'gcl' ? currentEvent : mlsjCurrentEvent;
@@ -137,7 +138,7 @@ function EquiPrixInner() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden" style={{ background: 'var(--ink)', color: 'var(--ep-text)' }}>
-      {/* Header */}
+      {/* Header — logo left, username right, nothing else */}
       <header
         className="flex items-center justify-between px-4 flex-shrink-0"
         style={{
@@ -147,33 +148,38 @@ function EquiPrixInner() {
           borderBottom: '1px solid rgba(180,149,48,0.2)',
         }}
       >
-        <div className="flex items-center gap-3">
-          <EquiPrixLogo width={110} compact={true} />
+        <EquiPrixLogo width={110} compact={true} />
+
+        {displayName && (
+          <button onClick={() => setShowAccount(true)}
+            className="font-cinzel text-xs px-2 py-1 rounded transition-all"
+            style={{
+              color: 'var(--gold-lt)',
+              letterSpacing: '0.08em',
+              opacity: 0.9,
+              background: 'rgba(180,149,48,0.06)',
+              border: '1px solid rgba(180,149,48,0.15)',
+            }}>
+            {displayName}
+          </button>
+        )}
+      </header>
+
+      {/* Sub-row — league toggle + event title + countdown */}
+      <div
+        className="flex items-center justify-between px-4 py-2 flex-shrink-0"
+        style={{ background: '#0a0907', borderBottom: '1px solid rgba(180,149,48,0.15)' }}
+      >
+        <div className="flex items-center gap-3 min-w-0">
           <SeriesToggle series={series} onChange={setSeries} />
           {displayEvent && (
-            <div className="font-cinzel text-xs" style={{ color: 'var(--mid)', letterSpacing: '0.1em' }}>
+            <div className="font-cinzel text-xs truncate" style={{ color: 'var(--mid)', letterSpacing: '0.1em' }}>
               <span style={{ color: 'var(--gold-lt)' }}>{displayEvent.flag} {displayEvent.city}</span>
             </div>
           )}
         </div>
-
-        <div className="flex items-center gap-2">
-          {displayEvent && <CountdownBadge event={displayEvent} />}
-          {displayName && (
-            <button onClick={() => setShowAccount(true)}
-              className="font-cinzel text-xs px-2 py-1 rounded transition-all"
-              style={{
-                color: 'var(--gold-lt)',
-                letterSpacing: '0.08em',
-                opacity: 0.9,
-                background: 'rgba(180,149,48,0.06)',
-                border: '1px solid rgba(180,149,48,0.15)',
-              }}>
-              {displayName}
-            </button>
-          )}
-        </div>
-      </header>
+        {displayEvent && <CountdownBadge event={displayEvent} />}
+      </div>
 
       {/* PWA Banner */}
       <PWABanner eventId={displayEvent?.id} />

@@ -11,9 +11,9 @@ import { ChevronDown, ChevronUp, Lock, Plus, Hash } from 'lucide-react';
 
 const TABS = [
   { id: 'event', label: 'This Event' },
+  { id: 'rooms', label: 'My Rooms' },
   { id: 'season', label: '2026 Season' },
   { id: 'gcl', label: 'GCL Standings' },
-  { id: 'rooms', label: 'My Rooms' },
 ];
 
 function calcPickScore(picksJson, riderResults, teamResults) {
