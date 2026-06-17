@@ -337,24 +337,31 @@ export const PREVIEW_RIDERS_2026 = [
   { id: 268, name: "Rodrigo Pessoa", nat: "🇧🇷 Brazil", rank: 999, salary: 1000, region: "mlsj" },
 ];
 
+// REPLACE the existing GCL_TEAMS_2026 array in equiprix-data.js with this
+// block in its entirety. Corrected to match the official GCL 2026 Standings
+// PDF exactly (rank, pts). Salary follows the same banding curve the app
+// already used (11000 down to 3000 across 17 teams), now applied in the
+// CORRECT rank order so the highest real points total gets the highest
+// salary — this was previously out of sync because pts were stale.
+
 export const GCL_TEAMS_2026 = [
-  { id: 't01', name: 'Istanbul Warriors', pts: 98, rank: 3, salary: 8000, key: 'von Eckermann · Saïd · Delestre · Siyahi' },
-  { id: 't02', name: 'Basel Cosmopolitans', pts: 86, rank: 8, salary: 6000, key: 'Nygaard · Schou · N. Philippaerts · O. Philippaerts' },
   { id: 't03', name: 'Prague Lions', pts: 114, rank: 1, salary: 11000, key: 'Spits · Devos · Bruynseels · Demirsoy' },
-  { id: 't04', name: 'Valkenswaard United', pts: 85, rank: 9, salary: 6000, key: 'Thomas · Tops-Alexander · T. Philippaerts · Ehning' },
-  { id: 't05', name: 'St. Tropez Pirates', pts: 82, rank: 10, salary: 5500, key: 'Sadran · Ermann · Guery · Bucci' },
-  { id: 't06', name: 'Monaco Aces', pts: 92, rank: 5, salary: 7000, key: 'Fredricson · Mansur · Seabra · Cottard' },
-  { id: 't07', name: 'Cairo Pharaohs', pts: 82, rank: 11, salary: 5500, key: 'Nassar · Malhas · Joly · Mulder' },
   { id: 't08', name: 'Riesenbeck International', pts: 101, rank: 2, salary: 10000, key: 'Weishaupt · Nallon · Kukuk · Camilli' },
-  { id: 't09', name: 'Madrid In Motion', pts: 75, rank: 13, salary: 5000, key: 'Emmen · Alvarez Moya · van der Vleuten' },
-  { id: 't10', name: 'Cannes Stars', pts: 92, rank: 6, salary: 7000, key: 'Nielsen · Sprehe · K. Eckermann · Hinners' },
-  { id: 't11', name: 'New York Empire', pts: 94, rank: 4, salary: 8000, key: 'Brash · M. Wachman · Allen · Lynch' },
-  { id: 't12', name: 'Doha Falcons', pts: 89, rank: 7, salary: 6500, key: 'Mendoza · Thijssen · Budd · Pedersen' },
-  { id: 't13', name: 'Shanghai Swans', pts: 76, rank: 12, salary: 5000, key: 'Deusser · Casadei · Maher · Kühner' },
-  { id: 't14', name: 'Scandinavian Vikings', pts: 65, rank: 16, salary: 4000, key: 'Vrieling · Vingralkova · Matte Capdevila' },
-  { id: 't15', name: 'Mexico Amigos', pts: 71, rank: 14, salary: 4500, key: 'Hank Guerreiro · Hank Conter · Menezes' },
-  { id: 't16', name: 'Riyadh Knights', pts: 68, rank: 15, salary: 4000, key: "O'Connor · Gaudiano · T. Wachman" },
-  { id: 't17', name: 'Rome Gladiators', pts: 60, rank: 17, salary: 3500, key: 'Hochstaedter · Grimaldi · Kass · Pezzoli' },
+  { id: 't01', name: 'Istanbul Warriors', pts: 98, rank: 3, salary: 9000, key: 'von Eckermann · Saïd · Delestre · Siyahi' },
+  { id: 't02', name: 'Basel Cosmopolitans', pts: 98, rank: 4, salary: 8000, key: 'Nygaard · Schou · N. Philippaerts · O. Philippaerts' },
+  { id: 't11', name: 'New York Empire', pts: 94, rank: 5, salary: 8000, key: 'Brash · M. Wachman · Allen · Lynch' },
+  { id: 't06', name: 'Monaco Aces', pts: 92, rank: 6, salary: 7000, key: 'Fredricson · Mansur · Seabra · Cottard' },
+  { id: 't10', name: 'Cannes Stars', pts: 92, rank: 7, salary: 7000, key: 'Nielsen · Sprehe · K. Eckermann · Hinners' },
+  { id: 't12', name: 'Doha Falcons', pts: 89, rank: 8, salary: 6000, key: 'Mendoza · Thijssen · Budd · Pedersen' },
+  { id: 't04', name: 'Valkenswaard United', pts: 84.5, rank: 9, salary: 6000, key: 'Thomas · Tops-Alexander · T. Philippaerts · Ehning' },
+  { id: 't05', name: 'St. Tropez Pirates', pts: 82, rank: 10, salary: 5000, key: 'Sadran · Ermann · Guery · Bucci' },
+  { id: 't07', name: 'Cairo Pharaohs', pts: 82, rank: 11, salary: 5000, key: 'Nassar · Malhas · Joly · Mulder' },
+  { id: 't13', name: 'Shanghai Swans', pts: 76, rank: 12, salary: 4000, key: 'Deusser · Casadei · Maher · Kühner' },
+  { id: 't09', name: 'Madrid In Motion', pts: 75, rank: 13, salary: 4000, key: 'Emmen · Alvarez Moya · van der Vleuten' },
+  { id: 't15', name: 'Mexico Amigos', pts: 71, rank: 14, salary: 3500, key: 'Hank Guerreiro · Hank Conter · Menezes' },
+  { id: 't16', name: 'Riyadh Knights', pts: 57, rank: 15, salary: 3500, key: "O'Connor · Gaudiano · T. Wachman" },
+  { id: 't14', name: 'Scandinavian Vikings', pts: 50.5, rank: 16, salary: 3000, key: 'Vrieling · Vingralkova · Matte Capdevila' },
+  { id: 't17', name: 'Rome Gladiators', pts: 35, rank: 17, salary: 3000, key: 'Hochstaedter · Grimaldi · Kass · Pezzoli' },
 ];
 
 export const EVENTS_2026 = [
