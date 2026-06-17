@@ -317,13 +317,14 @@ function TeamFinalResults({ teamResults, displayTeams }) {
     const r2Time = typeof raw === 'object' ? (raw.r2Time ?? null) : null;
     const madeR2 = r2Faults != null;
     const combined = madeR2 ? r2Faults : null;
-    const pts = el ? 0 : gclStagePts(pos);
+    // FIXED: eliminated/retired teams now score points for their actual
+    // computed rank, same as any other team — elimination affects WHERE
+    // they rank (via calcFinalPositions' tiering), not whether they score
+    // once a rank is assigned. Previously this zeroed out points for any
+    // el team regardless of final position.
+    const pts = gclStagePts(pos);
     return { t, pos, ret, el, madeR2, combined, r2Time, pts };
-  }).sort((a, b) => {
-    if (a.ret || a.el) return 1;
-    if (b.ret || b.el) return -1;
-    return (a.pos || 999) - (b.pos || 999);
-  });
+  }).sort((a, b) => (a.pos || 999) - (b.pos || 999));
 
   if (!entries.length) return <Empty msg="Final standings not yet entered" />;
 
@@ -337,7 +338,7 @@ function TeamFinalResults({ teamResults, displayTeams }) {
           style={{ borderColor: 'rgba(42,40,32,0.4)', background: madeR2 ? 'rgba(76,175,61,0.03)' : 'transparent' }}>
           <div className="font-cinzel text-xs w-5 text-center flex-shrink-0"
             style={{ color: pos <= 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>
-            {ret ? 'RET' : el ? 'EL' : pos}
+            {pos}
           </div>
           <div className="flex-1 font-cormorant text-base font-semibold flex items-center gap-1.5"
             style={{ color: madeR2 ? '#6aad8a' : 'var(--cream)' }}>
@@ -348,6 +349,12 @@ function TeamFinalResults({ teamResults, displayTeams }) {
             )}
           </div>
           <div className="flex items-center gap-3 flex-shrink-0">
+            {(ret || el) && (
+              <span className="font-cinzel text-xs px-1"
+                style={{ background: 'rgba(224,112,112,0.15)', color: '#e07070', borderRadius: 2, fontSize: 8, letterSpacing: '0.06em' }}>
+                {ret ? 'RET' : 'EL'}
+              </span>
+            )}
             {madeR2 && combined != null && <div className="text-xs" style={{ color: 'var(--mid)' }}>{combined} faults</div>}
             {madeR2 && r2Time != null && <div className="text-xs" style={{ color: 'var(--mid)' }}>{Number(r2Time).toFixed(2)}s</div>}
             <div className="font-cormorant text-base font-semibold" style={{ color: 'var(--gold-lt)' }}>
