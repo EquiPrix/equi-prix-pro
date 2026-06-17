@@ -130,8 +130,19 @@ function calcFinalPositions(teams, teamResults) {
   const withData = teams
     .filter(team => {
       const d = teamResults[team.id];
-      // Skip teams with no entry at all for this event — they didn't compete.
-      return d && Object.keys(d).length > 0;
+      if (!d) return false;
+      // Skip teams with no MEANINGFUL data for this event — they didn't
+      // compete. Checking Object.keys(d).length isn't enough: the editor
+      // can create an empty placeholder object (with keys present but all
+      // values blank/zero/empty) just from clicking into a team's row, so
+      // we need to check for actual entered values specifically.
+      const hasR1Faults = d.r1Faults !== '' && d.r1Faults !== undefined && d.r1Faults !== null;
+      const hasR1Time = d.r1Time !== '' && d.r1Time !== undefined && d.r1Time !== null;
+      const hasR2Faults = d.r2Faults !== '' && d.r2Faults !== undefined && d.r2Faults !== null;
+      const hasR2Time = d.r2Time !== '' && d.r2Time !== undefined && d.r2Time !== null;
+      const hasRiderData = (d.r1Riders || []).some(r => r.name) || (d.r2Riders || []).some(r => r.name);
+      const hasRetOrEl = !!d.ret || !!d.el;
+      return hasR1Faults || hasR1Time || hasR2Faults || hasR2Time || hasRiderData || hasRetOrEl;
     })
     .map(team => {
       const d = teamResults[team.id];
