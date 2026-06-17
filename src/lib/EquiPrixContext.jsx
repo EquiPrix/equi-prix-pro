@@ -22,9 +22,16 @@ export async function computeLiveGclStandings(eventsList) {
   const pastEvents = sourceEvents.filter(e => e.status === 'past');
   const teamTotals = {};
 
-  for (const ev of pastEvents) {
-    const rows = await sbFetch('results?event=eq.' + ev.supabaseKey + '&limit=1') || [];
-    if (!rows.length) continue;
+  // Fetch all past events' results CONCURRENTLY instead of one at a time —
+  // sequential awaits here were adding several seconds to every page load
+  // (one Supabase round-trip per past event, six and growing). These are
+  // independent reads with no ordering dependency, so Promise.all is safe.
+  const allRows = await Promise.all(
+    pastEvents.map(ev => sbFetch('results?event=eq.' + ev.supabaseKey + '&limit=1'))
+  );
+
+  allRows.forEach(rows => {
+    if (!rows || !rows.length) return;
     const tr = rows[0].team_results || {};
     Object.entries(tr).forEach(([id, raw]) => {
       const pos = typeof raw === 'object' ? raw.finalPos : raw;
@@ -36,7 +43,7 @@ export async function computeLiveGclStandings(eventsList) {
       teamTotals[id].events++;
       if (pos === 1) teamTotals[id].wins++;
     });
-  }
+  });
 
   // Rank by pts descending, tiebreak by wins
   const ranked = Object.entries(teamTotals)
