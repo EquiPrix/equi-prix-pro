@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useEquiPrix, GENERAL_ROOM_ID } from '@/lib/EquiPrixContext';
 import { useAuth } from '@/lib/AuthContext';
 import { sbFetch, fmt, getBand, CAP, CPT_PREMIUM } from '@/lib/equiprix-data';
+import { loadStartListRemote } from '@/lib/startListStore';
 import { Search, X, ChevronDown } from 'lucide-react';
 import RiderRow from './RiderRow';
 import TeamSlot from './TeamSlot';
@@ -20,8 +21,19 @@ export default function DraftTab() {
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [showDestPicker, setShowDestPicker] = useState(false);
+  const [teamPairsR1, setTeamPairsR1] = useState({});
 
   const ev = currentEvent;
+
+  // Load R1 rider/horse combos for the current event so the Teams tab
+  // can show who each team is riding in Round 1. Same data source as
+  // the admin's Start Lists editor — read-only here, display-only.
+  useEffect(() => {
+    if (!ev?.id) return;
+    loadStartListRemote(ev.id).then(data => {
+      setTeamPairsR1(data?.teamPairs || {});
+    });
+  }, [ev?.id]);
 
   // In 'preview' mode everything is practice — nothing actually locks
   // In 'teams' mode: team picks open AND rider picks open against the
@@ -291,7 +303,22 @@ export default function DraftTab() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-cormorant text-sm font-semibold truncate" style={{ color: 'var(--cream)' }}>{t.name}</div>
-                      <div className="text-xs" style={{ color: 'var(--mid)' }}>{fmt(t.salary)}</div>
+                      {(() => {
+                        const r1 = teamPairsR1[t.id]?.r1;
+                        if (!r1 || (!r1[0]?.name && !r1[1]?.name)) {
+                          return <div className="text-xs" style={{ color: 'var(--mid)' }}>{fmt(t.salary)}</div>;
+                        }
+                        return (
+                          <>
+                            <div className="text-xs" style={{ color: 'var(--mid)' }}>{fmt(t.salary)}</div>
+                            {r1.filter(p => p?.name).map((p, i) => (
+                              <div key={i} className="font-cormorant text-xs truncate mt-0.5" style={{ color: 'var(--gold-lt)', fontStyle: 'italic' }}>
+                                {p.name}{p.horse ? <span style={{ color: 'var(--mid)' }}> / {p.horse}</span> : ''}
+                              </div>
+                            ))}
+                          </>
+                        );
+                      })()}
                     </div>
                     {picked && <div className="text-xs flex-shrink-0" style={{ color: '#4caf7d' }}>✓</div>}
                     {locked && <div className="text-xs flex-shrink-0" style={{ color: 'var(--mid)' }}>🔒</div>}
