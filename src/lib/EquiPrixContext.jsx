@@ -15,11 +15,101 @@ export function EquiPrixProvider({ children }) {
   const [toast, setToast] = useState(null);
   const hasAutoSelected = useRef(false);
 
+  // Destinations: where a user's picks for the CURRENT event get saved.
+  // null = General Leaderboard. A room object = that specific room.
+  // destinations is the list of options available right now (General,
+  // if not opted out, plus every room the user belongs to for this
+  // event); currentDestination is whichever one is selected in the
+  // Draft tab's selector.
+  const [currentDestination, setCurrentDestinationState] = useState(null); // null = General
+  const [destinations, setDestinations] = useState([]); // [{ id: null, name: 'General Leaderboard' }, { id: roomId, name, ... }]
+  const [generalOptedOut, setGeneralOptedOut] = useState(false);
+  const [destinationsLoading, setDestinationsLoading] = useState(false);
+
   const userName = userCode ? (NAMES[userCode] || (userCode === 'EQUIPRIX' || userCode === 'BETA2026' ? 'Beta User' : userCode)) : null;
 
   const showToast = useCallback((msg) => {
     setToast(msg);
     setTimeout(() => setToast(null), 2200);
+  }, []);
+
+  // Builds the destination list for a given user+event: General (unless
+  // the user has opted out AND has at least one other room to fall back
+  // to — a user with zero rooms always keeps General, no toggle), plus
+  // every room scoped to this event the user is a member of.
+  const loadDestinations = useCallback(async (identity, ev) => {
+    if (!identity || !ev) { setDestinations([]); return; }
+    setDestinationsLoading(true);
+    try {
+      const memberships = await sbFetch('room_members?user_email=eq.' + encodeURIComponent(identity)) || [];
+      let myRooms = [];
+      if (memberships.length) {
+        const roomIds = memberships.map(m => m.room_id);
+        const allRooms = await sbFetch('rooms?id=in.(' + roomIds.join(',') + ')') || [];
+        myRooms = allRooms.filter(r => r.event_id === ev.supabaseKey || r.event_id === ev.id);
+      }
+
+      // Opt-out preference is stored on the General picks row itself
+      // (picks_json.optedOutOfGeneral) so it's per-event and doesn't need
+      // a separate table. A user with no rooms can't opt out — General
+      // is their only destination, always on, no toggle shown.
+      let optedOut = false;
+      if (myRooms.length) {
+        try {
+          const genRows = await sbFetch('picks?user_email=eq.' + encodeURIComponent(identity) + '&event=eq.' + ev.id + '&room_id=is.null&limit=1');
+          optedOut = !!(genRows && genRows.length && genRows[0].picks_json?.optedOutOfGeneral);
+        } catch (e) { /* default to opted-in if we can't tell */ }
+      }
+      setGeneralOptedOut(optedOut);
+
+      const list = [];
+      if (!myRooms.length || !optedOut) {
+        list.push({ id: null, name: 'General Leaderboard' });
+      }
+      myRooms.forEach(r => list.push({ id: r.id, name: r.name }));
+      setDestinations(list);
+
+      // If the currently-selected destination no longer exists in the
+      // new list (e.g. switched events, or opted out of the one we were
+      // on), fall back to the first available option.
+      setCurrentDestinationState(cur => {
+        const stillValid = list.some(d => d.id === cur);
+        return stillValid ? cur : (list[0]?.id ?? null);
+      });
+    } catch (e) {
+      console.error('loadDestinations error:', e);
+      setDestinations([{ id: null, name: 'General Leaderboard' }]);
+    } finally {
+      setDestinationsLoading(false);
+    }
+  }, []);
+
+  const setCurrentDestination = useCallback((destId) => {
+    setCurrentDestinationState(destId);
+  }, []);
+
+  const setGeneralOptOut = useCallback(async (identity, ev, optOut) => {
+    if (!identity || !ev) return;
+    setGeneralOptedOut(optOut);
+    try {
+      // Persist the flag on the General picks row (room_id null) so it
+      // survives reloads. Doesn't touch riders/teams already drafted for
+      // General — just marks visibility going forward.
+      const rows = await sbFetch('picks?user_email=eq.' + encodeURIComponent(identity) + '&event=eq.' + ev.id + '&room_id=is.null&limit=1');
+      const existing = rows && rows.length ? rows[0].picks_json : { riders: [], teams: [] };
+      await sbFetch('picks', {
+        method: 'POST',
+        body: JSON.stringify({
+          user_email: identity,
+          event: ev.id,
+          room_id: null,
+          picks_json: { ...existing, optedOutOfGeneral: optOut },
+          updated_at: new Date().toISOString(),
+        }),
+      });
+    } catch (e) {
+      console.error('setGeneralOptOut error:', e);
+    }
   }, []);
 
   const getRiderList = (ev) => {
@@ -152,11 +242,14 @@ export function EquiPrixProvider({ children }) {
     loadEventData();
   }, [loadEventData]);
 
-  const loadSavedPicks = useCallback(async (code, ev) => {
+  // identity is the user's email (activeUserIdentity from EquiPrix.jsx).
+  // roomId is null for General Leaderboard, or a room's uuid — defaults
+  // to whatever's currently selected if not passed explicitly.
+  const loadSavedPicks = useCallback(async (identity, ev, roomId = currentDestination) => {
     if (!ev || !['preview', 'teams', 'riders', 'open'].includes(ev.status)) return;
     try {
-      let rows = await sbFetch('picks?access_code=eq.' + encodeURIComponent(code) + '&event=eq.' + ev.id + '&limit=1');
-      if (!rows || !rows.length) rows = await sbFetch('picks?access_code=eq.' + encodeURIComponent(code) + '&limit=1');
+      const roomFilter = roomId == null ? 'room_id=is.null' : 'room_id=eq.' + roomId;
+      const rows = await sbFetch('picks?user_email=eq.' + encodeURIComponent(identity) + '&event=eq.' + ev.id + '&' + roomFilter + '&limit=1');
       if (rows && rows.length > 0) {
         const p = rows[0].picks_json;
 
@@ -191,11 +284,16 @@ export function EquiPrixProvider({ children }) {
         setTeam(newTeam);
         setTeamPicks(newTeamPicks);
         showToast('Picks restored ✓');
+      } else {
+        // No saved picks for this destination yet — clear the roster
+        // rather than leaving the previous destination's picks showing.
+        setTeam([]);
+        setTeamPicks([]);
       }
     } catch (e) {
       console.warn('Could not load picks:', e);
     }
-  }, [riders, showToast]);
+  }, [riders, showToast, currentDestination]);
 
   const login = useCallback((code) => {
     const upper = code.trim().toUpperCase();
@@ -228,6 +326,9 @@ export function EquiPrixProvider({ children }) {
       toast, showToast,
       loadSavedPicks,
       loadEventData,
+      currentDestination, setCurrentDestination,
+      destinations, loadDestinations, destinationsLoading,
+      generalOptedOut, setGeneralOptOut,
     }}>
       {children}
     </EquiPrixContext.Provider>
