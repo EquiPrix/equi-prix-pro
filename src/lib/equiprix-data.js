@@ -128,16 +128,17 @@ export async function sbFetch(path, opts = {}) {
     'Authorization': 'Bearer ' + SUPABASE_KEY,
     'Content-Type': 'application/json'
   };
-  if (opts.method === 'POST') headers['Prefer'] = 'resolution=merge-duplicates,return=representation';
+if (opts.method === 'POST') headers['Prefer'] = 'resolution=merge-duplicates,return=representation';
   if (opts.method === 'PATCH') headers['Prefer'] = 'return=representation';
-  try {
+  if (opts.method === 'DELETE') headers['Prefer'] = 'return=representation';
+  try {    
     const resp = await fetch(url, { ...opts, headers });
     if (!resp.ok) {
       const errText = await resp.text().catch(() => '');
-      if (opts.method === 'POST' || opts.method === 'PATCH') {
+if (opts.method === 'POST' || opts.method === 'PATCH' || opts.method === 'DELETE') {
         throw new Error('Supabase ' + resp.status + ': ' + errText.slice(0, 120));
       }
-      return null;
+            return null;
     }
     const txt = await resp.text();
     return txt ? JSON.parse(txt) : [];

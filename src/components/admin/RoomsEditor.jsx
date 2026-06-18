@@ -76,13 +76,11 @@ export default function RoomsEditor() {
   const approveRequest = async (req) => {
     setApprovingId(req.id);
     try {
-      // Find matching event
       const matchedEvent = EVENTS_2026.find(ev =>
         req.event_name?.toLowerCase().includes(ev.city?.toLowerCase()) ||
         req.event_name?.includes(ev.flag)
       );
 
-      // Pre-fill form with request data and create room
       const join_code = generateCode();
       await sbFetch('rooms', {
         method: 'POST',
@@ -99,13 +97,11 @@ export default function RoomsEditor() {
         })
       });
 
-      // Mark request as approved
       await sbFetch('room_requests?id=eq.' + req.id, {
         method: 'PATCH',
         body: JSON.stringify({ status: 'approved' })
       });
 
-      // Send invite email to requestor with the join link
       await fetch('/api/send-room-invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -137,8 +133,20 @@ export default function RoomsEditor() {
 
   const deleteRoom = async (id) => {
     if (!confirm('Delete this room? All members will be removed.')) return;
-    await sbFetch('rooms?id=eq.' + id, { method: 'DELETE' });
-    loadRooms();
+    try {
+      // Delete members explicitly first — don't rely on an ON DELETE
+      // CASCADE foreign key existing between room_members.room_id and
+      // rooms.id, since that wasn't confirmed to be set up. sbFetch now
+      // throws on a failed DELETE instead of silently returning null, so
+      // any real failure here (RLS, bad id, etc.) surfaces below instead
+      // of looking like nothing happened.
+      await sbFetch('room_members?room_id=eq.' + id, { method: 'DELETE' });
+      await sbFetch('rooms?id=eq.' + id, { method: 'DELETE' });
+      loadRooms();
+    } catch (e) {
+      console.error('deleteRoom failed:', e);
+      alert('Could not delete room: ' + e.message);
+    }
   };
 
   const copyLink = (code) => {
@@ -174,7 +182,6 @@ export default function RoomsEditor() {
         Create and manage invite-only rooms.
       </p>
 
-      {/* ── CREATE FORM ─────────────────────────────────────────── */}
       <div className="rounded-xl p-5 mb-6" style={{ border: '1px solid rgba(180,149,48,0.2)', background: 'rgba(180,149,48,0.03)' }}>
         <div className="font-cinzel text-xs tracking-widest mb-4" style={{ color: 'var(--gold)', fontSize: 10 }}>CREATE NEW ROOM</div>
 
@@ -254,7 +261,6 @@ export default function RoomsEditor() {
         </button>
       </div>
 
-      {/* ── PENDING REQUESTS ────────────────────────────────────── */}
       {requests.length > 0 && (
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-3">
@@ -331,7 +337,6 @@ export default function RoomsEditor() {
         </div>
       )}
 
-      {/* ── ACTIVE ROOMS ────────────────────────────────────────── */}
       <div className="font-cinzel text-xs tracking-widest mb-3" style={{ color: 'var(--gold)', fontSize: 10 }}>
         ACTIVE ROOMS ({rooms.length})
       </div>

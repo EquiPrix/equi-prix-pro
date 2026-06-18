@@ -3,6 +3,17 @@
   publish = "dist"
   functions = "netlify/functions"
 
+# Route /api/* to the matching Netlify Function BEFORE the SPA catch-all
+# below — redirect rules are evaluated in order, and without this the
+# catch-all swallows every /api/... call and serves index.html instead,
+# which is why fetch('/api/send-room-request', ...) was failing with
+# "Unexpected token '<', \"<!DOCTYPE\"... is not valid JSON": it was
+# getting the React app's HTML shell back, not the function's response.
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
