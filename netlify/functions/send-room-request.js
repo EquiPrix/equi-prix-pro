@@ -114,7 +114,7 @@ export default async (req, context) => {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: 'EquiPrix <noreply@send.playequiprix.com>',
+        from: 'EquiPrix <noreply@playequiprix.com>',
         to: ['info@playequiprix.com'],
         reply_to: requestorEmail,
         subject: `🏇 Room Request: ${roomName || eventName} from ${requestorName}`,
