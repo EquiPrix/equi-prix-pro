@@ -24,10 +24,15 @@ export function EquiPrixProvider({ children }) {
 
   const getRiderList = (ev) => {
     const st = ev.status;
-    if (st === 'teams') return [];
     if (st === 'past') return ev.riders || [];
 
-    // Get the raw rider list
+    // 'teams' status means the OFFICIAL GP start list isn't announced yet,
+    // but riders should still be visible so people can budget their team
+    // before the team lock — same gpRiders -> previewRiders -> riders
+    // fallback chain as every other open status. Once the real GP list
+    // is announced (ev.gpRiders populated), it takes over automatically;
+    // picks made against preview riders still resolve correctly since
+    // rider ids are stable across both lists.
     let rawRiders = null;
     if (ev.gpRiders?.length) rawRiders = ev.gpRiders;
     else if (ev.previewRiders?.length) rawRiders = ev.previewRiders;

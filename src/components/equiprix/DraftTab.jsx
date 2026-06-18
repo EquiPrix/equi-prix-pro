@@ -17,8 +17,12 @@ export default function DraftTab() {
   const ev = currentEvent;
 
   // In 'preview' mode everything is practice — nothing actually locks
-  // In 'teams' mode: team picks open, no rider picks yet (GP list not announced)
-  // In 'riders' mode: rider picks open, teams already locked
+  // In 'teams' mode: team picks open AND rider picks open against the
+  // preview rider pool (official GP start list isn't announced yet, but
+  // people can budget/draft against expected riders — picks carry over
+  // by rider id once the real list lands)
+  // In 'riders' mode: rider picks open against the real GP list, teams
+  // already locked
   const isTeamLocked = () => {
     if (!ev) return true;
     if (ev.status === 'preview') return false; // practice mode, allow editing
@@ -27,7 +31,7 @@ export default function DraftTab() {
   const isRiderLocked = () => {
     if (!ev) return true;
     if (ev.status === 'preview') return false; // practice mode, allow editing
-    if (ev.status === 'teams') return true;    // GP list not announced yet
+    if (ev.status === 'teams') return false;   // preview riders open for drafting
     return new Date() >= new Date(ev.gpLockISO);
   };
 
@@ -134,6 +138,7 @@ export default function DraftTab() {
 
   const isDraftable = ['preview', 'teams', 'riders', 'open'].includes(ev.status);
   const isPractice = ev.status === 'preview';
+  const isPreviewRiderPool = ev.status === 'teams' && !ev.gpRiders?.length;
 
   if (!isDraftable) {
     return (
@@ -159,6 +164,11 @@ export default function DraftTab() {
     <div className="flex items-start gap-2 px-3 py-2 text-xs font-cormorant italic flex-shrink-0"
       style={{ background: 'rgba(61,90,76,0.15)', borderBottom: '1px solid rgba(61,90,76,0.3)', color: '#6aad8a' }}>
       <span>⚡ <strong>Practice mode</strong> — start lists not yet confirmed. Draft freely to plan your budget. Picks are saved but won't count until the official draft opens.</span>
+    </div>
+  ) : isPreviewRiderPool ? (
+    <div className="flex items-start gap-2 px-3 py-2 text-xs font-cormorant italic flex-shrink-0"
+      style={{ background: 'rgba(180,149,48,0.1)', borderBottom: '1px solid rgba(180,149,48,0.25)', color: 'var(--gold-lt)' }}>
+      <span>📋 <strong>Expected riders</strong> — the official GP start list is announced the night before. Draft now against the expected field; your picks carry over automatically once the real list is confirmed.</span>
     </div>
   ) : null;
 
