@@ -1,1 +1,2 @@
-/*    /index.html   200
+git commit -m "fix: api routing redirect, sbFetch DELETE error handling, room/member cleanup on delete"
+git push origin HEAD
