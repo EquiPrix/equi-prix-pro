@@ -76,7 +76,7 @@ export default async (req, context) => {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(batch.map(email => ({
-          from: 'EquiPrix <noreply@send.playequiprix.com>',
+          from: 'EquiPrix <noreply@playequiprix.com>',
           to: [email],
           subject: tmpl.subject,
           html,

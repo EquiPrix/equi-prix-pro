@@ -52,7 +52,7 @@ export default async (req, context) => {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: 'EquiPrix <noreply@send.playequiprix.com>',
+        from: 'EquiPrix <noreply@playequiprix.com>',
         to: [email],
         subject: `You've been invited to ${roomName} on EquiPrix 🏇`,
         html,
