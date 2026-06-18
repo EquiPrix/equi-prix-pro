@@ -165,6 +165,11 @@ export default function DraftTab() {
       style={{ background: 'rgba(61,90,76,0.15)', borderBottom: '1px solid rgba(61,90,76,0.3)', color: '#6aad8a' }}>
       <span>⚡ <strong>Practice mode</strong> — start lists not yet confirmed. Draft freely to plan your budget. Picks are saved but won't count until the official draft opens.</span>
     </div>
+  ) : isPreviewRiderPool && view === 'teams' ? (
+    <div className="flex items-start gap-2 px-3 py-2 text-xs font-cormorant italic flex-shrink-0"
+      style={{ background: 'rgba(61,90,76,0.15)', borderBottom: '1px solid rgba(61,90,76,0.3)', color: '#6aad8a' }}>
+      <span>✓ <strong>Team Draft picks are live</strong> — First Round Rider/Horse combos will be announced the night before.</span>
+    </div>
   ) : isPreviewRiderPool ? (
     <div className="flex items-start gap-2 px-3 py-2 text-xs font-cormorant italic flex-shrink-0"
       style={{ background: 'rgba(180,149,48,0.1)', borderBottom: '1px solid rgba(180,149,48,0.25)', color: 'var(--gold-lt)' }}>
