@@ -102,6 +102,12 @@ export default function RoomsEditor() {
         body: JSON.stringify({ status: 'approved' })
       });
 
+      // Combined "your room was approved, here's the link to share"
+      // email — goes to the requestor, who is also the room's manager
+      // (manager_email is set to req.requestor_email above). Same
+      // template as a peer invite, but isApprovalNotice swaps the
+      // copy/subject to read as a notice to the room owner rather than
+      // an invite to join someone else's room.
       await fetch('/api/send-room-invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -112,7 +118,8 @@ export default function RoomsEditor() {
           eventName: matchedEvent?.city || req.event_name,
           eventFlag: matchedEvent?.flag || '🏇',
           joinUrl: `${window.location.origin}/room/${join_code}`,
-          managerName: 'EquiPrix',
+          managerName: req.requestor_name || null,
+          isApprovalNotice: true,
         }),
       });
 
@@ -124,11 +131,29 @@ export default function RoomsEditor() {
 
   const denyRequest = async (id) => {
     if (!confirm('Deny and dismiss this request?')) return;
+    const req = requests.find(r => r.id === id);
     await sbFetch('room_requests?id=eq.' + id, {
       method: 'PATCH',
       body: JSON.stringify({ status: 'denied' })
     });
     setRequests(prev => prev.filter(r => r.id !== id));
+
+    // Let the requestor know, with a contact link rather than just
+    // leaving them wondering whether their request vanished.
+    if (req?.requestor_email) {
+      try {
+        await fetch('/api/send-room-denial', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: req.requestor_email,
+            requestorName: req.requestor_name || null,
+            roomName: req.room_name || null,
+            eventName: req.event_name || null,
+          }),
+        });
+      } catch (e) { console.warn('Denial email failed:', e.message); }
+    }
   };
 
   const deleteRoom = async (id) => {

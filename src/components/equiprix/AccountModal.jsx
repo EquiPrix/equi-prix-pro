@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/lib/AuthContext';
-import { X, Save, LogOut, Key, Bell, BellOff } from 'lucide-react';
+import { EVENTS_2026 } from '@/lib/equiprix-data';
+import { X, Save, LogOut, Key, Bell, BellOff, DoorOpen } from 'lucide-react';
 
 export default function AccountModal({ onClose }) {
   const { user } = useAuth();
@@ -14,6 +15,15 @@ export default function AccountModal({ onClose }) {
   const [savingPrefs, setSavingPrefs] = useState(false);
   const [prefSaved, setPrefSaved] = useState(false);
   const [error, setError] = useState('');
+
+  const [showRequest, setShowRequest] = useState(false);
+  const [reqEvent, setReqEvent] = useState('');
+  const [reqName, setReqName] = useState('');
+  const [reqMax, setReqMax] = useState(20);
+  const [reqPrize, setReqPrize] = useState('');
+  const [reqNotes, setReqNotes] = useState('');
+  const [reqSending, setReqSending] = useState(false);
+  const [reqResult, setReqResult] = useState(null);
 
   useEffect(() => {
     const meta = user?.user_metadata;
@@ -46,17 +56,14 @@ export default function AccountModal({ onClose }) {
       });
       if (error) throw error;
 
-      // Update user_profiles
       await supabase.from('user_profiles')
         .upsert({ email: user.email, username: trimmed, updated_at: new Date().toISOString() },
           { onConflict: 'email' });
 
-      // Update existing picks rows so leaderboard reflects the new name
       await supabase.from('picks')
         .update({ username: trimmed })
         .eq('access_code', user.email);
 
-      // Update room_members rows so room leaderboards reflect the new name
       await supabase.from('room_members')
         .update({ username: trimmed })
         .eq('user_email', user.email);
@@ -100,9 +107,49 @@ export default function AccountModal({ onClose }) {
     }
   };
 
+  const submitRequest = async () => {
+    if (!reqEvent) return;
+    setReqSending(true);
+    setReqResult(null);
+    try {
+      const res = await fetch('/api/send-room-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestorEmail: user?.email || '',
+          requestorName: user?.user_metadata?.username || user?.email?.split('@')[0] || '',
+          eventName: reqEvent,
+          maxMembers: reqMax,
+          roomName: reqName,
+          prizeIdea: reqPrize || null,
+          notes: reqNotes || null,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setReqResult({ success: true });
+        setReqEvent(''); setReqName(''); setReqMax(20); setReqPrize(''); setReqNotes('');
+      } else {
+        setReqResult({ success: false, msg: data.error || data.warn });
+      }
+    } catch (e) { setReqResult({ success: false, msg: e.message }); }
+    finally { setReqSending(false); }
+  };
+
   const logout = async () => {
     await supabase.auth.signOut();
     onClose();
+  };
+
+  const inputStyle = {
+    background: 'rgba(255,255,255,0.04)',
+    border: '1px solid rgba(180,149,48,0.2)',
+    color: 'var(--cream)',
+    borderRadius: 4,
+    padding: '8px 12px',
+    fontSize: 13,
+    width: '100%',
+    outline: 'none',
   };
 
   return (
@@ -118,11 +165,10 @@ export default function AccountModal({ onClose }) {
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 20, scale: 0.97 }}
           transition={{ duration: 0.2 }}
-          className="w-full max-w-sm rounded-xl p-6"
-          style={{ background: 'var(--ep-card)', border: '1px solid rgba(180,149,48,0.25)' }}
+          className="w-full max-w-sm rounded-xl p-6 overflow-y-auto"
+          style={{ background: 'var(--ep-card)', border: '1px solid rgba(180,149,48,0.25)', maxHeight: '90vh' }}
           onClick={e => e.stopPropagation()}
         >
-          {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <div>
               <div className="font-cinzel text-sm tracking-widest" style={{ color: 'var(--gold)' }}>MY ACCOUNT</div>
@@ -131,7 +177,6 @@ export default function AccountModal({ onClose }) {
             <button onClick={onClose} style={{ color: 'var(--mid)' }}><X size={16} /></button>
           </div>
 
-          {/* Username */}
           <div className="mb-5">
             <label className="font-cinzel text-xs tracking-widest mb-2 block" style={{ color: 'var(--gold-lt)', fontSize: 9 }}>
               DISPLAY NAME
@@ -156,7 +201,6 @@ export default function AccountModal({ onClose }) {
 
           <div style={{ borderTop: '1px solid rgba(42,40,32,0.6)', margin: '20px 0' }} />
 
-          {/* Email notifications */}
           <div className="mb-5">
             <label className="font-cinzel text-xs tracking-widest mb-3 block" style={{ color: 'var(--gold-lt)', fontSize: 9 }}>
               EMAIL NOTIFICATIONS
@@ -194,7 +238,99 @@ export default function AccountModal({ onClose }) {
 
           <div style={{ borderTop: '1px solid rgba(42,40,32,0.6)', margin: '20px 0' }} />
 
-          {/* Password reset */}
+          {/* Request a Private Room — moved here from the Leaderboard
+              tab's My Rooms section, since it's an account-level action
+              rather than something tied to viewing a specific event's
+              standings, and was confusing people sitting next to room
+              leaderboards. */}
+          <div className="mb-5">
+            <button onClick={() => { setShowRequest(p => !p); setReqResult(null); }}
+              className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition-all"
+              style={{ background: showRequest ? 'rgba(180,149,48,0.1)' : 'rgba(180,149,48,0.04)', border: '1px solid rgba(180,149,48,0.2)' }}>
+              <div className="flex items-center gap-2">
+                <DoorOpen size={14} style={{ color: 'var(--gold)' }} />
+                <div>
+                  <div className="font-cinzel text-xs text-left" style={{ color: 'var(--gold)', fontSize: 9, letterSpacing: '0.1em' }}>REQUEST A PRIVATE ROOM</div>
+                  <div className="font-cormorant italic text-xs text-left mt-0.5" style={{ color: 'var(--mid)' }}>Ask EquiPrix to create a room for your group</div>
+                </div>
+              </div>
+              <span className="font-cinzel text-xs" style={{ color: 'var(--gold)', fontSize: 12 }}>{showRequest ? '▲' : '+'}</span>
+            </button>
+
+            {showRequest && (
+              <div className="mt-3 space-y-3">
+                {reqResult?.success ? (
+                  <div className="px-4 py-4 rounded-lg text-center" style={{ background: 'rgba(76,175,125,0.08)', border: '1px solid rgba(76,175,125,0.2)' }}>
+                    <div className="text-2xl mb-2">🏇</div>
+                    <div className="font-cormorant text-base font-semibold mb-1" style={{ color: '#4caf7d' }}>Request sent!</div>
+                    <div className="font-cormorant italic text-sm" style={{ color: 'var(--mid)' }}>We'll create your room and send you the invite link shortly.</div>
+                    <button onClick={() => { setShowRequest(false); setReqResult(null); }}
+                      className="mt-3 font-cinzel text-xs px-4 py-1.5 rounded"
+                      style={{ background: 'rgba(76,175,125,0.15)', color: '#4caf7d', border: '1px solid rgba(76,175,125,0.3)', letterSpacing: '0.08em' }}>
+                      CLOSE
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <label className="font-cinzel text-xs block mb-1" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>EVENT *</label>
+                      <select value={reqEvent} onChange={e => setReqEvent(e.target.value)}
+                        style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(180,149,48,0.2)', color: reqEvent ? 'var(--cream)' : 'var(--mid)', borderRadius: 4, padding: '8px 12px', fontSize: 13, outline: 'none' }}>
+                        <option value="">— Select Event —</option>
+                        {EVENTS_2026.map(ev => <option key={ev.id} value={`${ev.flag} ${ev.city} · ${ev.dates}`}>{ev.flag} {ev.city} · {ev.dates}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="font-cinzel text-xs block mb-1" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>ROOM NAME</label>
+                      <input value={reqName} onChange={e => setReqName(e.target.value)}
+                        placeholder="e.g. My Barn League"
+                        style={{ ...inputStyle, fontSize: '16px' }} />
+                    </div>
+                    <div>
+                      <label className="font-cinzel text-xs block mb-1" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>MAX MEMBERS</label>
+                      <div className="flex gap-2">
+                        {[10, 25, 50, 100].map(n => (
+                          <button key={n} onClick={() => setReqMax(n)}
+                            className="flex-1 py-2 rounded font-cinzel text-xs transition-all"
+                            style={{ background: reqMax === n ? 'var(--gold)' : 'rgba(255,255,255,0.04)', color: reqMax === n ? 'var(--ink)' : 'var(--mid)', border: `1px solid ${reqMax === n ? 'var(--gold)' : 'rgba(180,149,48,0.2)'}`, fontSize: 10 }}>
+                            {n}
+                          </button>
+                        ))}
+                        <button onClick={() => setReqMax(999)}
+                          className="flex-1 py-2 rounded font-cinzel text-xs transition-all"
+                          style={{ background: reqMax === 999 ? 'var(--gold)' : 'rgba(255,255,255,0.04)', color: reqMax === 999 ? 'var(--ink)' : 'var(--mid)', border: `1px solid ${reqMax === 999 ? 'var(--gold)' : 'rgba(180,149,48,0.2)'}`, fontSize: 10 }}>
+                          100+
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="font-cinzel text-xs block mb-1" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>PRIZE IDEA (optional)</label>
+                      <input value={reqPrize} onChange={e => setReqPrize(e.target.value)}
+                        placeholder="e.g. Bottle of wine for the winner"
+                        style={{ ...inputStyle, fontSize: '16px' }} />
+                    </div>
+                    <div>
+                      <label className="font-cinzel text-xs block mb-1" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>NOTES (optional)</label>
+                      <textarea value={reqNotes} onChange={e => setReqNotes(e.target.value)}
+                        placeholder="Any other details…" rows={2}
+                        style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }} />
+                    </div>
+                    {reqResult?.success === false && (
+                      <p className="font-cormorant italic text-sm" style={{ color: '#e07070' }}>{reqResult.msg || 'Failed to send request.'}</p>
+                    )}
+                    <button onClick={submitRequest} disabled={reqSending || !reqEvent}
+                      className="w-full py-3 rounded font-cinzel text-xs tracking-widest flex items-center justify-center gap-2 transition-all"
+                      style={{ background: reqSending ? 'rgba(180,149,48,0.1)' : 'var(--gold)', color: reqSending ? 'var(--mid)' : 'var(--ink)', letterSpacing: '0.1em', opacity: !reqEvent ? 0.4 : 1 }}>
+                      {reqSending ? 'SENDING…' : 'SUBMIT REQUEST'}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div style={{ borderTop: '1px solid rgba(42,40,32,0.6)', margin: '20px 0' }} />
+
           <div className="mb-5">
             <label className="font-cinzel text-xs tracking-widest mb-2 block" style={{ color: 'var(--gold-lt)', fontSize: 9 }}>
               PASSWORD
@@ -215,7 +351,6 @@ export default function AccountModal({ onClose }) {
 
           <div style={{ borderTop: '1px solid rgba(42,40,32,0.6)', margin: '20px 0' }} />
 
-          {/* Sign out */}
           <button onClick={logout}
             className="w-full flex items-center justify-center gap-2 py-2.5 rounded font-cinzel text-xs tracking-widest transition-all"
             style={{ border: '1px solid rgba(180,149,48,0.15)', color: 'var(--mid)', background: 'none', letterSpacing: '0.08em' }}>

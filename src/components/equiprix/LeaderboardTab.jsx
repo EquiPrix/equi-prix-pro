@@ -62,7 +62,10 @@ export default function LeaderboardTab() {
     if (!currentEvent) return;
     setLoading(true);
     try {
-      const picks = await sbFetch('picks?select=access_code,username,score,picks_json&event=eq.' + currentEvent.id) || [];
+      // "This Event" tab shows General Leaderboard picks only — room
+      // picks are scored separately on the "My Rooms" tab. room_id=is.null
+      // is what marks a picks row as General.
+      const picks = await sbFetch('picks?select=user_email,username,score,picks_json&event=eq.' + currentEvent.id + '&room_id=is.null') || [];
       let riderResults = {}, teamResults = {};
       if (['past', 'riders'].includes(currentEvent.status)) {
         const res = await sbFetch('results?event=eq.' + currentEvent.supabaseKey + '&limit=1') || [];
@@ -99,14 +102,14 @@ export default function LeaderboardTab() {
         const teamPts = resolvedTeams.reduce((s, t) => s + (t.pts || 0), 0);
         const riderPts = resolvedRiders.reduce((s, r) => s + (r.pts || 0), 0);
         const totalPts = hasResults ? teamPts + riderPts : null;
-        return { access_code: p.access_code, username: p.username || p.access_code, score: totalPts, teamPts, riders: resolvedRiders, teams: resolvedTeams, totalSpent, remainingAfterTeams, hasResults, hasTeamResults };
+        return { user_email: p.user_email, username: p.username || p.user_email, score: totalPts, teamPts, riders: resolvedRiders, teams: resolvedTeams, totalSpent, remainingAfterTeams, hasResults, hasTeamResults };
       }).sort((a, b) => (b.score || 0) - (a.score || 0));
 
       setEventRows(rows);
       if (hasResults && currentEvent.status === 'past') {
         rows.forEach(async (row) => {
           if (row.score == null) return;
-          try { await sbFetch('picks?access_code=eq.' + encodeURIComponent(row.access_code) + '&event=eq.' + currentEvent.id, { method: 'PATCH', body: JSON.stringify({ score: row.score }) }); } catch (e) {}
+          try { await sbFetch('picks?user_email=eq.' + encodeURIComponent(row.user_email) + '&event=eq.' + currentEvent.id + '&room_id=is.null', { method: 'PATCH', body: JSON.stringify({ score: row.score }) }); } catch (e) {}
         });
       }
     } catch (e) { console.error(e); } finally { setLoading(false); }
@@ -118,8 +121,10 @@ export default function LeaderboardTab() {
       const pastEvents = events.filter(e => e.status === 'past');
       const userTotals = {};
       for (const ev of pastEvents) {
+        // Season totals are General Leaderboard only — room competitions
+        // are self-contained and scored on the My Rooms tab instead.
         const [evPicks, evResults] = await Promise.all([
-          sbFetch('picks?select=access_code,username,picks_json&event=eq.' + ev.id),
+          sbFetch('picks?select=user_email,username,picks_json&event=eq.' + ev.id + '&room_id=is.null'),
           sbFetch('results?event=eq.' + ev.supabaseKey + '&limit=1'),
         ]);
         const riderResults = evResults?.[0]?.rider_results || {};
@@ -128,8 +133,8 @@ export default function LeaderboardTab() {
         (evPicks || []).forEach(p => {
           if (!p.picks_json || p.picks_json.isPractice) return;
           const score = hasResults ? calcPickScore(p.picks_json, riderResults, teamResults) : 0;
-          const key = p.access_code;
-          if (!userTotals[key]) userTotals[key] = { name: p.username || p.access_code, total: 0, events: 0 };
+          const key = p.user_email;
+          if (!userTotals[key]) userTotals[key] = { name: p.username || p.user_email, total: 0, events: 0 };
           userTotals[key].total += score;
           userTotals[key].events++;
         });
@@ -173,8 +178,11 @@ export default function LeaderboardTab() {
       const ev = EVENTS_2026.find(e => e.id === room.event_id);
       if (!ev || !members.length) { setRoomRows([]); setLoading(false); return; }
 
+      // Direct room_id match — every pick saved while this room was the
+      // active draft destination carries this room's id, so no more
+      // fuzzy matching by username/access_code needed.
       const [allPicks, evResults] = await Promise.all([
-        sbFetch('picks?select=access_code,username,picks_json&event=eq.' + ev.id),
+        sbFetch('picks?select=user_email,username,picks_json&event=eq.' + ev.id + '&room_id=eq.' + room.id),
         sbFetch('results?event=eq.' + ev.supabaseKey + '&limit=1'),
       ]);
       const riderResults = evResults?.[0]?.rider_results || {};
@@ -182,7 +190,7 @@ export default function LeaderboardTab() {
       const hasResults = Object.keys(riderResults).length > 0 || Object.keys(teamResults).length > 0;
 
       const scored = members.map(member => {
-        const pick = (allPicks || []).find(p => p.access_code === member.user_email || p.username === member.username);
+        const pick = (allPicks || []).find(p => p.user_email === member.user_email);
         const score = pick && hasResults ? calcPickScore(pick.picks_json, riderResults, teamResults) : 0;
         return { email: member.user_email, username: member.username || member.user_email.split('@')[0], score, isYou: user?.email === member.user_email };
       }).sort((a, b) => b.score - a.score);
@@ -248,44 +256,6 @@ export default function LeaderboardTab() {
 }
 
 function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode, setJoinCode, joinWithCode, joining, joinMsg, user }) {
-  const [showRequest, setShowRequest] = useState(false);
-  const [reqEvent, setReqEvent] = useState('');
-  const [reqName, setReqName] = useState('');
-  const [reqMax, setReqMax] = useState(20);
-  const [reqPrize, setReqPrize] = useState('');
-  const [reqNotes, setReqNotes] = useState('');
-  const [reqSending, setReqSending] = useState(false);
-  const [reqResult, setReqResult] = useState(null);
-
-  const submitRequest = async () => {
-    if (!reqEvent) return;
-    setReqSending(true);
-    setReqResult(null);
-    try {
-      const res = await fetch('/api/send-room-request', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          requestorEmail: user?.email || '',
-          requestorName: user?.user_metadata?.username || user?.email?.split('@')[0] || '',
-          eventName: reqEvent,
-          maxMembers: reqMax,
-          roomName: reqName,
-          prizeIdea: reqPrize || null,
-          notes: reqNotes || null,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setReqResult({ success: true });
-        setReqEvent(''); setReqName(''); setReqMax(20); setReqPrize(''); setReqNotes('');
-      } else {
-        setReqResult({ success: false, msg: data.error });
-      }
-    } catch (e) { setReqResult({ success: false, msg: e.message }); }
-    finally { setReqSending(false); }
-  };
-
   return (
     <div>
       {/* Join with code */}
@@ -312,90 +282,9 @@ function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode
             {joinMsg}
           </p>
         )}
-      </div>
-
-      {/* Request new room */}
-      <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--ep-border)' }}>
-        <button onClick={() => { setShowRequest(p => !p); setReqResult(null); }}
-          className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition-all"
-          style={{ background: showRequest ? 'rgba(180,149,48,0.1)' : 'rgba(180,149,48,0.04)', border: '1px solid rgba(180,149,48,0.2)' }}>
-          <div>
-            <div className="font-cinzel text-xs text-left" style={{ color: 'var(--gold)', fontSize: 9, letterSpacing: '0.1em' }}>REQUEST A PRIVATE ROOM</div>
-            <div className="font-cormorant italic text-xs text-left mt-0.5" style={{ color: 'var(--mid)' }}>Ask EquiPrix to create a room for your group</div>
-          </div>
-          <span className="font-cinzel text-xs" style={{ color: 'var(--gold)', fontSize: 12 }}>{showRequest ? '▲' : '+'}</span>
-        </button>
-
-        {showRequest && (
-          <div className="mt-3 space-y-3">
-            {reqResult?.success ? (
-              <div className="px-4 py-4 rounded-lg text-center" style={{ background: 'rgba(76,175,125,0.08)', border: '1px solid rgba(76,175,125,0.2)' }}>
-                <div className="text-2xl mb-2">🏇</div>
-                <div className="font-cormorant text-base font-semibold mb-1" style={{ color: '#4caf7d' }}>Request sent!</div>
-                <div className="font-cormorant italic text-sm" style={{ color: 'var(--mid)' }}>We'll create your room and send you the invite link shortly.</div>
-                <button onClick={() => { setShowRequest(false); setReqResult(null); }}
-                  className="mt-3 font-cinzel text-xs px-4 py-1.5 rounded"
-                  style={{ background: 'rgba(76,175,125,0.15)', color: '#4caf7d', border: '1px solid rgba(76,175,125,0.3)', letterSpacing: '0.08em' }}>
-                  CLOSE
-                </button>
-              </div>
-            ) : (
-              <>
-                <div>
-                  <label className="font-cinzel text-xs block mb-1" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>EVENT *</label>
-                  <select value={reqEvent} onChange={e => setReqEvent(e.target.value)}
-                    style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(180,149,48,0.2)', color: reqEvent ? 'var(--cream)' : 'var(--mid)', borderRadius: 4, padding: '8px 12px', fontSize: 13, outline: 'none' }}>
-                    <option value="">— Select Event —</option>
-                    {EVENTS_2026.map(ev => <option key={ev.id} value={`${ev.flag} ${ev.city} · ${ev.dates}`}>{ev.flag} {ev.city} · {ev.dates}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="font-cinzel text-xs block mb-1" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>ROOM NAME</label>
-                  <input value={reqName} onChange={e => setReqName(e.target.value)}
-                    placeholder="e.g. My Barn League"
-                    style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(180,149,48,0.2)', color: 'var(--cream)', borderRadius: 4, padding: '8px 12px', fontSize: '16px', outline: 'none' }} />
-                </div>
-                <div>
-                  <label className="font-cinzel text-xs block mb-1" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>MAX MEMBERS</label>
-                  <div className="flex gap-2">
-                    {[10, 25, 50, 100].map(n => (
-                      <button key={n} onClick={() => setReqMax(n)}
-                        className="flex-1 py-2 rounded font-cinzel text-xs transition-all"
-                        style={{ background: reqMax === n ? 'var(--gold)' : 'rgba(255,255,255,0.04)', color: reqMax === n ? 'var(--ink)' : 'var(--mid)', border: `1px solid ${reqMax === n ? 'var(--gold)' : 'rgba(180,149,48,0.2)'}`, fontSize: 10 }}>
-                        {n}
-                      </button>
-                    ))}
-                    <button onClick={() => setReqMax(999)}
-                      className="flex-1 py-2 rounded font-cinzel text-xs transition-all"
-                      style={{ background: reqMax === 999 ? 'var(--gold)' : 'rgba(255,255,255,0.04)', color: reqMax === 999 ? 'var(--ink)' : 'var(--mid)', border: `1px solid ${reqMax === 999 ? 'var(--gold)' : 'rgba(180,149,48,0.2)'}`, fontSize: 10 }}>
-                      100+
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <label className="font-cinzel text-xs block mb-1" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>PRIZE IDEA (optional)</label>
-                  <input value={reqPrize} onChange={e => setReqPrize(e.target.value)}
-                    placeholder="e.g. Bottle of wine for the winner"
-                    style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(180,149,48,0.2)', color: 'var(--cream)', borderRadius: 4, padding: '8px 12px', fontSize: '16px', outline: 'none' }} />
-                </div>
-                <div>
-                  <label className="font-cinzel text-xs block mb-1" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>NOTES (optional)</label>
-                  <textarea value={reqNotes} onChange={e => setReqNotes(e.target.value)}
-                    placeholder="Any other details…" rows={2}
-                    style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(180,149,48,0.2)', color: 'var(--cream)', borderRadius: 4, padding: '8px 12px', fontSize: 13, outline: 'none', resize: 'vertical', lineHeight: 1.5 }} />
-                </div>
-                {reqResult?.success === false && (
-                  <p className="font-cormorant italic text-sm" style={{ color: '#e07070' }}>{reqResult.msg || 'Failed to send request.'}</p>
-                )}
-                <button onClick={submitRequest} disabled={reqSending || !reqEvent}
-                  className="w-full py-3 rounded font-cinzel text-xs tracking-widest flex items-center justify-center gap-2 transition-all"
-                  style={{ background: reqSending ? 'rgba(180,149,48,0.1)' : 'var(--gold)', color: reqSending ? 'var(--mid)' : 'var(--ink)', letterSpacing: '0.1em', opacity: !reqEvent ? 0.4 : 1 }}>
-                  {reqSending ? 'SENDING…' : 'SUBMIT REQUEST'}
-                </button>
-              </>
-            )}
-          </div>
-        )}
+        <p className="font-cormorant italic text-xs mt-2" style={{ color: 'var(--mid)' }}>
+          Want a private room for your group? Open your account (top right) to request one.
+        </p>
       </div>
 
       {!rooms.length ? (
@@ -501,13 +390,13 @@ function EventLeaderboard({ rows, event }) {
         </span>
       </div>
       {rows.map((row, i) => {
-        const open = expanded[row.access_code];
+        const open = expanded[row.user_email];
         const hasScore = row.score != null && row.score > 0;
         return (
-          <motion.div key={row.access_code} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
+          <motion.div key={row.user_email} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
             transition={{ delay: i * 0.03 }} style={{ borderBottom: '1px solid rgba(42,40,32,0.4)' }}>
             <div className="flex items-center gap-3 px-4 py-3 cursor-pointer"
-              onClick={() => setExpanded(p => ({ ...p, [row.access_code]: !p[row.access_code] }))}>
+              onClick={() => setExpanded(p => ({ ...p, [row.user_email]: !p[row.user_email] }))}>
               <div className="font-cinzel text-sm w-7 text-center flex-shrink-0" style={{ color: i < 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>
                 {i < 3 ? ['🥇', '🥈', '🥉'][i] : ordinal(i + 1)}
               </div>

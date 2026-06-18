@@ -84,7 +84,10 @@ function SeriesToggle({ series, onChange }) {
 
 function EquiPrixInner() {
   const { user } = useAuth();
-  const { userCode, currentEvent, toast, logout, isLoading, loadSavedPicks } = useEquiPrix();
+  const {
+    userCode, currentEvent, toast, logout, isLoading, loadSavedPicks,
+    currentDestination, loadDestinations,
+  } = useEquiPrix();
   const {
     currentEvent: mlsjCurrentEvent,
     toast: mlsjToast,
@@ -100,12 +103,22 @@ function EquiPrixInner() {
   const activeUserIdentity = user?.email || userCode;
   const displayName = user?.user_metadata?.username || user?.email?.split('@')[0] || '';
 
-  // GCL saved-picks load (unchanged)
+  // Build the destination list (General + any rooms for this event) any
+  // time the user or event changes — the Draft tab's selector reads this
+  // from context.
   useEffect(() => {
     if (activeUserIdentity && currentEvent && ['teams', 'riders', 'open'].includes(currentEvent.status)) {
-      loadSavedPicks(activeUserIdentity, currentEvent);
+      loadDestinations(activeUserIdentity, currentEvent);
     }
   }, [activeUserIdentity, currentEvent?.id]);
+
+  // GCL saved-picks load — re-fires when the selected destination changes
+  // too, so switching rooms in the Draft tab loads that room's picks.
+  useEffect(() => {
+    if (activeUserIdentity && currentEvent && ['teams', 'riders', 'open'].includes(currentEvent.status)) {
+      loadSavedPicks(activeUserIdentity, currentEvent, currentDestination);
+    }
+  }, [activeUserIdentity, currentEvent?.id, currentDestination]);
 
   // MLSJ saved-picks load
   useEffect(() => {
