@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useEquiPrix } from '@/lib/EquiPrixContext';
+import { useEquiPrix, GENERAL_ROOM_ID } from '@/lib/EquiPrixContext';
 import { useAuth } from '@/lib/AuthContext';
 import {
   sbFetch, ordinal, gpPosPts, teamPosPts,
@@ -63,9 +63,11 @@ export default function LeaderboardTab() {
     setLoading(true);
     try {
       // "This Event" tab shows General Leaderboard picks only — room
-      // picks are scored separately on the "My Rooms" tab. room_id=is.null
-      // is what marks a picks row as General.
-      const picks = await sbFetch('picks?select=user_email,username,score,picks_json&event=eq.' + currentEvent.id + '&room_id=is.null') || [];
+      // picks are scored separately on the "My Rooms" tab. GENERAL_ROOM_ID
+      // is the sentinel that marks a picks row as belonging to General
+      // (a real fixed UUID, not NULL — NULL doesn't work reliably with
+      // Postgres unique-constraint upserts).
+      const picks = await sbFetch('picks?select=user_email,username,score,picks_json&event=eq.' + currentEvent.id + '&room_id=eq.' + GENERAL_ROOM_ID) || [];
       let riderResults = {}, teamResults = {};
       if (['past', 'riders'].includes(currentEvent.status)) {
         const res = await sbFetch('results?event=eq.' + currentEvent.supabaseKey + '&limit=1') || [];
@@ -109,7 +111,7 @@ export default function LeaderboardTab() {
       if (hasResults && currentEvent.status === 'past') {
         rows.forEach(async (row) => {
           if (row.score == null) return;
-          try { await sbFetch('picks?user_email=eq.' + encodeURIComponent(row.user_email) + '&event=eq.' + currentEvent.id + '&room_id=is.null', { method: 'PATCH', body: JSON.stringify({ score: row.score }) }); } catch (e) {}
+          try { await sbFetch('picks?user_email=eq.' + encodeURIComponent(row.user_email) + '&event=eq.' + currentEvent.id + '&room_id=eq.' + GENERAL_ROOM_ID, { method: 'PATCH', body: JSON.stringify({ score: row.score }) }); } catch (e) {}
         });
       }
     } catch (e) { console.error(e); } finally { setLoading(false); }
@@ -124,7 +126,7 @@ export default function LeaderboardTab() {
         // Season totals are General Leaderboard only — room competitions
         // are self-contained and scored on the My Rooms tab instead.
         const [evPicks, evResults] = await Promise.all([
-          sbFetch('picks?select=user_email,username,picks_json&event=eq.' + ev.id + '&room_id=is.null'),
+          sbFetch('picks?select=user_email,username,picks_json&event=eq.' + ev.id + '&room_id=eq.' + GENERAL_ROOM_ID),
           sbFetch('results?event=eq.' + ev.supabaseKey + '&limit=1'),
         ]);
         const riderResults = evResults?.[0]?.rider_results || {};

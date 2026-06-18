@@ -1,6 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { EVENTS_2026, GCL_TEAMS_2026, PREVIEW_RIDERS_2026, sbFetch, NAMES, VALID_CODES, calcEventRiderSalaries } from './equiprix-data';
 
+// Sentinel room_id representing "General Leaderboard" (not a real room).
+// Using NULL here would break Postgres's unique-constraint upsert logic,
+// since NULL is never considered equal to NULL in a uniqueness check —
+// every General save would silently fail to find/update the existing
+// row and either error or create duplicates. A real, fixed UUID avoids
+// that entirely while still being unambiguous as "not a real room."
+export const GENERAL_ROOM_ID = '00000000-0000-0000-0000-000000000000';
+
 const EquiPrixContext = createContext(null);
 
 export function EquiPrixProvider({ children }) {
@@ -21,7 +29,7 @@ export function EquiPrixProvider({ children }) {
   // if not opted out, plus every room the user belongs to for this
   // event); currentDestination is whichever one is selected in the
   // Draft tab's selector.
-  const [currentDestination, setCurrentDestinationState] = useState(null); // null = General
+  const [currentDestination, setCurrentDestinationState] = useState(GENERAL_ROOM_ID); // GENERAL_ROOM_ID = General Leaderboard
   const [destinations, setDestinations] = useState([]); // [{ id: null, name: 'General Leaderboard' }, { id: roomId, name, ... }]
   const [generalOptedOut, setGeneralOptedOut] = useState(false);
   const [destinationsLoading, setDestinationsLoading] = useState(false);
@@ -56,7 +64,7 @@ export function EquiPrixProvider({ children }) {
       let optedOut = false;
       if (myRooms.length) {
         try {
-          const genRows = await sbFetch('picks?user_email=eq.' + encodeURIComponent(identity) + '&event=eq.' + ev.id + '&room_id=is.null&limit=1');
+          const genRows = await sbFetch('picks?user_email=eq.' + encodeURIComponent(identity) + '&event=eq.' + ev.id + '&room_id=eq.' + GENERAL_ROOM_ID + '&limit=1');
           optedOut = !!(genRows && genRows.length && genRows[0].picks_json?.optedOutOfGeneral);
         } catch (e) { /* default to opted-in if we can't tell */ }
       }
@@ -64,7 +72,7 @@ export function EquiPrixProvider({ children }) {
 
       const list = [];
       if (!myRooms.length || !optedOut) {
-        list.push({ id: null, name: 'General Leaderboard' });
+        list.push({ id: GENERAL_ROOM_ID, name: 'General Leaderboard' });
       }
       myRooms.forEach(r => list.push({ id: r.id, name: r.name }));
       setDestinations(list);
@@ -74,11 +82,11 @@ export function EquiPrixProvider({ children }) {
       // on), fall back to the first available option.
       setCurrentDestinationState(cur => {
         const stillValid = list.some(d => d.id === cur);
-        return stillValid ? cur : (list[0]?.id ?? null);
+        return stillValid ? cur : (list[0]?.id ?? GENERAL_ROOM_ID);
       });
     } catch (e) {
       console.error('loadDestinations error:', e);
-      setDestinations([{ id: null, name: 'General Leaderboard' }]);
+      setDestinations([{ id: GENERAL_ROOM_ID, name: 'General Leaderboard' }]);
     } finally {
       setDestinationsLoading(false);
     }
@@ -92,17 +100,18 @@ export function EquiPrixProvider({ children }) {
     if (!identity || !ev) return;
     setGeneralOptedOut(optOut);
     try {
-      // Persist the flag on the General picks row (room_id null) so it
-      // survives reloads. Doesn't touch riders/teams already drafted for
-      // General — just marks visibility going forward.
-      const rows = await sbFetch('picks?user_email=eq.' + encodeURIComponent(identity) + '&event=eq.' + ev.id + '&room_id=is.null&limit=1');
+      // Persist the flag on the General picks row (room_id = the
+      // GENERAL_ROOM_ID sentinel) so it survives reloads. Doesn't touch
+      // riders/teams already drafted for General — just marks visibility
+      // going forward.
+      const rows = await sbFetch('picks?user_email=eq.' + encodeURIComponent(identity) + '&event=eq.' + ev.id + '&room_id=eq.' + GENERAL_ROOM_ID + '&limit=1');
       const existing = rows && rows.length ? rows[0].picks_json : { riders: [], teams: [] };
-      await sbFetch('picks', {
+      await sbFetch('picks?on_conflict=user_email,event,room_id', {
         method: 'POST',
         body: JSON.stringify({
           user_email: identity,
           event: ev.id,
-          room_id: null,
+          room_id: GENERAL_ROOM_ID,
           picks_json: { ...existing, optedOutOfGeneral: optOut },
           updated_at: new Date().toISOString(),
         }),
@@ -243,13 +252,13 @@ export function EquiPrixProvider({ children }) {
   }, [loadEventData]);
 
   // identity is the user's email (activeUserIdentity from EquiPrix.jsx).
-  // roomId is null for General Leaderboard, or a room's uuid — defaults
-  // to whatever's currently selected if not passed explicitly.
+  // roomId is GENERAL_ROOM_ID for General Leaderboard, or a room's real
+  // uuid — defaults to whatever's currently selected if not passed
+  // explicitly.
   const loadSavedPicks = useCallback(async (identity, ev, roomId = currentDestination) => {
     if (!ev || !['preview', 'teams', 'riders', 'open'].includes(ev.status)) return;
     try {
-      const roomFilter = roomId == null ? 'room_id=is.null' : 'room_id=eq.' + roomId;
-      const rows = await sbFetch('picks?user_email=eq.' + encodeURIComponent(identity) + '&event=eq.' + ev.id + '&' + roomFilter + '&limit=1');
+      const rows = await sbFetch('picks?user_email=eq.' + encodeURIComponent(identity) + '&event=eq.' + ev.id + '&room_id=eq.' + (roomId || GENERAL_ROOM_ID) + '&limit=1');
       if (rows && rows.length > 0) {
         const p = rows[0].picks_json;
 

@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { useEquiPrix } from '@/lib/EquiPrixContext';
+import { useEquiPrix, GENERAL_ROOM_ID } from '@/lib/EquiPrixContext';
+import { useAuth } from '@/lib/AuthContext';
 import { sbFetch, fmt, getBand, CAP, CPT_PREMIUM } from '@/lib/equiprix-data';
-import { Search, X } from 'lucide-react';
+import { Search, X, ChevronDown } from 'lucide-react';
 import RiderRow from './RiderRow';
 import TeamSlot from './TeamSlot';
 import ScoringPanel from './ScoringPanel';
@@ -9,10 +10,16 @@ import ScoringPanel from './ScoringPanel';
 const SLOT_IDS = ['cpt', 'r1', 'r2', 'r3', 'r4'];
 
 export default function DraftTab() {
-  const { currentEvent, userCode, userName, team, setTeam, teamPicks, setTeamPicks, riders, teams, showToast } = useEquiPrix();
+  const {
+    currentEvent, userCode, userName, team, setTeam, teamPicks, setTeamPicks, riders, teams, showToast,
+    currentDestination, setCurrentDestination, destinations, generalOptedOut, setGeneralOptOut,
+  } = useEquiPrix();
+  const { user } = useAuth();
+  const identity = user?.email || userCode;
   const [view, setView] = useState('riders');
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
+  const [showDestPicker, setShowDestPicker] = useState(false);
 
   const ev = currentEvent;
 
@@ -100,26 +107,35 @@ export default function DraftTab() {
   };
 
   const savePicks = async (t = team, tp = teamPicks) => {
-    if (!userCode || !ev) return;
+    if (!identity || !ev) return;
     setSaving(true);
     const spent = t.reduce((s, r) => s + (r.isCpt ? r.rider.salary + CPT_PREMIUM : r.rider.salary), 0) +
       tp.reduce((s, pk) => s + pk.salary, 0);
-    await sbFetch('picks', {
-      method: 'POST',
-      body: JSON.stringify({
-        access_code: userCode,
-        event: ev.id,
-        username: userName || userCode,
-        picks_json: {
-          riders: t.map(r => ({ id: r.rider.id, isCpt: r.isCpt })),
-          teams: tp.map(pk => ({ id: pk.id })),
-          totalSpent: spent,
-          isPractice: ev.status === 'preview',
-          savedAt: new Date().toISOString()
-        },
-        updated_at: new Date().toISOString()
-      })
-    });
+    try {
+      await sbFetch('picks?on_conflict=user_email,event,room_id', {
+        method: 'POST',
+        body: JSON.stringify({
+          user_email: identity,
+          event: ev.id,
+          room_id: currentDestination || GENERAL_ROOM_ID,
+          username: userName || identity,
+          picks_json: {
+            riders: t.map(r => ({ id: r.rider.id, isCpt: r.isCpt })),
+            teams: tp.map(pk => ({ id: pk.id })),
+            totalSpent: spent,
+            isPractice: ev.status === 'preview',
+            // Preserve the General opt-out flag if this destination is
+            // General — it lives on the same row as picks_json.
+            ...((currentDestination || GENERAL_ROOM_ID) === GENERAL_ROOM_ID ? { optedOutOfGeneral: generalOptedOut } : {}),
+            savedAt: new Date().toISOString()
+          },
+          updated_at: new Date().toISOString()
+        })
+      });
+    } catch (e) {
+      console.error('savePicks failed:', e);
+      showToast('Could not save picks — try again');
+    }
     setSaving(false);
   };
 
@@ -291,11 +307,53 @@ export default function DraftTab() {
       <div className="flex flex-col min-h-0 overflow-hidden" style={{ width: '45%', background: '#0d0c09' }}>
 
         {/* Cap bar */}
-        <div className="px-3 py-2 flex-shrink-0" style={{ borderBottom: '1px solid var(--ep-border)' }}>
+        <div className="px-3 py-2 flex-shrink-0" style={{ borderBottom: '1px solid var(--ep-border)', position: 'relative' }}>
           <div className="flex items-center justify-between mb-1">
-            <span className="font-cinzel text-xs" style={{ color: 'var(--gold)', letterSpacing: '0.12em' }}>MY TEAM</span>
+            <button
+              onClick={() => destinations.length > 1 && setShowDestPicker(p => !p)}
+              className="flex items-center gap-1 font-cinzel text-xs"
+              style={{ color: 'var(--gold)', letterSpacing: '0.12em', cursor: destinations.length > 1 ? 'pointer' : 'default' }}
+            >
+              {(destinations.find(d => d.id === currentDestination)?.name || 'MY TEAM').toUpperCase()}
+              {destinations.length > 1 && <ChevronDown size={12} style={{ color: 'var(--gold)' }} />}
+            </button>
             <button onClick={clearAll} className="text-xs underline" style={{ color: 'var(--mid)' }}>Clear</button>
           </div>
+
+          {/* Destination dropdown — only meaningful if the user has at
+              least one room for this event; otherwise General is the
+              only option and this never renders. */}
+          {showDestPicker && destinations.length > 1 && (
+            <div className="absolute left-3 top-9 z-20 rounded shadow-lg overflow-hidden"
+              style={{ background: '#15130f', border: '1px solid rgba(180,149,48,0.3)', minWidth: 220 }}>
+              {destinations.map(d => (
+                <button
+                  key={d.id ?? 'general'}
+                  onClick={() => { setCurrentDestination(d.id); setShowDestPicker(false); }}
+                  className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left font-cormorant text-sm transition-all"
+                  style={{
+                    background: d.id === currentDestination ? 'rgba(180,149,48,0.12)' : 'transparent',
+                    color: d.id === currentDestination ? 'var(--gold-lt)' : 'var(--cream)',
+                    borderBottom: '1px solid rgba(42,40,32,0.5)',
+                  }}
+                >
+                  <span>{d.name}</span>
+                  {d.id === currentDestination && <span style={{ color: '#4caf7d', fontSize: 11 }}>✓</span>}
+                </button>
+              ))}
+              <label className="flex items-center gap-2 px-3 py-2 font-cormorant text-xs italic cursor-pointer"
+                style={{ color: 'var(--mid)' }}>
+                <input
+                  type="checkbox"
+                  checked={!generalOptedOut}
+                  onChange={e => setGeneralOptOut(identity, ev, !e.target.checked)}
+                  style={{ accentColor: 'var(--gold)' }}
+                />
+                Include me in General Leaderboard
+              </label>
+            </div>
+          )}
+
           <div className="flex items-center gap-2">
             <div className="flex-1 h-1 rounded-full" style={{ background: 'var(--ep-border)' }}>
               <div className="h-1 rounded-full transition-all" style={{
