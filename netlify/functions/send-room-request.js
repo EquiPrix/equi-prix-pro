@@ -13,9 +13,18 @@ export default async (req, context) => {
   const { requestorEmail, requestorName, eventName, maxMembers, roomName, prizeIdea, notes } = body;
 
   // 1. Save to Supabase
+  // NOTE: this previously failed silently whenever SUPABASE_ANON_KEY
+  // (the unprefixed, server-side env var — distinct from the frontend's
+  // VITE_SUPABASE_ANON_KEY) wasn't set in Netlify's environment, since
+  // the whole block is gated behind `if (SUPABASE_KEY)` with no warning
+  // surfaced anywhere if it's missing. Make sure SUPABASE_ANON_KEY is
+  // set in Netlify env vars (Production scope, Functions/Runtime) or
+  // every request silently never gets written to room_requests.
+  let dbSaveFailed = false;
+  let dbSaveError = null;
   if (SUPABASE_KEY) {
     try {
-      await fetch(`${SUPABASE_URL}/rest/v1/room_requests`, {
+      const dbRes = await fetch(`${SUPABASE_URL}/rest/v1/room_requests`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -34,14 +43,28 @@ export default async (req, context) => {
           status: 'pending',
         }),
       });
-    } catch (e) { console.warn('DB save failed:', e.message); }
+      if (!dbRes.ok) {
+        dbSaveFailed = true;
+        dbSaveError = `Supabase ${dbRes.status}: ${(await dbRes.text().catch(() => '')).slice(0, 200)}`;
+        console.warn('DB save failed:', dbSaveError);
+      }
+    } catch (e) {
+      dbSaveFailed = true;
+      dbSaveError = e.message;
+      console.warn('DB save failed:', e.message);
+    }
+  } else {
+    dbSaveFailed = true;
+    dbSaveError = 'SUPABASE_ANON_KEY not set in function environment';
+    console.warn(dbSaveError);
   }
 
   // 2. Send email notification
   if (!RESEND_API_KEY) {
-    return new Response(JSON.stringify({ success: true, warn: 'No RESEND_API_KEY' }), {
-      status: 200, headers: { 'Content-Type': 'application/json' }
-    });
+    return new Response(JSON.stringify({
+      success: !dbSaveFailed,
+      warn: 'No RESEND_API_KEY' + (dbSaveFailed ? ' — also: ' + dbSaveError : ''),
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
 
   const html = `
@@ -98,9 +121,31 @@ export default async (req, context) => {
         html,
       }),
     });
-    return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+    // PREVIOUSLY: this branch wasn't checked at all — a failed Resend
+    // call (bad/unverified sender domain, invalid API key format, rate
+    // limit, anything) was indistinguishable from success, since the
+    // response body was never read on failure. Now a non-2xx Resend
+    // response surfaces in `warn` instead of silently reporting success.
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      console.warn('Resend send failed:', res.status, errText);
+      return new Response(JSON.stringify({
+        success: !dbSaveFailed,
+        warn: `Email failed: Resend ${res.status}: ${errText.slice(0, 200)}` + (dbSaveFailed ? ' — also: ' + dbSaveError : ''),
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    return new Response(JSON.stringify({
+      success: !dbSaveFailed,
+      ...(dbSaveFailed ? { warn: dbSaveError } : {}),
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   } catch (e) {
-    return new Response(JSON.stringify({ success: true, warn: e.message }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    console.warn('Resend send failed:', e.message);
+    return new Response(JSON.stringify({
+      success: !dbSaveFailed,
+      warn: `Email failed: ${e.message}` + (dbSaveFailed ? ' — also: ' + dbSaveError : ''),
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
 };
 
