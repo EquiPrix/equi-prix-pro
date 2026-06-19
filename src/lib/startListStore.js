@@ -43,12 +43,18 @@ export async function loadStartListRemote(eventId) {
   return loadLocal()[eventId] || null;
 }
 
-export async function saveStartListRemote(eventId, data) {
+// supabaseKey is the event's supabaseKey (e.g. 'paris_2026_r1') — needed
+// to also mirror GP riders into results.gp_riders so EquiPrixContext's
+// loadEventData picks them up for the Draft tab's Riders list. The
+// start_lists table uses the plain eventId as its key; results uses
+// supabaseKey. Both are updated together on every save so they stay
+// in sync.
+export async function saveStartListRemote(eventId, data, supabaseKey) {
   // Save to localStorage immediately
   saveLocal(eventId, data);
 
-  // Try PATCH first (update existing row), fall back to POST (insert new)
   try {
+    // 1. Save to start_lists (primary home for this data)
     const existing = await sbFetch('start_lists?event=eq.' + eventId + '&limit=1');
     if (existing && existing.length > 0) {
       await sbFetch('start_lists?event=eq.' + eventId, {
@@ -69,6 +75,33 @@ export async function saveStartListRemote(eventId, data) {
           updated_at: new Date().toISOString()
         })
       });
+    }
+
+    // 2. Mirror GP riders into results.gp_riders so EquiPrixContext's
+    // loadEventData can read them for the Draft tab's Riders list.
+    // This is the existing read path — EquiPrixContext reads from
+    // results, not start_lists, so we write to both to keep them in
+    // sync rather than changing the read path.
+    if (supabaseKey && data.gp?.length) {
+      const resRows = await sbFetch('results?event=eq.' + supabaseKey + '&limit=1');
+      if (resRows && resRows.length > 0) {
+        await sbFetch('results?event=eq.' + supabaseKey, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            gp_riders: data.gp,
+            updated_at: new Date().toISOString()
+          })
+        });
+      } else {
+        await sbFetch('results', {
+          method: 'POST',
+          body: JSON.stringify({
+            event: supabaseKey,
+            gp_riders: data.gp,
+            updated_at: new Date().toISOString()
+          })
+        });
+      }
     }
   } catch (e) {
     console.error('Could not save start list to Supabase:', e);

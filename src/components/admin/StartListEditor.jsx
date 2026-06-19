@@ -181,7 +181,7 @@ export default function StartListEditor() {
 
   const save = async () => {
     if (!event) return;
-    await saveStartListRemote(selectedEventId, { gp: gpRiders, teamPairs });
+    await saveStartListRemote(selectedEventId, { gp: gpRiders, teamPairs }, event?.supabaseKey);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
