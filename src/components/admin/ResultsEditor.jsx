@@ -126,6 +126,16 @@ function TeamRoundEditor({ teams, round, data, onChange, startList }) {
 // synthetic finalPos, no points, not in the ranking at all. Previously
 // every team in the roster got a position assigned regardless of whether
 // they actually competed, defaulting missing fields to 0/9999.
+//
+// FIXED AGAIN (Paris): tier2 — teams that didn't advance to Round 2 and
+// are ranked on R1 results alone — was sorting by r1Faults only, with NO
+// time tiebreaker. This meant two R1-only teams with equal faults (a
+// common occurrence — e.g. two clear rounds, or two teams both on 16
+// faults) were left in whatever order Object.entries happened to
+// produce, not the order GCL actually uses (faster R1 time wins ties).
+// tier0 already did this correctly for R2 finishers; tier2 just never
+// got the equivalent r1Time field threaded through. Now both tiers sort
+// by faults then time, consistently.
 function calcFinalPositions(teams, teamResults) {
   const withData = teams
     .filter(team => {
@@ -147,6 +157,7 @@ function calcFinalPositions(teams, teamResults) {
     .map(team => {
       const d = teamResults[team.id];
       const r1Faults = d.r1Faults !== '' && d.r1Faults !== undefined ? Number(d.r1Faults) : 0;
+      const r1Time = d.r1Time !== '' && d.r1Time !== undefined ? Number(d.r1Time) : 9999;
       const r2Faults = d.r2Faults !== '' && d.r2Faults !== undefined ? Number(d.r2Faults) : null;
       const r2Time = d.r2Time !== '' && d.r2Time !== undefined ? Number(d.r2Time) : null;
       const hasR2Data = r2Faults !== null || r2Time !== null || (d.r2Riders && d.r2Riders.length > 0);
@@ -164,7 +175,7 @@ function calcFinalPositions(teams, teamResults) {
       // fault count — which is exactly how it ended up ranked #2.
       const isR2Failed = didR2 && (!!d.ret || !!d.el);
       const totalFaults = r2Faults !== null ? r2Faults : (didR2 ? 9999 : r1Faults);
-      return { id: team.id, didR2, isR2Failed, totalFaults, r2Time: r2Time ?? 9999, r1Faults };
+      return { id: team.id, didR2, isR2Failed, totalFaults, r2Time: r2Time ?? 9999, r1Faults, r1Time };
     });
 
   // Tier 0: completed R2 — sort by cumulative total faults, then R2 time
@@ -172,10 +183,11 @@ function calcFinalPositions(teams, teamResults) {
     .sort((a, b) => a.totalFaults - b.totalFaults || a.r2Time - b.r2Time);
   // Tier 1: R2 ret/el — rank above R1-only teams
   const tier1 = withData.filter(t => t.isR2Failed)
-    .sort((a, b) => a.r1Faults - b.r1Faults);
-  // Tier 2: did not advance — sort by R1 faults
+    .sort((a, b) => a.r1Faults - b.r1Faults || a.r1Time - b.r1Time);
+  // Tier 2: did not advance — sort by R1 faults, then R1 time (same
+  // tiebreak pattern as tier0, previously missing here)
   const tier2 = withData.filter(t => !t.didR2)
-    .sort((a, b) => a.r1Faults - b.r1Faults);
+    .sort((a, b) => a.r1Faults - b.r1Faults || a.r1Time - b.r1Time);
 
   const posMap = {};
   let pos = 1;
@@ -196,7 +208,7 @@ function FinalEditor({ teams, data }) {
   return (
     <div className="space-y-1">
       <p className="font-cormorant italic text-xs mb-2" style={{ color: 'var(--mid)' }}>
-        Auto-calculated from cumulative R2 faults (R1+R2 combined, as read off the scoreboard), R2 time as tiebreaker. Enter results in Team R1 and Team R2 tabs.
+        Auto-calculated from cumulative R2 faults (R1+R2 combined, as read off the scoreboard), R2 time as tiebreaker. R1-only teams ranked by R1 faults, then R1 time. Enter results in Team R1 and Team R2 tabs.
       </p>
       <div className="grid grid-cols-12 gap-2 px-3 py-1 text-xs font-cinzel" style={{ color: 'var(--mid)', fontSize: 9 }}>
         <div className="col-span-1 text-center">POS</div>
@@ -215,6 +227,7 @@ function FinalEditor({ teams, data }) {
         const totalF = r2F !== null ? r2F : r1F;
         const hasR2 = r2F !== null || !!d.ret || !!d.el;
         const flag = d.ret ? ' RET' : d.el ? ' EL' : '';
+        const displayTime = r2F !== null ? d.r2Time : d.r1Time;
 
         return (
           <div key={team.id} className="grid grid-cols-12 items-center gap-2 px-3 py-2.5 rounded"
@@ -236,8 +249,8 @@ function FinalEditor({ teams, data }) {
             <div className="col-span-2 text-center font-cormorant text-sm font-bold"
               style={{ color: pos <= 3 ? 'var(--gold-lt)' : 'var(--cream)' }}>
               {totalF !== null ? `${totalF}f` : '—'}
-              {r2F !== null && d.r2Time !== undefined && d.r2Time !== '' && (
-                <span className="text-xs ml-1" style={{ color: 'var(--mid)' }}>{d.r2Time}s</span>
+              {displayTime !== undefined && displayTime !== '' && (
+                <span className="text-xs ml-1" style={{ color: 'var(--mid)' }}>{displayTime}s</span>
               )}
             </div>
           </div>
