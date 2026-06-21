@@ -169,7 +169,24 @@ function calcFinalPositions(teams, teamResults) {
       const r1Time = d.r1Time !== '' && d.r1Time !== undefined ? Number(d.r1Time) : 9999;
       const r2Faults = d.r2Faults !== '' && d.r2Faults !== undefined ? Number(d.r2Faults) : null;
       const r2Time = d.r2Time !== '' && d.r2Time !== undefined ? Number(d.r2Time) : null;
-      const hasR2Data = r2Faults !== null || r2Time !== null || (d.r2Riders && d.r2Riders.length > 0);
+      // FIXED: r2Riders is now eagerly pre-populated for EVERY team as
+      // soon as the start list loads (see the useEffect in
+      // ResultsEditor's main component), even teams that never reached
+      // Round 2 — as a placeholder array of two empty slots:
+      // [{name:'',horse:'',faults:'',time:''}, {...}]. The old check
+      // here, `d.r2Riders && d.r2Riders.length > 0`, only tested array
+      // presence/length, which is true for that placeholder too. That
+      // made hasR2Data — and therefore didR2 — true for every team
+      // regardless of whether they actually competed in Round 2, which
+      // collapsed tier2 (the genuine R1-only bucket) to empty and threw
+      // every team's totalFaults to the 9999 fallback, scrambling the
+      // Final tab order entirely (e.g. Prague Lions, 17 R1 faults,
+      // ranking ahead of teams with fewer faults). Now we require at
+      // least one rider slot to have an actual name filled in before
+      // counting r2Riders as real R2 data — an empty placeholder no
+      // longer counts.
+      const hasRealR2Riders = (d.r2Riders || []).some(r => r.name && r.name.trim());
+      const hasR2Data = r2Faults !== null || r2Time !== null || hasRealR2Riders;
       // A team only counts as "reached R2" if there's actual R2 data
       // present (faults, time, or riders) — not just because the shared
       // ret/el flag happens to be set, which could be left over from an
