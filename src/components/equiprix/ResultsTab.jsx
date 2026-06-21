@@ -169,7 +169,7 @@ function GPResults({ riderResults, displayRiders }) {
     let r = displayRiders.find(x => String(x.id) === String(id));
     if (!r) r = { id, name: 'Rider #' + id, nat: '', horse: '' };
     if (res?.horse && !r.horse) r = { ...r, horse: res.horse };
-    const pos = typeof res === 'object' ? (res.gpPos || res.pos || 999) : res;
+    const gpPos = typeof res === 'object' ? (res.gpPos || res.pos || 999) : res;
     const faults = typeof res === 'object' ? (res.r1Faults != null ? res.r1Faults : null) : null;
     const time = typeof res === 'object' ? (res.r1Time || null) : null;
     const clr = typeof res === 'object' ? (res.gpClear || res.clear || false) : false;
@@ -181,6 +181,16 @@ function GPResults({ riderResults, displayRiders }) {
     const joTime = typeof res === 'object' ? (res.joTime || null) : null;
     const joRet = typeof res === 'object' ? (res.joRet || false) : false;
     const joEl = typeof res === 'object' ? (res.joEl || false) : false;
+    // FIXED: when riders tie on a clear first round and go to a jump-off,
+    // gpPos gets entered as the same tied value (e.g. 1) for every rider
+    // in that jump-off group, and joPos holds the REAL position once the
+    // jump-off resolves the tie. The old code only ever read gpPos for
+    // both display and sort order, so every rider in a jump-off group
+    // showed and sorted as if still tied — exactly the "everyone shows
+    // pos 1" bug. Now: if a jump-off happened and joPos was entered, that
+    // overrides gpPos as the effective standing; gpPos is only used as
+    // entered for riders who never needed a jump-off.
+    const pos = hasJO && joPos != null ? joPos : gpPos;
     return { r, pos, faults, time, clr, ret, el, hasJO, joPos, joFaults, joTime, joRet, joEl };
   }).filter(e => e.pos < 999 || e.ret || e.el)
     .sort((a, b) => (a.ret || a.el ? 9999 : a.pos) - (b.ret || b.el ? 9999 : b.pos));

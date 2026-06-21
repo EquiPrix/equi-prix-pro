@@ -16,10 +16,28 @@ const TABS = [
   { id: 'gcl', label: 'GCL Standings' },
 ];
 
+// FIXED: when riders tie on a clear first round and go to a jump-off,
+// gpPos is entered as the tied value (e.g. several riders all at 1) and
+// joPos holds the real position once the jump-off resolves the tie —
+// same data shape as ResultsTab.jsx's GPResults. Scoring here was still
+// reading gpPos directly with no awareness of joPos, so every rider in
+// a jump-off group was being scored as if still tied for the same
+// position (all getting 1st-place points), instead of their real
+// 1st-through-Nth finish. This helper centralizes the "what position
+// actually counts" resolution so calcPickScore and buildScoredRows use
+// identical logic and can't drift apart from each other or from the
+// display in ResultsTab.jsx.
+function effectiveGpPos(res) {
+  if (!res) return null;
+  if (res.gpJO && res.joPos != null && res.joPos !== '') return Number(res.joPos);
+  return res.gpPos || null;
+}
+
 function calcPickScore(picksJson, riderResults, teamResults) {
   const riderPts = (picksJson.riders || []).reduce((sum, rp) => {
     const res = riderResults[String(rp.id)] || {};
-    const gpPts = res.gpPos ? gpPosPts(res.gpPos) : null;
+    const effPos = effectiveGpPos(res);
+    const gpPts = effPos ? gpPosPts(effPos) : null;
     if (gpPts === null) return sum;
     const raw = gpPts + (res.gpClear ? 20 : 0);
     return sum + (rp.isCpt ? raw * CAPTAIN_MULT : raw);
@@ -52,7 +70,8 @@ function buildScoredRows(picks, ev, riderResults, teamResults, hasResults) {
       if (!rider) return null;
       const salary = rp.isCpt ? rider.salary + CPT_PREMIUM : rider.salary;
       const res = riderResults[String(rp.id)] || {};
-      const gpPts = res.gpPos ? gpPosPts(res.gpPos) : null;
+      const effPos = effectiveGpPos(res);
+      const gpPts = effPos ? gpPosPts(effPos) : null;
       const rawPts = gpPts !== null ? gpPts + (res.gpClear ? 20 : 0) : null;
       const pts = rawPts !== null ? (rp.isCpt ? rawPts * CAPTAIN_MULT : rawPts) : null;
       return { rider, isCpt: rp.isCpt, salary, pts };
