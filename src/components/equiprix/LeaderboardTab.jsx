@@ -90,7 +90,7 @@ function buildScoredRows(picks, ev, riderResults, teamResults, hasResults) {
     const teamPts = resolvedTeams.reduce((s, t) => s + (t.pts || 0), 0);
     const riderPts = resolvedRiders.reduce((s, r) => s + (r.pts || 0), 0);
     const totalPts = hasResults ? teamPts + riderPts : null;
-    return { user_email: p.user_email, username: p.username || p.user_email, score: totalPts, teamPts, riders: resolvedRiders, teams: resolvedTeams, totalSpent, remainingAfterTeams, hasResults, hasTeamResults };
+    return { user_email: p.user_email, username: p.username || p.user_email.split('@')[0], score: totalPts, teamPts, riders: resolvedRiders, teams: resolvedTeams, totalSpent, remainingAfterTeams, hasResults, hasTeamResults };
   }).sort((a, b) => (b.score || 0) - (a.score || 0));
 }
 
@@ -167,7 +167,7 @@ export default function LeaderboardTab() {
           if (!p.picks_json || p.picks_json.isPractice) return;
           const score = hasResults ? calcPickScore(p.picks_json, riderResults, teamResults) : 0;
           const key = p.user_email;
-          if (!userTotals[key]) userTotals[key] = { name: p.username || p.user_email, total: 0, events: 0 };
+          if (!userTotals[key]) userTotals[key] = { name: p.username || p.user_email.split('@')[0], total: 0, events: 0 };
           userTotals[key].total += score;
           userTotals[key].events++;
         });
