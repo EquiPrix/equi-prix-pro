@@ -309,19 +309,50 @@ function TeamRoundResults({ teamResults, displayTeams, round }) {
 // are entered manually on the Leaderboard tab and live there only, so
 // there's a single source of truth instead of two numbers that can drift
 // apart.
+//
+// FIXED: madeR2 was computed as `r2Faults != null`, where r2Faults came
+// straight from raw.r2Faults with NO check for empty string. Since
+// ResultsEditor's TeamRoundEditor (and the NumCell pattern used
+// throughout that admin screen) writes '' rather than leaving the field
+// untouched, a team that never reached Round 2 could still end up with
+// raw.r2Faults === '' on save — and '' != null is true in JS. That gave
+// teams like Prague Lions (R1-only, correctly excluded from R2 in the
+// admin Final tab and in calcFinalPositions) a false "R2" badge here,
+// AND blank faults, since the old code only ever rendered r2Faults/r2Time
+// with no R1 fallback for teams that didn't actually advance.
+//
+// Now: madeR2 requires r2Faults to be a real, non-empty value (matching
+// the same "has it actually been entered" check calcFinalPositions uses
+// in ResultsEditor.jsx), and the display always has a fallback — R2
+// cumulative faults/time for teams that advanced, R1 faults/time for
+// teams that didn't. This keeps this public view in sync with the admin
+// Final tab and with calcFinalPositions, which is the actual source of
+// truth for `pos`.
 function TeamFinalResults({ teamResults, displayTeams }) {
   const entries = Object.entries(teamResults).map(([id, raw]) => {
     const t = displayTeams.find(x => x.id === id) || { id, name: 'Team ' + id };
     const pos = typeof raw === 'object' ? (raw.finalPos || null) : raw;
     const ret = typeof raw === 'object' ? (raw.ret || false) : false;
     const el = typeof raw === 'object' ? (raw.el || false) : false;
-    const r2Faults = typeof raw === 'object' ? (raw.r2Faults ?? null) : null;
-    const r2Time = typeof raw === 'object' ? (raw.r2Time ?? null) : null;
-    const madeR2 = r2Faults != null;
-    // r2Faults is the CUMULATIVE R1+R2 total already (that's how it's read
-    // off the PDF scoreboards), so combined faults shown is just r2Faults.
-    const combined = madeR2 ? r2Faults : null;
-    return { t, pos, ret, el, madeR2, combined, r2Time };
+
+    const r2FaultsRaw = typeof raw === 'object' ? raw.r2Faults : null;
+    const r2TimeRaw = typeof raw === 'object' ? raw.r2Time : null;
+    const r1FaultsRaw = typeof raw === 'object' ? raw.r1Faults : null;
+    const r1TimeRaw = typeof raw === 'object' ? raw.r1Time : null;
+
+    // A field only counts as "entered" if it's a real value — not
+    // undefined, not null, and not an empty string left over from a
+    // NumCell that was never actually filled in.
+    const hasR2Faults = r2FaultsRaw !== '' && r2FaultsRaw !== undefined && r2FaultsRaw !== null;
+    const madeR2 = hasR2Faults;
+
+    // r2Faults is already the cumulative R1+R2 total (that's how it's
+    // read off the PDF scoreboards). For R1-only teams, fall back to
+    // their R1 faults/time so the row isn't left blank.
+    const combined = madeR2 ? Number(r2FaultsRaw) : (r1FaultsRaw !== '' && r1FaultsRaw != null ? Number(r1FaultsRaw) : null);
+    const displayTime = madeR2 ? r2TimeRaw : r1TimeRaw;
+
+    return { t, pos, ret, el, madeR2, combined, displayTime };
   }).filter(e => e.pos != null)
     .sort((a, b) => (a.pos || 999) - (b.pos || 999));
 
@@ -329,7 +360,7 @@ function TeamFinalResults({ teamResults, displayTeams }) {
 
   return (
     <div>
-      {entries.map(({ t, pos, ret, el, madeR2, combined, r2Time }, i) => (
+      {entries.map(({ t, pos, ret, el, madeR2, combined, displayTime }, i) => (
         <motion.div key={t.id}
           initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
           transition={{ delay: i * 0.02 }}
@@ -354,8 +385,8 @@ function TeamFinalResults({ teamResults, displayTeams }) {
                 {ret ? 'RET' : 'EL'}
               </span>
             )}
-            {madeR2 && combined != null && <div className="text-xs" style={{ color: 'var(--mid)' }}>{combined} faults</div>}
-            {madeR2 && r2Time != null && <div className="text-xs" style={{ color: 'var(--mid)' }}>{Number(r2Time).toFixed(2)}s</div>}
+            {combined != null && <div className="text-xs" style={{ color: 'var(--mid)' }}>{combined} faults</div>}
+            {displayTime != null && displayTime !== '' && <div className="text-xs" style={{ color: 'var(--mid)' }}>{Number(displayTime).toFixed(2)}s</div>}
           </div>
         </motion.div>
       ))}

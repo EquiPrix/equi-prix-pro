@@ -336,6 +336,7 @@ export const PREVIEW_RIDERS_2026 = [
   { id: 266, name: "Stella Wasserman", nat: "🇺🇸 USA", rank: 999, salary: 1000, region: "mlsj" },
   { id: 267, name: "Mario Deslauriers", nat: "🇨🇦 Canada", rank: 999, salary: 1000, region: "mlsj" },
   { id: 268, name: "Rodrigo Pessoa", nat: "🇧🇷 Brazil", rank: 999, salary: 1000, region: "mlsj" },
+{ id: 999, nat: '🇮🇹 Italy', name: 'Charlotte Leoni', rank: 582, horse: '', region: 'europe', salary: 1000 },
 ];
 
 // REPLACE the existing GCL_TEAMS_2026 array in equiprix-data.js with this
