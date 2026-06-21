@@ -28,6 +28,20 @@ function Toggle({ label, value, onChange }) {
   );
 }
 
+// Builds the initial rider/horse pair for a team+round straight from the
+// start list, used both for the eager pre-fill effect below AND as a
+// fallback inside set()/setRiderFault() for any team that somehow wasn't
+// covered by the effect (e.g. a team added to EVENTS_2026 after the start
+// list was loaded). Kept as a plain function (not a hook) so it can be
+// called from both places safely.
+function getPreFilledPair(startList, teamId, round) {
+  const pair = startList?.teamPairs?.[teamId]?.[round];
+  return [
+    { ...(pair?.[0] || { name: '', horse: '' }), faults: '', time: '' },
+    { ...(pair?.[1] || { name: '', horse: '' }), faults: '', time: '' },
+  ];
+}
+
 function TeamRoundEditor({ teams, round, data, onChange, startList }) {
   const faultsKey = round === 'r1' ? 'r1Faults' : 'r2Faults';
   const timeKey = round === 'r1' ? 'r1Time' : 'r2Time';
@@ -35,15 +49,7 @@ function TeamRoundEditor({ teams, round, data, onChange, startList }) {
 
   const get = (teamId) => data[teamId] || {};
 
-  const getPreFilled = (teamId, idx) => {
-    const pair = startList?.teamPairs?.[teamId]?.[round];
-    return pair?.[idx] || { name: '', horse: '' };
-  };
-
-  const getInitRiders = (teamId) => [
-    { ...getPreFilled(teamId, 0), faults: '', time: '' },
-    { ...getPreFilled(teamId, 1), faults: '', time: '' },
-  ];
+  const getInitRiders = (teamId) => getPreFilledPair(startList, teamId, round);
 
   const set = (teamId, field, value) => {
     const cur = get(teamId);
@@ -63,6 +69,9 @@ function TeamRoundEditor({ teams, round, data, onChange, startList }) {
     <div className="space-y-2">
       {teams.map(team => {
         const d = get(team.id);
+        // Render-time fallback only — under normal flow this is already
+        // populated by the eager pre-fill effect in ResultsEditor, so this
+        // branch exists purely as a safety net rather than the primary path.
         const riders = d[ridersKey] || getInitRiders(team.id);
 
         return (
@@ -346,19 +355,69 @@ export default function ResultsEditor() {
       setStartList(sl);
       setLoadingStartList(false);
 
-      // Load existing saved results if available
+      const currentTeams = ev?.teams?.length ? ev.teams : GCL_TEAMS_2026;
+
+      // Load existing saved results if available, otherwise start fresh
+      // from the start list.
+      let initialTeamResults = {};
+      let initialRiderResults = {};
+
       if (existingRes && existingRes.length > 0) {
-        if (existingRes[0].team_results) setTeamResults(existingRes[0].team_results);
-        if (existingRes[0].rider_results) setRiderResults(existingRes[0].rider_results);
+        initialTeamResults = existingRes[0].team_results || {};
+        initialRiderResults = existingRes[0].rider_results || {};
       } else {
         // Pre-populate horses from start list or hardcoded gpRiders
         const sourceRiders = sl?.gp?.length ? sl.gp : (ev?.gpRiders?.length ? ev.gpRiders : []);
         if (sourceRiders.length) {
-          const pre = {};
-          sourceRiders.forEach(r => { if (r.horse) pre[String(r.id)] = { horse: r.horse }; });
-          setRiderResults(pre);
+          sourceRiders.forEach(r => { if (r.horse) initialRiderResults[String(r.id)] = { horse: r.horse }; });
         }
       }
+
+      // FIXED: eagerly pre-populate r1Riders/r2Riders for EVERY team from
+      // the start list's teamPairs, rather than relying on the lazy
+      // getInitRiders() call inside TeamRoundEditor's set()/setRiderFault()
+      // handlers — which only ran for whichever team's row you happened to
+      // click into first. This was the cause of the GP start list /
+      // Results entry mismatch: rider/horse pairs entered in the Riders +
+      // Start List tabs wouldn't visibly appear in Results until you
+      // interacted with that specific team's faults/time fields. Now every
+      // team's rider rows are filled in as soon as the start list loads,
+      // matching what's saved in start_lists.teamPairs exactly. Existing
+      // saved faults/time data (from initialTeamResults, if present) is
+      // preserved and only the rider/horse names are backfilled where
+      // missing, so re-opening a partially-scored event never wipes
+      // entered numbers.
+      currentTeams.forEach(team => {
+        ['r1', 'r2'].forEach(round => {
+          const ridersKey = round === 'r1' ? 'r1Riders' : 'r2Riders';
+          const existingTeamData = initialTeamResults[team.id] || {};
+          const existingRiders = existingTeamData[ridersKey];
+          const prefilled = getPreFilledPair(sl, team.id, round);
+
+          let mergedRiders;
+          if (existingRiders && existingRiders.length) {
+            // Keep existing entered faults/time, but backfill name/horse
+            // from the start list if they were ever blank (e.g. start
+            // list was set up after results entry began).
+            mergedRiders = [0, 1].map(i => ({
+              name: existingRiders[i]?.name || prefilled[i]?.name || '',
+              horse: existingRiders[i]?.horse || prefilled[i]?.horse || '',
+              faults: existingRiders[i]?.faults ?? '',
+              time: existingRiders[i]?.time ?? '',
+            }));
+          } else {
+            mergedRiders = prefilled;
+          }
+
+          initialTeamResults = {
+            ...initialTeamResults,
+            [team.id]: { ...existingTeamData, [ridersKey]: mergedRiders }
+          };
+        });
+      });
+
+      setTeamResults(initialTeamResults);
+      setRiderResults(initialRiderResults);
     });
   }, [selectedEventId]);
 

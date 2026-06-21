@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { EVENTS_2026, GCL_TEAMS_2026 } from '@/lib/equiprix-data';
 import { GCL_TEAM_ROSTERS } from '@/components/admin/TeamsEditor';
 import { loadStartListRemote, saveStartListRemote, loadHorseDBRemote, saveHorseDBRemote } from '@/lib/startListStore';
-import { Plus, X, Save } from 'lucide-react';
+import { Plus, X, Save, RefreshCw } from 'lucide-react';
 
 function HorseInput({ riderName, value, onChange, horseDB, onAddHorse }) {
   const [adding, setAdding] = useState(false);
@@ -47,17 +47,25 @@ function HorseInput({ riderName, value, onChange, horseDB, onAddHorse }) {
   );
 }
 
-function GPStartList({ riders, setRiders, horseDB, onAddHorse }) {
+function GPStartList({ riders, setRiders, horseDB, onAddHorse, onRefresh, refreshing }) {
   const setHorse = (id, horse) => setRiders(prev => prev.map(r => r.id === id ? { ...r, horse } : r));
   const sorted = [...riders].sort((a, b) => a.rank - b.rank);
 
   return (
     <div>
-      <div className="font-cinzel text-xs tracking-widest mb-1" style={{ color: 'var(--gold)', fontSize: 9 }}>
-        GRAND PRIX START LIST · {riders.length} RIDERS
+      <div className="flex items-center justify-between mb-1">
+        <div className="font-cinzel text-xs tracking-widest" style={{ color: 'var(--gold)', fontSize: 9 }}>
+          GRAND PRIX START LIST · {riders.length} RIDERS
+        </div>
+        <button onClick={onRefresh} disabled={refreshing}
+          className="flex items-center gap-1 px-2 py-1 rounded font-cinzel text-xs flex-shrink-0"
+          style={{ color: 'var(--gold)', border: '1px solid rgba(180,149,48,0.3)', background: 'rgba(180,149,48,0.05)', fontSize: 9 }}>
+          <RefreshCw size={10} style={{ animation: refreshing ? 'spin 0.8s linear infinite' : 'none' }} />
+          {refreshing ? 'REFRESHING…' : 'REFRESH FROM RIDERS TAB'}
+        </button>
       </div>
       <p className="font-cormorant text-sm italic mb-3" style={{ color: 'var(--mid)' }}>
-        Riders are set via the Riders tab. Add horses here then hit Save.
+        Riders are set via the Riders tab. If you just changed selections there, hit refresh to pull them in. Add horses here then hit Save.
       </p>
       {sorted.length === 0 ? (
         <div className="rounded-lg p-6 text-center" style={{ border: '1px dashed var(--ep-border)' }}>
@@ -145,6 +153,7 @@ export default function StartListEditor() {
   const [horseDB, setHorseDB] = useState({});
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [refreshingGP, setRefreshingGP] = useState(false);
 
   const event = EVENTS_2026.find(e => e.id === selectedEventId);
   const teams = event?.teams?.length ? event.teams : GCL_TEAMS_2026;
@@ -153,20 +162,41 @@ export default function StartListEditor() {
     loadHorseDBRemote().then(db => setHorseDB(db));
   }, []);
 
+  // Pulls the full start_lists row (gp + teamPairs) for the selected event.
+  // Used both by the event-change effect below AND by the GP tab's manual
+  // refresh button — the refresh button just re-runs this same fetch
+  // on demand instead of waiting for selectedEventId to change, which is
+  // what was making the GP tab look "stuck" after editing in the Riders
+  // tab: this effect only fires once per event selection, not on every
+  // render, so changes saved elsewhere never appeared until you reselected
+  // the event from the dropdown (easy to miss since it's already selected).
+  const fetchStartList = async (eventId, { preserveTeamPairs = true } = {}) => {
+    const data = await loadStartListRemote(eventId);
+    if (data) {
+      setGpRiders(data.gp || []);
+      // Only overwrite teamPairs when NOT doing a GP-only refresh, so
+      // clicking "refresh" on the GP tab can't accidentally discard
+      // team pair edits you're mid-way through on the R1/R2 tabs.
+      if (!preserveTeamPairs) setTeamPairs(data.teamPairs || {});
+    } else {
+      setGpRiders([]);
+      if (!preserveTeamPairs) setTeamPairs({});
+    }
+    return data;
+  };
+
   useEffect(() => {
     if (!selectedEventId) return;
     setLoading(true);
-    loadStartListRemote(selectedEventId).then(data => {
-      if (data) {
-        setGpRiders(data.gp || []);
-        setTeamPairs(data.teamPairs || {});
-      } else {
-        setGpRiders([]);
-        setTeamPairs({});
-      }
-      setLoading(false);
-    });
+    fetchStartList(selectedEventId, { preserveTeamPairs: false }).then(() => setLoading(false));
   }, [selectedEventId]);
+
+  const refreshGP = async () => {
+    if (!selectedEventId) return;
+    setRefreshingGP(true);
+    await fetchStartList(selectedEventId, { preserveTeamPairs: true });
+    setRefreshingGP(false);
+  };
 
   const addHorse = async (riderName, horse) => {
     if (!riderName || !horse) return;
@@ -233,7 +263,7 @@ export default function StartListEditor() {
 
           <div className="mb-4">
             {activeSection === 'gp' && (
-              <GPStartList riders={gpRiders} setRiders={setGpRiders} horseDB={horseDB} onAddHorse={addHorse} />
+              <GPStartList riders={gpRiders} setRiders={setGpRiders} horseDB={horseDB} onAddHorse={addHorse} onRefresh={refreshGP} refreshing={refreshingGP} />
             )}
             {(activeSection === 'r1' || activeSection === 'r2') && (
               <TeamRoundStartList round={activeSection} teamPairs={teamPairs} setTeamPairs={setTeamPairs} teams={teams} horseDB={horseDB} onAddHorse={addHorse} />
