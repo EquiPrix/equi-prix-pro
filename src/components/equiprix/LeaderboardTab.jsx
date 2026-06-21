@@ -295,6 +295,7 @@ export default function LeaderboardTab() {
             roomRows={roomRows} loading={loading}
             joinCode={joinCode} setJoinCode={setJoinCode}
             joinWithCode={joinWithCode} joining={joining} joinMsg={joinMsg} user={user}
+            events={events}
           />
         )}
       </div>
@@ -302,9 +303,21 @@ export default function LeaderboardTab() {
   );
 }
 
-function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode, setJoinCode, joinWithCode, joining, joinMsg, user }) {
+function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode, setJoinCode, joinWithCode, joining, joinMsg, user, events }) {
   const [expanded, setExpanded] = useState({});
-  const roomEvent = activeRoom ? EVENTS_2026.find(e => e.id === activeRoom.event_id) : null;
+  // FIXED: this used to look up EVENTS_2026 (the static, hardcoded array
+  // from equiprix-data.js) directly, ignoring the live-enriched `events`
+  // array from context — the same one EventLeaderboard already uses via
+  // `currentEvent`. Event status ('past'/'live'/etc) and lock timestamps
+  // are updated dynamically in Supabase via the admin panel, separate
+  // from the static array, so a completed event like Paris could show
+  // "Final scores" correctly on the General leaderboard while the room
+  // leaderboard still read Paris's stale hardcoded status and kept GP
+  // picks locked indefinitely. Now we look in the live `events` array
+  // first, falling back to EVENTS_2026 only if that array hasn't loaded
+  // yet (e.g. on very first render before context populates).
+  const liveEvents = events && events.length ? events : EVENTS_2026;
+  const roomEvent = activeRoom ? liveEvents.find(e => e.id === activeRoom.event_id) : null;
   const teamLocked = roomEvent ? (roomEvent.status === 'past' || new Date() >= new Date(roomEvent.teamLockISO)) : true;
   const gpLocked = roomEvent ? (roomEvent.status === 'past' || new Date() >= new Date(roomEvent.gpLockISO)) : true;
   return (
