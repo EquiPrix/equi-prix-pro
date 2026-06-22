@@ -23,8 +23,7 @@ export default function EventsTab({ onSelectEvent }) {
   };
 
   return (
-
-      {/* Event List */}
+    <div className="flex-1 overflow-y-auto pb-24" style={{ background: 'var(--ink)' }}>
       <div className="divide-y" style={{ borderColor: 'var(--ep-border)' }}>
         {events.map((ev, i) => {
           const cfg = STATUS_CONFIG[ev.status] || STATUS_CONFIG.future;
@@ -46,7 +45,6 @@ export default function EventsTab({ onSelectEvent }) {
                 cursor: isClickable ? 'pointer' : 'default',
               }}
             >
-              {/* Flag + date */}
               <div className="text-2xl">{ev.flag}</div>
               <div className="flex-1 min-w-0">
                 <div className="font-cormorant text-base font-semibold" style={{ color: 'var(--cream)' }}>
