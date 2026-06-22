@@ -245,7 +245,6 @@ function GPResults({ riderResults, displayRiders }) {
                     {joFaults === 0 ? '0 faults' : `${joFaults} faults`}
                   </span>
                 )}
-                {joPos && <span className="font-cinzel text-xs font-bold" style={{ color: 'var(--gold)' }}>{joPos}</span>}
               </div>
             </div>
           )}
