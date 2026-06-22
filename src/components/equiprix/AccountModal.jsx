@@ -62,7 +62,7 @@ export default function AccountModal({ onClose }) {
 
       await supabase.from('picks')
         .update({ username: trimmed })
-        .eq('access_code', user.email);
+        .eq('user_email', user.email);
 
       await supabase.from('room_members')
         .update({ username: trimmed })
