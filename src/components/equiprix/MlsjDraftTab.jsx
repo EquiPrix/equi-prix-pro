@@ -1,13 +1,99 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useMlsj } from '@/lib/MlsjContext';
+import { GENERAL_ROOM_ID } from '@/lib/EquiPrixContext';
 import { fmt, getBand } from '@/lib/equiprix-data';
 import { MLSJ_CAP, MLSJ_CPT_PREMIUM } from '@/lib/mlsj-data';
-import { Search, X } from 'lucide-react';
+import { Search, X, Save } from 'lucide-react';
 import MlsjRiderRow from './MlsjRiderRow';
 import MlsjTeamSlot from './MlsjTeamSlot';
 import MlsjScoringPanel from './MlsjScoringPanel';
 
 const SLOT_IDS = ['cpt', 'r1', 'r2', 'r3', 'r4'];
+
+// Matches the GCL DraftTab SaveConfirmModal — shows destination checkboxes
+// before committing picks. For MLSJ there are no private rooms yet so
+// this will typically show just "General Leaderboard", but the UI is
+// identical so adding rooms later requires no design change.
+function SaveConfirmModal({ destinations, onConfirm, onCancel, saving }) {
+  const [checked, setChecked] = useState(() => {
+    const init = {};
+    destinations.forEach(d => { init[d.id] = true; });
+    return init;
+  });
+
+  const toggle = (id) => setChecked(prev => ({ ...prev, [id]: !prev[id] }));
+  const anyChecked = Object.values(checked).some(Boolean);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center px-4 pb-8"
+      style={{ background: 'rgba(0,0,0,0.6)' }}
+      onClick={onCancel}>
+      <div className="w-full max-w-sm rounded-xl p-5"
+        style={{ background: 'var(--ep-card)', border: '1px solid rgba(180,149,48,0.3)' }}
+        onClick={e => e.stopPropagation()}>
+
+        <div className="font-cinzel text-xs tracking-widest mb-1" style={{ color: 'var(--gold)', fontSize: 10 }}>
+          SAVE PICKS TO
+        </div>
+        <p className="font-cormorant italic text-sm mb-4" style={{ color: 'var(--mid)' }}>
+          Choose which leaderboards to enter. All are selected by default.
+        </p>
+
+        <div className="space-y-2 mb-5">
+          {destinations.map(d => (
+            <label key={d.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all"
+              style={{
+                background: checked[d.id] ? 'rgba(180,149,48,0.08)' : 'rgba(255,255,255,0.02)',
+                border: `1px solid ${checked[d.id] ? 'rgba(180,149,48,0.35)' : 'var(--ep-border)'}`,
+              }}>
+              <input type="checkbox" checked={!!checked[d.id]} onChange={() => toggle(d.id)}
+                style={{ accentColor: 'var(--gold)', width: 15, height: 15, flexShrink: 0 }} />
+              <div className="flex-1 min-w-0">
+                <div className="font-cormorant text-sm font-semibold truncate"
+                  style={{ color: checked[d.id] ? 'var(--gold-lt)' : 'var(--cream)' }}>
+                  {d.name}
+                </div>
+                {d.id === GENERAL_ROOM_ID && (
+                  <div className="font-cormorant italic text-xs" style={{ color: 'var(--mid)' }}>
+                    Open leaderboard — all players
+                  </div>
+                )}
+                {d.id !== GENERAL_ROOM_ID && d.prize_description && (
+                  <div className="font-cormorant italic text-xs truncate" style={{ color: 'var(--gold-lt)' }}>
+                    🏆 {d.prize_description}
+                  </div>
+                )}
+              </div>
+              {checked[d.id] && (
+                <span style={{ color: '#4caf7d', fontSize: 16, flexShrink: 0 }}>✓</span>
+              )}
+            </label>
+          ))}
+        </div>
+
+        <div className="flex gap-2">
+          <button onClick={onCancel} disabled={saving}
+            className="flex-1 py-2.5 rounded font-cinzel text-xs tracking-widest"
+            style={{ border: '1px solid var(--ep-border)', color: 'var(--mid)', background: 'none' }}>
+            CANCEL
+          </button>
+          <button
+            onClick={() => onConfirm(Object.entries(checked).filter(([, v]) => v).map(([id]) => id))}
+            disabled={saving || !anyChecked}
+            className="flex-1 py-2.5 rounded font-cinzel text-xs tracking-widest flex items-center justify-center gap-2"
+            style={{
+              background: anyChecked ? 'var(--gold)' : 'rgba(180,149,48,0.2)',
+              color: anyChecked ? 'var(--ink)' : 'var(--mid)',
+              opacity: saving ? 0.7 : 1,
+            }}>
+            <Save size={12} />
+            {saving ? 'SAVING…' : 'CONFIRM & SAVE'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function MlsjDraftTab() {
   const {
@@ -16,11 +102,20 @@ export function MlsjDraftTab() {
     userCode, savePicks: contextSavePicks, showToast,
   } = useMlsj();
 
-  const [view, setView] = useState('riders'); // 'riders' | 'teams'
+  // userName and destinations are not yet in MlsjContext — derive locally.
+  // Rooms support for MLSJ can be added in a future update.
+  const userName = userCode;
+
+  const [view, setView] = useState('riders');
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [dirty, setDirty] = useState(false);
 
   const ev = currentEvent;
+
+  // Reset dirty flag when event changes
+  useEffect(() => { setDirty(false); }, [ev?.id]);
 
   const isTeamLocked = () => {
     if (!ev) return true;
@@ -48,13 +143,6 @@ export function MlsjDraftTab() {
     return sorted.filter(t => !search || t.name.toLowerCase().includes(search.toLowerCase()));
   }, [mlsjTeams, search]);
 
-  const doSavePicks = async (gt = gpTeam, tp = teamPicks) => {
-    if (!userCode || !ev) return;
-    setSaving(true);
-    await contextSavePicks(userCode, ev, gt, tp);
-    setSaving(false);
-  };
-
   const addRider = (rider) => {
     if (isRiderLocked()) { showToast('Rider picks are locked'); return; }
     if (gpTeam.find(r => r.rider.id === rider.id)) return;
@@ -63,17 +151,15 @@ export function MlsjDraftTab() {
     const usedSlots = gpTeam.map(r => r.slotId);
     const nextSlot = SLOT_IDS.find(s => !usedSlots.includes(s));
     const isCpt = nextSlot === 'cpt';
-    const newTeam = [...gpTeam, { rider, slotId: nextSlot, isCpt }];
-    setGpTeam(newTeam);
+    setGpTeam([...gpTeam, { rider, slotId: nextSlot, isCpt }]);
     showToast(rider.name + (isCpt ? ' — set as captain!' : ' added'));
-    doSavePicks(newTeam, teamPicks);
+    setDirty(true);
   };
 
   const removeRider = (id) => {
     if (isRiderLocked()) { showToast('Rider picks are locked'); return; }
-    const newTeam = gpTeam.filter(r => r.rider.id !== id).map((r, i) => ({ ...r, slotId: SLOT_IDS[i], isCpt: i === 0 }));
-    setGpTeam(newTeam);
-    doSavePicks(newTeam, teamPicks);
+    setGpTeam(gpTeam.filter(r => r.rider.id !== id).map((r, i) => ({ ...r, slotId: SLOT_IDS[i], isCpt: i === 0 })));
+    setDirty(true);
   };
 
   const makeCpt = (id) => {
@@ -84,7 +170,7 @@ export function MlsjDraftTab() {
     const reindexed = newTeam.map((r, i) => ({ ...r, slotId: SLOT_IDS[i], isCpt: i === 0 }));
     setGpTeam(reindexed);
     showToast(cpt.rider.name + ' is your captain — 1.5×');
-    doSavePicks(reindexed, teamPicks);
+    setDirty(true);
   };
 
   const addTeam = (t) => {
@@ -92,22 +178,42 @@ export function MlsjDraftTab() {
     if (teamPicks.find(p => p.id === t.id)) return;
     if (teamPicks.length >= 2) { showToast('Already have 2 teams'); return; }
     if (totalSpent() + t.salary > MLSJ_CAP) { showToast('Not enough cap space'); return; }
-    const newPicks = [...teamPicks, { ...t, slotId: 'mt' + (teamPicks.length + 1) }];
-    setTeamPicks(newPicks);
+    setTeamPicks([...teamPicks, { ...t, slotId: 'mt' + (teamPicks.length + 1) }]);
     showToast(t.name + ' added');
-    doSavePicks(gpTeam, newPicks);
+    setDirty(true);
   };
 
   const removeTeam = (id) => {
     if (isTeamLocked()) { showToast('Team picks are locked'); return; }
-    const newPicks = teamPicks.filter(t => t.id !== id).map((t, i) => ({ ...t, slotId: 'mt' + (i + 1) }));
-    setTeamPicks(newPicks);
-    doSavePicks(gpTeam, newPicks);
+    setTeamPicks(teamPicks.filter(t => t.id !== id).map((t, i) => ({ ...t, slotId: 'mt' + (i + 1) })));
+    setDirty(true);
+  };
+
+  // Save picks to a specific destination using the context's savePicks
+  const saveToDestination = async (destId, gt, tp) => {
+    await contextSavePicks(userCode, ev, gt, tp, destId);
+  };
+
+  const handleConfirmSave = async (selectedIds) => {
+    if (!userCode || !ev || !selectedIds.length) return;
+    setSaving(true);
+    try {
+      await Promise.all(selectedIds.map(id => saveToDestination(id, gpTeam, teamPicks)));
+      setDirty(false);
+      setShowSaveModal(false);
+      const names = selectedIds.map(id => id === GENERAL_ROOM_ID ? 'General Leaderboard' : id).join(', ');
+      showToast('Picks saved to ' + names);
+    } catch (e) {
+      console.error('savePicks failed:', e);
+      showToast('Could not save picks — try again');
+    }
+    setSaving(false);
   };
 
   const clearAll = () => {
     setGpTeam([]);
     if (!isTeamLocked()) setTeamPicks([]);
+    setDirty(false);
   };
 
   if (!ev) {
@@ -140,6 +246,7 @@ export function MlsjDraftTab() {
   }
 
   const capColor = capRemaining < 0 ? 'var(--crimson)' : capRemaining < 8000 ? '#e88a3a' : '#4caf7d';
+  const mlsjDestinations = [{ id: GENERAL_ROOM_ID, name: 'General Leaderboard' }];
 
   const practiceBanner = isPractice ? (
     <div className="flex items-start gap-2 px-3 py-2 text-xs font-cormorant italic flex-shrink-0"
@@ -150,6 +257,15 @@ export function MlsjDraftTab() {
 
   return (
     <div className="flex-1 flex min-h-0 overflow-hidden" style={{ background: 'var(--ink)' }}>
+
+      {showSaveModal && (
+        <SaveConfirmModal
+          destinations={mlsjDestinations}
+          onConfirm={handleConfirmSave}
+          onCancel={() => setShowSaveModal(false)}
+          saving={saving}
+        />
+      )}
 
       {/* LEFT PANEL — Pool */}
       <div className="flex flex-col min-h-0 overflow-hidden" style={{ width: '55%', borderRight: '1px solid var(--ep-border)' }}>
@@ -288,20 +404,20 @@ export function MlsjDraftTab() {
               {fmt(capRemaining)}
             </span>
           </div>
-          <div className="flex items-center justify-between mt-1.5">
-            <span className="text-xs" style={{ color: 'var(--mid)' }}>
-              {saving
-                ? '↑ Saving…'
-                : gpTeam.length + teamPicks.length > 0
-                  ? `${gpTeam.length} rider${gpTeam.length !== 1 ? 's' : ''} · ${teamPicks.length} team${teamPicks.length !== 1 ? 's' : ''} · auto-saved`
-                  : 'Empty'
+          <div className="mt-1.5">
+            <span className="text-xs" style={{ color: dirty ? '#e88a3a' : 'var(--mid)' }}>
+              {gpTeam.length + teamPicks.length === 0
+                ? 'Empty'
+                : dirty
+                  ? '● Unsaved changes'
+                  : `${gpTeam.length} rider${gpTeam.length !== 1 ? 's' : ''} · ${teamPicks.length} team${teamPicks.length !== 1 ? 's' : ''} · saved`
               }
             </span>
           </div>
         </div>
 
         {/* Roster slots */}
-        <div className="flex-1 overflow-y-auto px-2 py-2 pb-20">
+        <div className="flex-1 overflow-y-auto px-2 py-2 pb-24">
 
           {/* Captain */}
           <div className="mb-2">
@@ -369,6 +485,27 @@ export function MlsjDraftTab() {
           </div>
 
           <MlsjScoringPanel />
+        </div>
+
+        {/* Sticky Save button */}
+        <div className="flex-shrink-0 px-3 py-3" style={{ borderTop: '1px solid var(--ep-border)', background: '#0d0c09' }}>
+          <button
+            onClick={() => setShowSaveModal(true)}
+            disabled={saving || gpTeam.length + teamPicks.length === 0}
+            className="w-full py-3 rounded font-cinzel text-xs tracking-widest flex items-center justify-center gap-2 transition-all"
+            style={{
+              background: dirty
+                ? 'var(--gold)'
+                : gpTeam.length + teamPicks.length > 0
+                  ? 'rgba(180,149,48,0.15)'
+                  : 'rgba(255,255,255,0.04)',
+              color: dirty ? 'var(--ink)' : gpTeam.length + teamPicks.length > 0 ? 'var(--gold)' : 'var(--mid)',
+              border: dirty ? 'none' : `1px solid ${gpTeam.length + teamPicks.length > 0 ? 'rgba(180,149,48,0.3)' : 'var(--ep-border)'}`,
+              opacity: saving || gpTeam.length + teamPicks.length === 0 ? 0.5 : 1,
+            }}>
+            <Save size={13} />
+            {saving ? 'SAVING…' : dirty ? 'SAVE PICKS' : 'PICKS SAVED'}
+          </button>
         </div>
       </div>
     </div>

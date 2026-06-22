@@ -3,31 +3,112 @@ import { useEquiPrix, GENERAL_ROOM_ID } from '@/lib/EquiPrixContext';
 import { useAuth } from '@/lib/AuthContext';
 import { sbFetch, fmt, getBand, CAP, CPT_PREMIUM } from '@/lib/equiprix-data';
 import { loadStartListRemote } from '@/lib/startListStore';
-import { Search, X, ChevronDown } from 'lucide-react';
+import { Search, X, Save } from 'lucide-react';
 import RiderRow from './RiderRow';
 import TeamSlot from './TeamSlot';
 import ScoringPanel from './ScoringPanel';
 
 const SLOT_IDS = ['cpt', 'r1', 'r2', 'r3', 'r4'];
 
+// Modal shown when user hits Save — lets them choose which destinations
+// to save to (General + any rooms they're in for this event).
+function SaveConfirmModal({ destinations, onConfirm, onCancel, saving }) {
+  const [checked, setChecked] = useState(() => {
+    const init = {};
+    destinations.forEach(d => { init[d.id] = true; });
+    return init;
+  });
+
+  const toggle = (id) => setChecked(prev => ({ ...prev, [id]: !prev[id] }));
+  const anyChecked = Object.values(checked).some(Boolean);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center px-4 pb-8"
+      style={{ background: 'rgba(0,0,0,0.6)' }}
+      onClick={onCancel}>
+      <div className="w-full max-w-sm rounded-xl p-5"
+        style={{ background: 'var(--ep-card)', border: '1px solid rgba(180,149,48,0.3)' }}
+        onClick={e => e.stopPropagation()}>
+
+        <div className="font-cinzel text-xs tracking-widest mb-1" style={{ color: 'var(--gold)', fontSize: 10 }}>
+          SAVE PICKS TO
+        </div>
+        <p className="font-cormorant italic text-sm mb-4" style={{ color: 'var(--mid)' }}>
+          Choose which leaderboards to enter. All are selected by default.
+        </p>
+
+        <div className="space-y-2 mb-5">
+          {destinations.map(d => (
+            <label key={d.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all"
+              style={{
+                background: checked[d.id] ? 'rgba(180,149,48,0.08)' : 'rgba(255,255,255,0.02)',
+                border: `1px solid ${checked[d.id] ? 'rgba(180,149,48,0.35)' : 'var(--ep-border)'}`,
+              }}>
+              <input type="checkbox" checked={!!checked[d.id]} onChange={() => toggle(d.id)}
+                style={{ accentColor: 'var(--gold)', width: 15, height: 15, flexShrink: 0 }} />
+              <div className="flex-1 min-w-0">
+                <div className="font-cormorant text-sm font-semibold truncate"
+                  style={{ color: checked[d.id] ? 'var(--gold-lt)' : 'var(--cream)' }}>
+                  {d.name}
+                </div>
+                {d.id === GENERAL_ROOM_ID && (
+                  <div className="font-cormorant italic text-xs" style={{ color: 'var(--mid)' }}>
+                    Open leaderboard — all players
+                  </div>
+                )}
+                {d.id !== GENERAL_ROOM_ID && d.prize_description && (
+                  <div className="font-cormorant italic text-xs truncate" style={{ color: 'var(--gold-lt)' }}>
+                    🏆 {d.prize_description}
+                  </div>
+                )}
+              </div>
+              {checked[d.id] && (
+                <span style={{ color: '#4caf7d', fontSize: 16, flexShrink: 0 }}>✓</span>
+              )}
+            </label>
+          ))}
+        </div>
+
+        <div className="flex gap-2">
+          <button onClick={onCancel} disabled={saving}
+            className="flex-1 py-2.5 rounded font-cinzel text-xs tracking-widest"
+            style={{ border: '1px solid var(--ep-border)', color: 'var(--mid)', background: 'none' }}>
+            CANCEL
+          </button>
+          <button
+            onClick={() => onConfirm(Object.entries(checked).filter(([, v]) => v).map(([id]) => id))}
+            disabled={saving || !anyChecked}
+            className="flex-1 py-2.5 rounded font-cinzel text-xs tracking-widest flex items-center justify-center gap-2"
+            style={{
+              background: anyChecked ? 'var(--gold)' : 'rgba(180,149,48,0.2)',
+              color: anyChecked ? 'var(--ink)' : 'var(--mid)',
+              opacity: saving ? 0.7 : 1,
+            }}>
+            <Save size={12} />
+            {saving ? 'SAVING…' : 'CONFIRM & SAVE'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DraftTab() {
   const {
     currentEvent, userCode, userName, team, setTeam, teamPicks, setTeamPicks, riders, teams, showToast,
-    currentDestination, setCurrentDestination, destinations, generalOptedOut, setGeneralOptOut,
+    destinations,
   } = useEquiPrix();
   const { user } = useAuth();
   const identity = user?.email || userCode;
   const [view, setView] = useState('riders');
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
-  const [showDestPicker, setShowDestPicker] = useState(false);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [dirty, setDirty] = useState(false);
   const [teamPairsR1, setTeamPairsR1] = useState({});
 
   const ev = currentEvent;
 
-  // Load R1 rider/horse combos for the current event so the Teams tab
-  // can show who each team is riding in Round 1. Same data source as
-  // the admin's Start Lists editor — read-only here, display-only.
   useEffect(() => {
     if (!ev?.id) return;
     loadStartListRemote(ev.id).then(data => {
@@ -35,22 +116,18 @@ export default function DraftTab() {
     });
   }, [ev?.id]);
 
-  // In 'preview' mode everything is practice — nothing actually locks
-  // In 'teams' mode: team picks open AND rider picks open against the
-  // preview rider pool (official GP start list isn't announced yet, but
-  // people can budget/draft against expected riders — picks carry over
-  // by rider id once the real list lands)
-  // In 'riders' mode: rider picks open against the real GP list, teams
-  // already locked
+  // Reset dirty flag when event changes
+  useEffect(() => { setDirty(false); }, [ev?.id]);
+
   const isTeamLocked = () => {
     if (!ev) return true;
-    if (ev.status === 'preview') return false; // practice mode, allow editing
+    if (ev.status === 'preview') return false;
     return new Date() >= new Date(ev.teamLockISO);
   };
   const isRiderLocked = () => {
     if (!ev) return true;
-    if (ev.status === 'preview') return false; // practice mode, allow editing
-    if (ev.status === 'teams') return false;   // preview riders open for drafting
+    if (ev.status === 'preview') return false;
+    if (ev.status === 'teams') return false;
     return new Date() >= new Date(ev.gpLockISO);
   };
 
@@ -76,17 +153,15 @@ export default function DraftTab() {
     const usedSlots = team.map(r => r.slotId);
     const nextSlot = SLOT_IDS.find(s => !usedSlots.includes(s));
     const isCpt = nextSlot === 'cpt';
-    const newTeam = [...team, { rider, slotId: nextSlot, isCpt }];
-    setTeam(newTeam);
+    setTeam([...team, { rider, slotId: nextSlot, isCpt }]);
     showToast(rider.name + (isCpt ? ' — set as captain!' : ' added'));
-    savePicks(newTeam, teamPicks);
+    setDirty(true);
   };
 
   const removeRider = (id) => {
     if (isRiderLocked()) { showToast('Rider picks are locked'); return; }
-    const newTeam = team.filter(r => r.rider.id !== id).map((r, i) => ({ ...r, slotId: SLOT_IDS[i], isCpt: i === 0 }));
-    setTeam(newTeam);
-    savePicks(newTeam, teamPicks);
+    setTeam(team.filter(r => r.rider.id !== id).map((r, i) => ({ ...r, slotId: SLOT_IDS[i], isCpt: i === 0 })));
+    setDirty(true);
   };
 
   const makeCpt = (id) => {
@@ -97,7 +172,7 @@ export default function DraftTab() {
     const reindexed = newTeam.map((r, i) => ({ ...r, slotId: SLOT_IDS[i], isCpt: i === 0 }));
     setTeam(reindexed);
     showToast(cpt.rider.name + ' is your captain — 1.5×');
-    savePicks(reindexed, teamPicks);
+    setDirty(true);
   };
 
   const addTeam = (t) => {
@@ -105,45 +180,50 @@ export default function DraftTab() {
     if (teamPicks.find(p => p.id === t.id)) return;
     if (teamPicks.length >= 2) { showToast('Already have 2 teams'); return; }
     if (totalSpent() + t.salary > CAP) { showToast('Not enough cap space'); return; }
-    const newPicks = [...teamPicks, { ...t, slotId: 't' + (teamPicks.length + 1) }];
-    setTeamPicks(newPicks);
+    setTeamPicks([...teamPicks, { ...t, slotId: 't' + (teamPicks.length + 1) }]);
     showToast(t.name + ' added');
-    savePicks(team, newPicks);
+    setDirty(true);
   };
 
   const removeTeam = (id) => {
     if (isTeamLocked()) { showToast('Team picks are locked'); return; }
-    const newPicks = teamPicks.filter(t => t.id !== id).map((t, i) => ({ ...t, slotId: 't' + (i + 1) }));
-    setTeamPicks(newPicks);
-    savePicks(team, newPicks);
+    setTeamPicks(teamPicks.filter(t => t.id !== id).map((t, i) => ({ ...t, slotId: 't' + (i + 1) })));
+    setDirty(true);
   };
 
-  const savePicks = async (t = team, tp = teamPicks) => {
-    if (!identity || !ev) return;
-    setSaving(true);
+  // Save to one specific destination (room_id)
+  const saveToDestination = async (destId, t, tp) => {
     const spent = t.reduce((s, r) => s + (r.isCpt ? r.rider.salary + CPT_PREMIUM : r.rider.salary), 0) +
       tp.reduce((s, pk) => s + pk.salary, 0);
+    await sbFetch('picks?on_conflict=user_email,event,room_id', {
+      method: 'POST',
+      body: JSON.stringify({
+        user_email: identity,
+        event: ev.id,
+        room_id: destId,
+        username: userName || identity,
+        picks_json: {
+          riders: t.map(r => ({ id: r.rider.id, isCpt: r.isCpt })),
+          teams: tp.map(pk => ({ id: pk.id })),
+          totalSpent: spent,
+          isPractice: ev.status === 'preview',
+          savedAt: new Date().toISOString()
+        },
+        updated_at: new Date().toISOString()
+      })
+    });
+  };
+
+  // Called when user confirms the modal — saves to each checked destination
+  const handleConfirmSave = async (selectedIds) => {
+    if (!identity || !ev || !selectedIds.length) return;
+    setSaving(true);
     try {
-      await sbFetch('picks?on_conflict=user_email,event,room_id', {
-        method: 'POST',
-        body: JSON.stringify({
-          user_email: identity,
-          event: ev.id,
-          room_id: currentDestination || GENERAL_ROOM_ID,
-          username: userName || identity,
-          picks_json: {
-            riders: t.map(r => ({ id: r.rider.id, isCpt: r.isCpt })),
-            teams: tp.map(pk => ({ id: pk.id })),
-            totalSpent: spent,
-            isPractice: ev.status === 'preview',
-            // Preserve the General opt-out flag if this destination is
-            // General — it lives on the same row as picks_json.
-            ...((currentDestination || GENERAL_ROOM_ID) === GENERAL_ROOM_ID ? { optedOutOfGeneral: generalOptedOut } : {}),
-            savedAt: new Date().toISOString()
-          },
-          updated_at: new Date().toISOString()
-        })
-      });
+      await Promise.all(selectedIds.map(id => saveToDestination(id, team, teamPicks)));
+      setDirty(false);
+      setShowSaveModal(false);
+      const names = selectedIds.map(id => destinations.find(d => d.id === id)?.name || 'General').join(', ');
+      showToast('Picks saved to ' + names);
     } catch (e) {
       console.error('savePicks failed:', e);
       showToast('Could not save picks — try again');
@@ -154,6 +234,7 @@ export default function DraftTab() {
   const clearAll = () => {
     setTeam([]);
     if (!isTeamLocked()) setTeamPicks([]);
+    setDirty(false);
   };
 
   if (!ev) {
@@ -208,6 +289,15 @@ export default function DraftTab() {
   return (
     <div className="flex-1 flex min-h-0 overflow-hidden" style={{ background: 'var(--ink)' }}>
 
+      {showSaveModal && (
+        <SaveConfirmModal
+          destinations={destinations}
+          onConfirm={handleConfirmSave}
+          onCancel={() => setShowSaveModal(false)}
+          saving={saving}
+        />
+      )}
+
       {/* LEFT PANEL — Pool */}
       <div className="flex flex-col min-h-0 overflow-hidden" style={{ width: '55%', borderRight: '1px solid var(--ep-border)' }}>
 
@@ -240,7 +330,7 @@ export default function DraftTab() {
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder={view === 'riders' ? 'Search…' : 'Search…'}
+              placeholder="Search…"
               className="flex-1 text-xs outline-none bg-transparent"
               style={{ color: 'var(--ep-text)' }}
             />
@@ -334,53 +424,11 @@ export default function DraftTab() {
       <div className="flex flex-col min-h-0 overflow-hidden" style={{ width: '45%', background: '#0d0c09' }}>
 
         {/* Cap bar */}
-        <div className="px-3 py-2 flex-shrink-0" style={{ borderBottom: '1px solid var(--ep-border)', position: 'relative' }}>
+        <div className="px-3 py-2 flex-shrink-0" style={{ borderBottom: '1px solid var(--ep-border)' }}>
           <div className="flex items-center justify-between mb-1">
-            <button
-              onClick={() => destinations.length > 1 && setShowDestPicker(p => !p)}
-              className="flex items-center gap-1 font-cinzel text-xs"
-              style={{ color: 'var(--gold)', letterSpacing: '0.12em', cursor: destinations.length > 1 ? 'pointer' : 'default' }}
-            >
-              {(destinations.find(d => d.id === currentDestination)?.name || 'MY TEAM').toUpperCase()}
-              {destinations.length > 1 && <ChevronDown size={12} style={{ color: 'var(--gold)' }} />}
-            </button>
+            <span className="font-cinzel text-xs" style={{ color: 'var(--gold)', letterSpacing: '0.12em' }}>MY TEAM</span>
             <button onClick={clearAll} className="text-xs underline" style={{ color: 'var(--mid)' }}>Clear</button>
           </div>
-
-          {/* Destination dropdown — only meaningful if the user has at
-              least one room for this event; otherwise General is the
-              only option and this never renders. */}
-          {showDestPicker && destinations.length > 1 && (
-            <div className="absolute left-3 top-9 z-20 rounded shadow-lg overflow-hidden"
-              style={{ background: '#15130f', border: '1px solid rgba(180,149,48,0.3)', minWidth: 220 }}>
-              {destinations.map(d => (
-                <button
-                  key={d.id ?? 'general'}
-                  onClick={() => { setCurrentDestination(d.id); setShowDestPicker(false); }}
-                  className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left font-cormorant text-sm transition-all"
-                  style={{
-                    background: d.id === currentDestination ? 'rgba(180,149,48,0.12)' : 'transparent',
-                    color: d.id === currentDestination ? 'var(--gold-lt)' : 'var(--cream)',
-                    borderBottom: '1px solid rgba(42,40,32,0.5)',
-                  }}
-                >
-                  <span>{d.name}</span>
-                  {d.id === currentDestination && <span style={{ color: '#4caf7d', fontSize: 11 }}>✓</span>}
-                </button>
-              ))}
-              <label className="flex items-center gap-2 px-3 py-2 font-cormorant text-xs italic cursor-pointer"
-                style={{ color: 'var(--mid)' }}>
-                <input
-                  type="checkbox"
-                  checked={!generalOptedOut}
-                  onChange={e => setGeneralOptOut(identity, ev, !e.target.checked)}
-                  style={{ accentColor: 'var(--gold)' }}
-                />
-                Include me in General Leaderboard
-              </label>
-            </div>
-          )}
-
           <div className="flex items-center gap-2">
             <div className="flex-1 h-1 rounded-full" style={{ background: 'var(--ep-border)' }}>
               <div className="h-1 rounded-full transition-all" style={{
@@ -392,20 +440,20 @@ export default function DraftTab() {
               {fmt(capRemaining)}
             </span>
           </div>
-          <div className="flex items-center justify-between mt-1.5">
-            <span className="text-xs" style={{ color: 'var(--mid)' }}>
-              {saving
-                ? '↑ Saving…'
-                : team.length + teamPicks.length > 0
-                  ? `${team.length} rider${team.length !== 1 ? 's' : ''} · ${teamPicks.length} team${teamPicks.length !== 1 ? 's' : ''} · auto-saved`
-                  : 'Empty'
+          <div className="mt-1.5">
+            <span className="text-xs" style={{ color: dirty ? '#e88a3a' : 'var(--mid)' }}>
+              {team.length + teamPicks.length === 0
+                ? 'Empty'
+                : dirty
+                  ? '● Unsaved changes'
+                  : `${team.length} rider${team.length !== 1 ? 's' : ''} · ${teamPicks.length} team${teamPicks.length !== 1 ? 's' : ''} · saved`
               }
             </span>
           </div>
         </div>
 
         {/* Roster slots */}
-        <div className="flex-1 overflow-y-auto px-2 py-2 pb-20">
+        <div className="flex-1 overflow-y-auto px-2 py-2 pb-24">
 
           {/* Captain */}
           <div className="mb-2">
@@ -473,6 +521,27 @@ export default function DraftTab() {
           </div>
 
           <ScoringPanel />
+        </div>
+
+        {/* Sticky Save button */}
+        <div className="flex-shrink-0 px-3 py-3" style={{ borderTop: '1px solid var(--ep-border)', background: '#0d0c09' }}>
+          <button
+            onClick={() => setShowSaveModal(true)}
+            disabled={saving || team.length + teamPicks.length === 0}
+            className="w-full py-3 rounded font-cinzel text-xs tracking-widest flex items-center justify-center gap-2 transition-all"
+            style={{
+              background: dirty
+                ? 'var(--gold)'
+                : team.length + teamPicks.length > 0
+                  ? 'rgba(180,149,48,0.15)'
+                  : 'rgba(255,255,255,0.04)',
+              color: dirty ? 'var(--ink)' : team.length + teamPicks.length > 0 ? 'var(--gold)' : 'var(--mid)',
+              border: dirty ? 'none' : `1px solid ${team.length + teamPicks.length > 0 ? 'rgba(180,149,48,0.3)' : 'var(--ep-border)'}`,
+              opacity: saving || team.length + teamPicks.length === 0 ? 0.5 : 1,
+            }}>
+            <Save size={13} />
+            {saving ? 'SAVING…' : dirty ? 'SAVE PICKS' : 'PICKS SAVED'}
+          </button>
         </div>
       </div>
     </div>
