@@ -12,9 +12,6 @@ export function MlsjEventsTab({ onSelectEvent }) {
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-2">
-      <h2 className="font-cormorant text-lg mb-2" style={{ color: 'var(--gold-lt)' }}>
-        MLSJ 2026-27 Schedule
-      </h2>
       {events.map(ev => {
         const isClickable = ev.status !== 'future' && ev.status !== 'cancelled';
         return (

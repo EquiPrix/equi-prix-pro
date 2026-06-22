@@ -23,16 +23,6 @@ export default function EventsTab({ onSelectEvent }) {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto pb-24" style={{ background: 'var(--ink)' }}>
-      {/* Header */}
-      <div className="sticky top-0 z-10 px-4 pt-4 pb-3" style={{ background: 'var(--ink)', borderBottom: '1px solid var(--ep-border)' }}>
-        <div className="font-cinzel text-xs tracking-widest mb-0.5" style={{ color: 'var(--gold)' }}>
-          2026 SEASON
-        </div>
-        <div className="font-cormorant text-xl" style={{ color: 'var(--cream)' }}>
-          GCL Events
-        </div>
-      </div>
 
       {/* Event List */}
       <div className="divide-y" style={{ borderColor: 'var(--ep-border)' }}>
