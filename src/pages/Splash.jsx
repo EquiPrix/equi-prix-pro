@@ -14,6 +14,27 @@ export default function Splash() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [resetSent, setResetSent] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+
+  const handleForgotPassword = async () => {
+    if (!email.trim()) {
+      setMessage({ type: 'error', text: 'Enter your email address first, then click Forgot Password.' });
+      return;
+    }
+    setResetLoading(true);
+    try {
+      await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      setResetSent(true);
+      setMessage({ type: 'success', text: `✓ Reset link sent to ${email.trim()}` });
+    } catch (e) {
+      setMessage({ type: 'error', text: e.message });
+    } finally {
+      setResetLoading(false);
+    }
+  };
 
   const handleAuthAction = async (e) => {
     e.preventDefault();
@@ -84,6 +105,18 @@ export default function Splash() {
             </div>
           )}
 
+          {!isSignUpMode && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={handleForgotPassword}
+                disabled={resetLoading}
+                className="font-cormorant italic text-xs transition-all"
+                style={{ color: 'var(--mid)', opacity: 0.7, textDecoration: 'underline' }}>
+                {resetLoading ? 'Sending…' : 'Forgot password?'}
+              </button>
+            </div>
+          )}
           <button type="submit" disabled={loading}
             className="w-full py-3 rounded text-xs uppercase font-cinzel font-bold tracking-widest transition-all mt-2 cursor-pointer border border-transparent"
             style={{
