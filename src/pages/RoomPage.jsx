@@ -227,49 +227,28 @@ export default function RoomPage() {
     setReopening(true);
     setReopenResult(null);
     try {
-      // Generate new code
-      const newCode = Math.floor(100000 + Math.random() * 900000).toString();
-      // Create new room with same settings but new event
-      await sbFetch('rooms', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: room.name,
-          event_id: reopenEventId,
-          manager_email: room.manager_email,
-          max_size: room.max_size,
-          prize_description: room.prize_description || '',
-          sponsor_name: room.sponsor_name || '',
-          sponsor_logo_url: room.sponsor_logo_url || '',
-          is_sponsored: room.is_sponsored || false,
-          join_code: newCode,
-        })
-      });
-
-      // Get all current members
-      const memberEmails = members.map(m => m.user_email);
       const newEvent = EVENTS_2026.find(e => e.id === reopenEventId);
-      const joinUrl = `${window.location.origin}/room/${newCode}`;
 
-      // Send invite to all members
-      for (const email of memberEmails) {
-        try {
-          await fetch('/api/send-room-invite', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email,
-              roomName: room.name,
-              prize: room.prize_description || null,
-              eventName: newEvent?.city || '',
-              eventFlag: newEvent?.flag || '🏇',
-              joinUrl,
-              managerName: user?.user_metadata?.username || user?.email?.split('@')[0] || null,
-            }),
-          });
-        } catch (e) { console.warn('Failed to invite', email); }
+      // Submit as a room request — requires admin approval
+      const res = await fetch('/api/send-room-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestorEmail: room.manager_email,
+          requestorName: user?.user_metadata?.username || user?.email?.split('@')[0] || '',
+          eventName: newEvent ? `${newEvent.flag} ${newEvent.city} · ${newEvent.dates}` : reopenEventId,
+          maxMembers: room.max_size,
+          roomName: room.name,
+          prizeIdea: room.prize_description || null,
+          notes: `Reopened from previous room "${room.name}" — ${members.length} existing members to be invited on approval.`,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setReopenResult({ success: true, count: members.length });
+      } else {
+        setReopenResult({ success: false, msg: data.error || 'Request failed' });
       }
-
-      setReopenResult({ success: true, code: newCode, count: memberEmails.length });
     } catch (e) {
       setReopenResult({ success: false, msg: e.message });
     } finally {
@@ -499,13 +478,10 @@ export default function RoomPage() {
                   <div className="py-4 text-center">
                     <div className="text-2xl mb-2">🏇</div>
                     <p className="font-cormorant text-base font-semibold mb-1" style={{ color: '#4caf7d' }}>
-                      Room created!
+                      Request submitted!
                     </p>
                     <p className="font-cormorant italic text-sm mb-1" style={{ color: 'var(--mid)' }}>
-                      {reopenResult.count} member{reopenResult.count !== 1 ? 's' : ''} notified
-                    </p>
-                    <p className="font-cinzel text-sm font-bold mb-3" style={{ color: 'var(--gold)' }}>
-                      New code: {reopenResult.code}
+                      EquiPrix will recreate this room and invite your {reopenResult.count} members once approved.
                     </p>
                     <button onClick={() => { setShowReopen(false); setReopenResult(null); }}
                       className="font-cinzel text-xs px-4 py-1.5 rounded"
@@ -534,7 +510,7 @@ export default function RoomPage() {
                     <button onClick={reopenForEvent} disabled={reopening || !reopenEventId}
                       className="w-full py-2.5 rounded font-cinzel text-xs tracking-widest flex items-center justify-center gap-2 transition-all"
                       style={{ background: reopening ? 'rgba(180,149,48,0.1)' : 'var(--gold)', color: reopening ? 'var(--mid)' : 'var(--ink)', letterSpacing: '0.1em', opacity: !reopenEventId ? 0.4 : 1 }}>
-                      {reopening ? 'CREATING & NOTIFYING…' : `CREATE & NOTIFY ${members.length} MEMBERS`}
+                      {reopening ? 'SUBMITTING…' : `SUBMIT RECREATE REQUEST`}
                     </button>
                   </div>
                 )}

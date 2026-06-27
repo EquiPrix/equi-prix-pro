@@ -253,6 +253,7 @@ export default function LeaderboardTab() {
             roomRows={roomRows} loading={loading}
             joinCode={joinCode} setJoinCode={setJoinCode}
             joinWithCode={joinWithCode} joining={joining} joinMsg={joinMsg} user={user}
+            currentEvent={currentEvent}
           />
         )}
       </div>
@@ -260,7 +261,7 @@ export default function LeaderboardTab() {
   );
 }
 
-function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode, setJoinCode, joinWithCode, joining, joinMsg, user }) {
+function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode, setJoinCode, joinWithCode, joining, joinMsg, user, currentEvent }) {
   const [showRequest, setShowRequest] = useState(false);
   const [showRecreate, setShowRecreate] = useState(false);
   const [recreateFromRoom, setRecreateFromRoom] = useState('');
@@ -295,53 +296,36 @@ function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode
     setRecreating(true);
     setRecreateResult(null);
     try {
-      const newCode = Math.floor(100000 + Math.random() * 900000).toString();
       const newEvent = EVENTS_2026.find(e => e.id === recreateEventId);
-
-      // Create new room
-      await sbFetch('rooms', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: srcRoom.name,
-          event_id: recreateEventId,
-          manager_email: srcRoom.manager_email,
-          max_size: srcRoom.max_size,
-          prize_description: srcRoom.prize_description || '',
-          sponsor_name: srcRoom.sponsor_name || '',
-          sponsor_logo_url: srcRoom.sponsor_logo_url || '',
-          is_sponsored: srcRoom.is_sponsored || false,
-          join_code: newCode,
-        })
-      });
-
-      // Get previous room members and invite them
       const prevMembers = await sbFetch('room_members?room_id=eq.' + srcRoom.id) || [];
-      for (const m of prevMembers) {
-        try {
-          await fetch('/api/send-room-invite', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: m.user_email,
-              roomName: srcRoom.name,
-              prize: srcRoom.prize_description || null,
-              eventName: newEvent?.city || '',
-              eventFlag: newEvent?.flag || '🏇',
-              joinUrl: `${window.location.origin}/room/${newCode}`,
-              managerName: user?.user_metadata?.username || user?.email?.split('@')[0] || null,
-            }),
-          });
-        } catch (e) { console.warn('invite failed', m.user_email); }
-      }
 
-      setRecreateResult({ success: true, code: newCode, count: prevMembers.length, name: srcRoom.name });
-      setRecreateFromRoom('');
-      setRecreateEventId('');
-      loadMyRooms();
+      // Submit as a room request — requires admin approval
+      const res = await fetch('/api/send-room-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestorEmail: user?.email || '',
+          requestorName: user?.user_metadata?.username || user?.email?.split('@')[0] || '',
+          eventName: newEvent ? `${newEvent.flag} ${newEvent.city} · ${newEvent.dates}` : recreateEventId,
+          maxMembers: srcRoom.max_size,
+          roomName: srcRoom.name,
+          prizeIdea: srcRoom.prize_description || null,
+          notes: `Recreated from previous room "${srcRoom.name}" — ${prevMembers.length} existing members to be invited on approval.`,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setRecreateResult({ success: true, name: srcRoom.name, count: prevMembers.length });
+        setRecreateFromRoom('');
+        setRecreateEventId('');
+      } else {
+        setRecreateResult({ success: false, msg: data.error || 'Request failed' });
+      }
     } catch (e) {
       setRecreateResult({ success: false, msg: e.message });
     } finally {
-      setRecreating(false); }
+      setRecreating(false);
+    }
   };
 
   const submitRequest = async () => {
@@ -418,9 +402,8 @@ function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode
             {recreateResult?.success ? (
               <div className="px-4 py-4 rounded-lg text-center" style={{ background: 'rgba(76,175,125,0.08)', border: '1px solid rgba(76,175,125,0.2)' }}>
                 <div className="text-2xl mb-2">🏇</div>
-                <div className="font-cormorant text-base font-semibold mb-1" style={{ color: '#4caf7d' }}>{recreateResult.name} recreated!</div>
-                <div className="font-cormorant italic text-sm mb-1" style={{ color: 'var(--mid)' }}>{recreateResult.count} member{recreateResult.count !== 1 ? 's' : ''} notified</div>
-                <div className="font-cinzel text-sm font-bold mb-3" style={{ color: 'var(--gold)' }}>New code: {recreateResult.code}</div>
+                <div className="font-cormorant text-base font-semibold mb-1" style={{ color: '#4caf7d' }}>Request submitted!</div>
+                <div className="font-cormorant italic text-sm mb-1" style={{ color: 'var(--mid)' }}>EquiPrix will recreate <strong>{recreateResult.name}</strong> and invite your {recreateResult.count} previous members once approved.</div>
                 <button onClick={() => { setShowRecreate(false); setRecreateResult(null); }}
                   className="font-cinzel text-xs px-4 py-1.5 rounded"
                   style={{ background: 'rgba(76,175,125,0.15)', color: '#4caf7d', border: '1px solid rgba(76,175,125,0.3)', letterSpacing: '0.08em' }}>
@@ -459,7 +442,7 @@ function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode
                     <button onClick={recreateRoom} disabled={recreating || !recreateFromRoom || !recreateEventId}
                       className="w-full py-3 rounded font-cinzel text-xs tracking-widest flex items-center justify-center gap-2 transition-all"
                       style={{ background: recreating ? 'rgba(180,149,48,0.1)' : 'var(--gold)', color: recreating ? 'var(--mid)' : 'var(--ink)', letterSpacing: '0.1em', opacity: (!recreateFromRoom || !recreateEventId) ? 0.4 : 1 }}>
-                      {recreating ? 'CREATING & NOTIFYING…' : 'RECREATE & NOTIFY MEMBERS'}
+                      {recreating ? 'SUBMITTING…' : 'SUBMIT RECREATE REQUEST'}
                     </button>
                   </div>
                 )}
@@ -475,8 +458,8 @@ function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode
           className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition-all"
           style={{ background: showRequest ? 'rgba(180,149,48,0.1)' : 'rgba(180,149,48,0.04)', border: '1px solid rgba(180,149,48,0.2)' }}>
           <div>
-            <div className="font-cinzel text-xs text-left" style={{ color: 'var(--gold)', fontSize: 9, letterSpacing: '0.1em' }}>REQUEST A PRIVATE ROOM</div>
-            <div className="font-cormorant italic text-xs text-left mt-0.5" style={{ color: 'var(--mid)' }}>Ask EquiPrix to create a room for your group</div>
+            <div className="font-cinzel text-xs text-left" style={{ color: 'var(--gold)', fontSize: 9, letterSpacing: '0.1em' }}>REQUEST A NEW PRIVATE ROOM</div>
+            <div className="font-cormorant italic text-xs text-left mt-0.5" style={{ color: 'var(--mid)' }}>Ask EquiPrix to create a new room for your group</div>
           </div>
           <span className="font-cinzel text-xs" style={{ color: 'var(--gold)', fontSize: 12 }}>{showRequest ? '▲' : '+'}</span>
         </button>
