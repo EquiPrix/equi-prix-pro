@@ -3,9 +3,20 @@ import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabaseClient';
 import { sbFetch, EVENTS_2026 } from '@/lib/equiprix-data';
+import { MLSJ_EVENTS_2026_27 } from '@/lib/mlsj-data';
 import { useAuth } from '@/lib/AuthContext';
 import EquiPrixLogo from '@/components/equiprix/EquiPrixLogo';
 import { Send, Edit2, Check, X, Trash2, Users, Copy } from 'lucide-react';
+
+// Return the correct event list and find an event by id,
+// scoped to the room's league.
+function getEventList(league) {
+  return league === 'mlsj' ? MLSJ_EVENTS_2026_27 : EVENTS_2026;
+}
+
+function findEvent(league, eventId) {
+  return getEventList(league).find(e => e.id === eventId);
+}
 
 export default function RoomPage() {
   const { code } = useParams();
@@ -13,47 +24,43 @@ export default function RoomPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const [room, setRoom] = useState(null);
+  const [room, setRoom]       = useState(null);
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
-  const [joined, setJoined] = useState(false);
+  const [joined, setJoined]   = useState(false);
   const [isMember, setIsMember] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError]     = useState('');
 
-  // Manager state
-  const [isManager, setIsManager] = useState(false);
-  const [editingName, setEditingName] = useState(false);
+  const [isManager, setIsManager]       = useState(false);
+  const [editingName, setEditingName]   = useState(false);
   const [editingPrize, setEditingPrize] = useState(false);
-  const [nameVal, setNameVal] = useState('');
+  const [nameVal, setNameVal]   = useState('');
   const [prizeVal, setPrizeVal] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
 
-  // Notification state
-  const [notifType, setNotifType] = useState('team_results');
+  const [notifType, setNotifType]           = useState('team_results');
   const [eventStartTime, setEventStartTime] = useState('');
-  const [customMsg, setCustomMsg] = useState('');
-  const [sending, setSending] = useState(false);
-  const [notifResult, setNotifResult] = useState(null);
-  const [copied, setCopied] = useState('');
-  const [showReopen, setShowReopen] = useState(false);
-  const [reopenEventId, setReopenEventId] = useState('');
-  const [reopening, setReopening] = useState(false);
-  const [reopenResult, setReopenResult] = useState(null);
-  const [inviteSearch, setInviteSearch] = useState('');
-  const [inviteList, setInviteList] = useState([]); // confirmed recipients
-  const [searchResults, setSearchResults] = useState([]);
-  const [allUsers, setAllUsers] = useState([]);
-  const [inviting, setInviting] = useState(false);
-  const [inviteResult, setInviteResult] = useState(null);
+  const [customMsg, setCustomMsg]           = useState('');
+  const [sending, setSending]               = useState(false);
+  const [notifResult, setNotifResult]       = useState(null);
+  const [copied, setCopied]                 = useState('');
+  const [showReopen, setShowReopen]         = useState(false);
+  const [reopenEventId, setReopenEventId]   = useState('');
+  const [reopening, setReopening]           = useState(false);
+  const [reopenResult, setReopenResult]     = useState(null);
+  const [inviteSearch, setInviteSearch]     = useState('');
+  const [inviteList, setInviteList]         = useState([]);
+  const [searchResults, setSearchResults]   = useState([]);
+  const [allUsers, setAllUsers]             = useState([]);
+  const [inviting, setInviting]             = useState(false);
+  const [inviteResult, setInviteResult]     = useState(null);
 
   useEffect(() => { loadRoom(); }, [code]);
   useEffect(() => { if (isManager) loadUsers(); }, [isManager]);
-
   useEffect(() => {
     if (room && user) {
-      const mgr = user.email === room.manager_email;
-      setIsManager(mgr);
+      setIsManager(user.email === room.manager_email);
       setNameVal(room.name);
       setPrizeVal(room.prize_description || '');
       checkAndAutoJoin();
@@ -87,10 +94,10 @@ export default function RoomPage() {
       await sbFetch('room_members', {
         method: 'POST',
         body: JSON.stringify({
-          room_id: room.id,
+          room_id:    room.id,
           user_email: user.email,
-          username: user.user_metadata?.username || user.email.split('@')[0],
-        })
+          username:   user.user_metadata?.username || user.email.split('@')[0],
+        }),
       });
       setJoined(true); setIsMember(true);
       loadRoom();
@@ -105,7 +112,7 @@ export default function RoomPage() {
     try {
       await sbFetch('rooms?id=eq.' + room.id, {
         method: 'PATCH',
-        body: JSON.stringify({ [field]: value })
+        body: JSON.stringify({ [field]: value }),
       });
       setRoom(prev => ({ ...prev, [field]: value }));
       if (field === 'name') setEditingName(false);
@@ -121,27 +128,27 @@ export default function RoomPage() {
   };
 
   const sendNotification = async () => {
-    const memberEmails = members.map(m => m.user_email).filter(e => e !== room.manager_email || true);
+    const memberEmails = members.map(m => m.user_email);
     if (!memberEmails.length) return;
     setSending(true);
     setNotifResult(null);
-
-    const event = EVENTS_2026.find(e => e.id === room.event_id);
+    // CHANGED: find event from the correct league's event list
+    const league = room?.league || 'gcl';
+    const event  = findEvent(league, room.event_id);
     const lockTimeStr = eventStartTime
       ? `${eventStartTime} (picks lock 5 minutes before start)`
       : null;
-
     try {
       const res = await fetch('/api/send-notification', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: notifType,
-          recipients: memberEmails,
-          eventName: event?.city || room.name,
-          eventFlag: event?.flag || '🏇',
-          eventDates: event?.dates || '',
-          lockTime: lockTimeStr,
+          type:          notifType,
+          recipients:    memberEmails,
+          eventName:     event?.city || room.name,
+          eventFlag:     event?.flag || '🏇',
+          eventDates:    event?.dates || '',
+          lockTime:      lockTimeStr,
           customMessage: customMsg || null,
           customSubject: notifType === 'custom' ? customMsg.split('\n')[0] : null,
         }),
@@ -168,7 +175,6 @@ export default function RoomPage() {
       !inviteList.includes(u.email) &&
       !members.find(m => m.user_email === u.email)
     ).slice(0, 5);
-    // Also show raw email if it looks valid
     if (val.includes('@') && !results.find(r => r.email === val)) {
       results.push({ email: val, username: val, isManual: true });
     }
@@ -186,12 +192,13 @@ export default function RoomPage() {
   };
 
   const sendInvite = async () => {
-    const emails = inviteList.length ? inviteList : 
-      inviteSearch.includes('@') ? [inviteSearch.trim()] : [];
+    const emails = inviteList.length ? inviteList
+      : inviteSearch.includes('@') ? [inviteSearch.trim()] : [];
     if (!emails.length) return;
     setInviting(true);
     setInviteResult(null);
-    const event = EVENTS_2026.find(e => e.id === room.event_id);
+    const league = room?.league || 'gcl';
+    const event  = findEvent(league, room.event_id);
     const results = { sent: 0, failed: 0 };
     for (const email of emails) {
       try {
@@ -200,11 +207,11 @@ export default function RoomPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             email,
-            roomName: room.name,
-            prize: room.prize_description || null,
-            eventName: event?.city || null,
-            eventFlag: event?.flag || null,
-            joinUrl: `${window.location.origin}/room/${room.join_code}`,
+            roomName:    room.name,
+            prize:       room.prize_description || null,
+            eventName:   event?.city || null,
+            eventFlag:   event?.flag || null,
+            joinUrl:     `${window.location.origin}/room/${room.join_code}`,
             managerName: user?.user_metadata?.username || user?.email?.split('@')[0] || null,
           }),
         });
@@ -227,19 +234,19 @@ export default function RoomPage() {
     setReopening(true);
     setReopenResult(null);
     try {
-      const newEvent = EVENTS_2026.find(e => e.id === reopenEventId);
-
-      // Submit as a room request — requires admin approval
+      const league   = room?.league || 'gcl';
+      const newEvent = findEvent(league, reopenEventId);
       const res = await fetch('/api/send-room-request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           requestorEmail: room.manager_email,
-          requestorName: user?.user_metadata?.username || user?.email?.split('@')[0] || '',
-          eventName: newEvent ? `${newEvent.flag} ${newEvent.city} · ${newEvent.dates}` : reopenEventId,
-          maxMembers: room.max_size,
-          roomName: room.name,
-          prizeIdea: room.prize_description || null,
+          requestorName:  user?.user_metadata?.username || user?.email?.split('@')[0] || '',
+          eventName:      newEvent ? `${newEvent.flag} ${newEvent.city} · ${newEvent.dates}` : reopenEventId,
+          maxMembers:     room.max_size,
+          roomName:       room.name,
+          prizeIdea:      room.prize_description || null,
+          league,
           notes: `Reopened from previous room "${room.name}" — ${members.length} existing members to be invited on approval.`,
         }),
       });
@@ -257,16 +264,17 @@ export default function RoomPage() {
   };
 
   const copyLink = (type) => {
-    const url = type === 'member'
-      ? `${window.location.origin}/room/${code}`
-      : `${window.location.origin}/room/${code}?mgr=1`;
+    const url = `${window.location.origin}/room/${code}`;
     navigator.clipboard.writeText(url);
     setCopied(type);
     setTimeout(() => setCopied(''), 2000);
   };
 
-  const event = room ? EVENTS_2026.find(e => e.id === room.event_id) : null;
-  const spotsLeft = room ? room.max_size - members.length : 0;
+  // CHANGED: use league-scoped event list throughout
+  const roomLeague = room?.league || 'gcl';
+  const event      = room ? findEvent(roomLeague, room.event_id) : null;
+  const eventList  = getEventList(roomLeague);
+  const spotsLeft  = room ? room.max_size - members.length : 0;
 
   const inputStyle = {
     background: 'rgba(255,255,255,0.04)',
@@ -286,7 +294,8 @@ export default function RoomPage() {
 
   if (error && !room) return (
     <div className="fixed inset-0 flex items-center justify-center px-6" style={{ background: 'var(--ink)' }}>
-      <div className="text-center"><EquiPrixLogo width={160} />
+      <div className="text-center">
+        <EquiPrixLogo width={160} />
         <p className="font-cormorant italic text-lg mt-6" style={{ color: 'var(--mid)' }}>{error}</p>
       </div>
     </div>
@@ -308,20 +317,18 @@ export default function RoomPage() {
         </div>
 
         {/* Room card */}
-        <div className="rounded-xl overflow-hidden mb-4" style={{ border: '1px solid rgba(180,149,48,0.25)', background: '#14130e' }}>
+        <div className="rounded-xl overflow-hidden mb-4"
+          style={{ border: '1px solid rgba(180,149,48,0.25)', background: '#14130e' }}>
           <div className="px-6 py-5" style={{ borderBottom: '1px solid rgba(180,149,48,0.15)' }}>
 
-            {/* Room name — editable for manager */}
             {isManager && editingName ? (
               <div className="flex items-center gap-2 mb-1">
                 <input value={nameVal} onChange={e => setNameVal(e.target.value)}
                   onBlur={() => saveField('name', nameVal)}
                   onKeyDown={e => { if (e.key === 'Enter') saveField('name', nameVal); if (e.key === 'Escape') { setEditingName(false); setNameVal(room.name); }}}
                   style={{ ...inputStyle, flex: 1, fontSize: 16 }} autoFocus />
-                <button onClick={() => saveField('name', nameVal)} disabled={savingEdit}
-                  style={{ color: '#4caf7d' }}><Check size={16} /></button>
-                <button onClick={() => { setEditingName(false); setNameVal(room.name); }}
-                  style={{ color: 'var(--mid)' }}><X size={16} /></button>
+                <button onClick={() => saveField('name', nameVal)} disabled={savingEdit} style={{ color: '#4caf7d' }}><Check size={16} /></button>
+                <button onClick={() => { setEditingName(false); setNameVal(room.name); }} style={{ color: 'var(--mid)' }}><X size={16} /></button>
               </div>
             ) : (
               <div className="flex items-center gap-2 mb-1">
@@ -334,11 +341,20 @@ export default function RoomPage() {
               </div>
             )}
 
-            {event && (
-              <div className="font-cinzel text-xs mt-1" style={{ color: 'var(--mid)', fontSize: 10, letterSpacing: '0.1em' }}>
-                {event.flag} {event.city} · {event.dates}
-              </div>
-            )}
+            {/* League badge + event */}
+            <div className="flex items-center gap-2 mt-1">
+              {roomLeague === 'mlsj' && (
+                <span className="font-cinzel text-xs px-2 py-0.5 rounded"
+                  style={{ background: 'rgba(180,149,48,0.12)', color: 'var(--gold)', fontSize: 8, letterSpacing: '0.08em' }}>
+                  MLSJ
+                </span>
+              )}
+              {event && (
+                <div className="font-cinzel text-xs" style={{ color: 'var(--mid)', fontSize: 10, letterSpacing: '0.1em' }}>
+                  {event.flag} {event.city} · {event.dates}
+                </div>
+              )}
+            </div>
 
             {isManager && (
               <div className="mt-1">
@@ -351,7 +367,7 @@ export default function RoomPage() {
           </div>
 
           <div className="px-6 py-5">
-            {/* Prize — editable for manager */}
+            {/* Prize */}
             <div className="rounded-lg px-4 py-3 mb-4"
               style={{ background: 'rgba(180,149,48,0.08)', border: '1px solid rgba(180,149,48,0.2)' }}>
               <div className="font-cinzel text-xs mb-1.5 flex items-center justify-between"
@@ -368,12 +384,9 @@ export default function RoomPage() {
                   <input value={prizeVal} onChange={e => setPrizeVal(e.target.value)}
                     onBlur={() => saveField('prize_description', prizeVal)}
                     onKeyDown={e => { if (e.key === 'Enter') saveField('prize_description', prizeVal); if (e.key === 'Escape') { setEditingPrize(false); setPrizeVal(room.prize_description || ''); }}}
-                    style={{ ...inputStyle, flex: 1 }} autoFocus
-                    placeholder="e.g. €500 gift voucher" />
-                  <button onClick={() => saveField('prize_description', prizeVal)} disabled={savingEdit}
-                    style={{ color: '#4caf7d' }}><Check size={14} /></button>
-                  <button onClick={() => { setEditingPrize(false); setPrizeVal(room.prize_description || ''); }}
-                    style={{ color: 'var(--mid)' }}><X size={14} /></button>
+                    style={{ ...inputStyle, flex: 1 }} autoFocus placeholder="e.g. €500 gift voucher" />
+                  <button onClick={() => saveField('prize_description', prizeVal)} disabled={savingEdit} style={{ color: '#4caf7d' }}><Check size={14} /></button>
+                  <button onClick={() => { setEditingPrize(false); setPrizeVal(room.prize_description || ''); }} style={{ color: 'var(--mid)' }}><X size={14} /></button>
                 </div>
               ) : (
                 <div className="font-cormorant text-base italic" style={{ color: 'var(--gold-lt)' }}>
@@ -399,7 +412,6 @@ export default function RoomPage() {
               </div>
             </div>
 
-            {/* Join / status for non-managers */}
             {!isManager && (
               !user ? (
                 <button onClick={() => navigate('/?redirect=/room/' + code)}
@@ -439,9 +451,10 @@ export default function RoomPage() {
           </div>
         </div>
 
-        {/* Manager share links */}
+        {/* Share links */}
         {isManager && (
-          <div className="rounded-xl mb-4 overflow-hidden" style={{ border: '1px solid rgba(180,149,48,0.15)', background: '#14130e' }}>
+          <div className="rounded-xl mb-4 overflow-hidden"
+            style={{ border: '1px solid rgba(180,149,48,0.15)', background: '#14130e' }}>
             <div className="px-5 py-3" style={{ borderBottom: '1px solid rgba(180,149,48,0.1)' }}>
               <div className="font-cinzel text-xs tracking-widest" style={{ color: 'var(--gold)', fontSize: 9 }}>SHARE LINKS</div>
             </div>
@@ -452,19 +465,21 @@ export default function RoomPage() {
                 <Copy size={12} />
                 {copied === 'member' ? '✓ COPIED!' : 'COPY MEMBER INVITE LINK'}
               </button>
-
             </div>
           </div>
         )}
 
         {/* Reopen for next event */}
         {isManager && (
-          <div className="rounded-xl overflow-hidden mb-4" style={{ border: '1px solid rgba(180,149,48,0.15)', background: '#14130e' }}>
+          <div className="rounded-xl overflow-hidden mb-4"
+            style={{ border: '1px solid rgba(180,149,48,0.15)', background: '#14130e' }}>
             <button onClick={() => { setShowReopen(p => !p); setReopenResult(null); }}
               className="w-full flex items-center justify-between px-5 py-3 transition-all"
               style={{ background: showReopen ? 'rgba(180,149,48,0.06)' : 'transparent' }}>
               <div>
-                <div className="font-cinzel text-xs tracking-widest text-left" style={{ color: 'var(--gold)', fontSize: 9 }}>REOPEN FOR ANOTHER EVENT</div>
+                <div className="font-cinzel text-xs tracking-widest text-left" style={{ color: 'var(--gold)', fontSize: 9 }}>
+                  REOPEN FOR ANOTHER EVENT
+                </div>
                 <div className="font-cormorant italic text-xs text-left mt-0.5" style={{ color: 'var(--mid)' }}>
                   Create a new room with the same members and notify them
                 </div>
@@ -477,9 +492,7 @@ export default function RoomPage() {
                 {reopenResult?.success ? (
                   <div className="py-4 text-center">
                     <div className="text-2xl mb-2">🏇</div>
-                    <p className="font-cormorant text-base font-semibold mb-1" style={{ color: '#4caf7d' }}>
-                      Request submitted!
-                    </p>
+                    <p className="font-cormorant text-base font-semibold mb-1" style={{ color: '#4caf7d' }}>Request submitted!</p>
                     <p className="font-cormorant italic text-sm mb-1" style={{ color: 'var(--mid)' }}>
                       EquiPrix will recreate this room and invite your {reopenResult.count} members once approved.
                     </p>
@@ -491,18 +504,22 @@ export default function RoomPage() {
                   </div>
                 ) : (
                   <div className="pt-3">
-                    <label className="font-cinzel text-xs block mb-2" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>
-                      SELECT EVENT
+                    <label className="font-cinzel text-xs block mb-2"
+                      style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>
+                      SELECT {roomLeague.toUpperCase()} EVENT
                     </label>
+                    {/* CHANGED: dropdown scoped to the room's league */}
                     <select value={reopenEventId} onChange={e => setReopenEventId(e.target.value)}
                       style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(180,149,48,0.2)', color: reopenEventId ? 'var(--cream)' : 'var(--mid)', borderRadius: 4, padding: '8px 12px', fontSize: 13, outline: 'none', marginBottom: 12 }}>
                       <option value="">— Select next event —</option>
-                      {EVENTS_2026.filter(e => e.id !== room.event_id).map(ev => (
-                        <option key={ev.id} value={ev.id}>{ev.flag} {ev.city} · {ev.dates}</option>
-                      ))}
+                      {eventList
+                        .filter(e => e.id !== room.event_id)
+                        .map(ev => (
+                          <option key={ev.id} value={ev.id}>{ev.flag} {ev.city} · {ev.dates}</option>
+                        ))}
                     </select>
                     <p className="font-cormorant italic text-xs mb-3" style={{ color: 'var(--mid)' }}>
-                      This will create a new room for {EVENTS_2026.find(e => e.id === reopenEventId)?.city || 'the selected event'} with the same name, prize, and {members.length} current members — all will receive an invite email.
+                      This will create a new {roomLeague.toUpperCase()} room for {findEvent(roomLeague, reopenEventId)?.city || 'the selected event'} with the same name, prize, and {members.length} current members.
                     </p>
                     {reopenResult?.success === false && (
                       <p className="font-cormorant italic text-sm mb-2" style={{ color: '#e07070' }}>{reopenResult.msg}</p>
@@ -510,7 +527,7 @@ export default function RoomPage() {
                     <button onClick={reopenForEvent} disabled={reopening || !reopenEventId}
                       className="w-full py-2.5 rounded font-cinzel text-xs tracking-widest flex items-center justify-center gap-2 transition-all"
                       style={{ background: reopening ? 'rgba(180,149,48,0.1)' : 'var(--gold)', color: reopening ? 'var(--mid)' : 'var(--ink)', letterSpacing: '0.1em', opacity: !reopenEventId ? 0.4 : 1 }}>
-                      {reopening ? 'SUBMITTING…' : `SUBMIT RECREATE REQUEST`}
+                      {reopening ? 'SUBMITTING…' : 'SUBMIT RECREATE REQUEST'}
                     </button>
                   </div>
                 )}
@@ -521,8 +538,10 @@ export default function RoomPage() {
 
         {/* Member list */}
         {(isMember || joined || isManager) && members.length > 0 && (
-          <div className="rounded-xl overflow-hidden mb-4" style={{ border: '1px solid rgba(180,149,48,0.15)', background: '#14130e' }}>
-            <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(180,149,48,0.1)' }}>
+          <div className="rounded-xl overflow-hidden mb-4"
+            style={{ border: '1px solid rgba(180,149,48,0.15)', background: '#14130e' }}>
+            <div className="px-5 py-3 flex items-center justify-between"
+              style={{ borderBottom: '1px solid rgba(180,149,48,0.1)' }}>
               <div className="font-cinzel text-xs tracking-widest" style={{ color: 'var(--gold)', fontSize: 9 }}>
                 MEMBERS · {members.length}/{room.max_size}
               </div>
@@ -555,9 +574,10 @@ export default function RoomPage() {
           </div>
         )}
 
-        {/* Manager invite panel */}
+        {/* Invite panel */}
         {isManager && (
-          <div className="rounded-xl overflow-hidden mb-4" style={{ border: '1px solid rgba(180,149,48,0.2)', background: '#14130e' }}>
+          <div className="rounded-xl overflow-hidden mb-4"
+            style={{ border: '1px solid rgba(180,149,48,0.2)', background: '#14130e' }}>
             <div className="px-5 py-3" style={{ borderBottom: '1px solid rgba(180,149,48,0.1)', background: 'rgba(180,149,48,0.04)' }}>
               <div className="font-cinzel text-xs tracking-widest" style={{ color: 'var(--gold)', fontSize: 9 }}>INVITE A MEMBER</div>
               <div className="font-cormorant italic text-xs mt-0.5" style={{ color: 'var(--mid)' }}>
@@ -565,25 +585,10 @@ export default function RoomPage() {
               </div>
             </div>
             <div className="px-5 py-4">
-              {/* Search field */}
               <div className="relative mb-3">
-                <input
-                  type="text"
-                  value={inviteSearch}
-                  onChange={e => handleInviteSearch(e.target.value)}
+                <input type="text" value={inviteSearch} onChange={e => handleInviteSearch(e.target.value)}
                   placeholder="Search by name or email…"
-                  style={{
-                    width: '100%',
-                    background: 'rgba(255,255,255,0.04)',
-                    border: '1px solid rgba(180,149,48,0.2)',
-                    color: 'var(--cream)',
-                    borderRadius: 4,
-                    padding: '8px 12px',
-                    fontSize: '16px',
-                    outline: 'none',
-                  }}
-                />
-                {/* Dropdown */}
+                  style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(180,149,48,0.2)', color: 'var(--cream)', borderRadius: 4, padding: '8px 12px', fontSize: '16px', outline: 'none' }} />
                 {searchResults.length > 0 && (
                   <div className="absolute left-0 right-0 top-full mt-1 rounded-lg overflow-hidden z-20"
                     style={{ background: '#1c1a12', border: '1px solid rgba(180,149,48,0.25)', boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
@@ -594,7 +599,7 @@ export default function RoomPage() {
                         onMouseEnter={e => e.currentTarget.style.background = 'rgba(180,149,48,0.08)'}
                         onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                         <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
-                          style={{ background: 'rgba(180,149,48,0.12)', color: 'var(--gold)', fontSize: 11, fontFamily: 'var(--font-cinzel)' }}>
+                          style={{ background: 'rgba(180,149,48,0.12)', color: 'var(--gold)', fontSize: 11 }}>
                           {(u.username || u.email)[0].toUpperCase()}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -611,7 +616,6 @@ export default function RoomPage() {
                 )}
               </div>
 
-              {/* Selected invite list */}
               {inviteList.length > 0 && (
                 <div className="mb-3 rounded-lg overflow-hidden" style={{ border: '1px solid rgba(180,149,48,0.15)' }}>
                   {inviteList.map((email, i) => {
@@ -632,16 +636,10 @@ export default function RoomPage() {
                 </div>
               )}
 
-              <button
-                onClick={sendInvite}
+              <button onClick={sendInvite}
                 disabled={inviting || (!inviteList.length && !inviteSearch.includes('@'))}
                 className="w-full py-2.5 rounded font-cinzel text-xs tracking-widest flex items-center justify-center gap-1.5 transition-all"
-                style={{
-                  background: inviting ? 'rgba(180,149,48,0.1)' : 'var(--gold)',
-                  color: inviting ? 'var(--mid)' : 'var(--ink)',
-                  letterSpacing: '0.08em',
-                  opacity: (!inviteList.length && !inviteSearch.includes('@')) ? 0.4 : 1,
-                }}>
+                style={{ background: inviting ? 'rgba(180,149,48,0.1)' : 'var(--gold)', color: inviting ? 'var(--mid)' : 'var(--ink)', letterSpacing: '0.08em', opacity: (!inviteList.length && !inviteSearch.includes('@')) ? 0.4 : 1 }}>
                 <Send size={12} />
                 {inviting ? 'SENDING…' : inviteList.length > 1 ? `SEND ${inviteList.length} INVITES` : 'SEND INVITE'}
               </button>
@@ -656,9 +654,10 @@ export default function RoomPage() {
           </div>
         )}
 
-        {/* Manager notification panel */}
+        {/* Notify panel */}
         {isManager && (
-          <div className="rounded-xl overflow-hidden mb-6" style={{ border: '1px solid rgba(180,149,48,0.2)', background: '#14130e' }}>
+          <div className="rounded-xl overflow-hidden mb-6"
+            style={{ border: '1px solid rgba(180,149,48,0.2)', background: '#14130e' }}>
             <div className="px-5 py-3" style={{ borderBottom: '1px solid rgba(180,149,48,0.1)', background: 'rgba(180,149,48,0.04)' }}>
               <div className="font-cinzel text-xs tracking-widest" style={{ color: 'var(--gold)', fontSize: 9 }}>NOTIFY MEMBERS</div>
               <div className="font-cormorant italic text-xs mt-0.5" style={{ color: 'var(--mid)' }}>
@@ -666,33 +665,29 @@ export default function RoomPage() {
               </div>
             </div>
             <div className="px-5 py-4">
-
-              {/* Notification type */}
               <div className="grid grid-cols-2 gap-2 mb-4">
                 {[
-                  { id: 'draft_open', label: 'Draft Open', icon: '🟢' },
-                  { id: 'team_results', label: 'Team Results + GP', icon: '🏆' },
-                  { id: 'final_results', label: 'Final Results', icon: '🎯' },
-                  { id: 'custom', label: 'Custom', icon: '✉️' },
+                  { id: 'draft_open',    label: 'Draft Open',        icon: '🟢' },
+                  { id: 'team_results',  label: 'Team Results + GP', icon: '🏆' },
+                  { id: 'final_results', label: 'Final Results',     icon: '🎯' },
+                  { id: 'custom',        label: 'Custom',            icon: '✉️' },
                 ].map(t => (
                   <button key={t.id} onClick={() => setNotifType(t.id)}
                     className="text-left px-3 py-2 rounded-lg transition-all"
-                    style={{
-                      background: notifType === t.id ? 'rgba(180,149,48,0.12)' : 'rgba(255,255,255,0.02)',
-                      border: `1px solid ${notifType === t.id ? 'rgba(180,149,48,0.4)' : 'rgba(180,149,48,0.1)'}`,
-                    }}>
+                    style={{ background: notifType === t.id ? 'rgba(180,149,48,0.12)' : 'rgba(255,255,255,0.02)', border: `1px solid ${notifType === t.id ? 'rgba(180,149,48,0.4)' : 'rgba(180,149,48,0.1)'}` }}>
                     <span className="text-sm">{t.icon}</span>
-                    <div className="font-cinzel text-xs mt-0.5" style={{ color: notifType === t.id ? 'var(--gold)' : 'var(--mid)', fontSize: 8, letterSpacing: '0.08em' }}>
+                    <div className="font-cinzel text-xs mt-0.5"
+                      style={{ color: notifType === t.id ? 'var(--gold)' : 'var(--mid)', fontSize: 8, letterSpacing: '0.08em' }}>
                       {t.label}
                     </div>
                   </button>
                 ))}
               </div>
 
-              {/* Event start time */}
               {(notifType === 'draft_open' || notifType === 'team_results') && (
                 <div className="mb-3">
-                  <label className="font-cinzel text-xs block mb-1" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>
+                  <label className="font-cinzel text-xs block mb-1"
+                    style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>
                     EVENT START TIME (CET)
                   </label>
                   <input value={eventStartTime} onChange={e => setEventStartTime(e.target.value)}
@@ -706,9 +701,9 @@ export default function RoomPage() {
                 </div>
               )}
 
-              {/* Custom message */}
               <div className="mb-4">
-                <label className="font-cinzel text-xs block mb-1" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>
+                <label className="font-cinzel text-xs block mb-1"
+                  style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>
                   {notifType === 'custom' ? 'MESSAGE' : 'CUSTOM NOTE (optional)'}
                 </label>
                 <textarea value={customMsg} onChange={e => setCustomMsg(e.target.value)}
@@ -725,11 +720,10 @@ export default function RoomPage() {
               </button>
 
               {notifResult && (
-                <div className="mt-3 px-3 py-2 rounded" style={{
-                  background: notifResult.error ? 'rgba(224,112,112,0.08)' : 'rgba(76,175,125,0.08)',
-                  border: `1px solid ${notifResult.error ? 'rgba(224,112,112,0.3)' : 'rgba(76,175,125,0.3)'}`,
-                }}>
-                  <p className="font-cormorant text-sm" style={{ color: notifResult.error ? '#e07070' : '#4caf7d' }}>
+                <div className="mt-3 px-3 py-2 rounded"
+                  style={{ background: notifResult.error ? 'rgba(224,112,112,0.08)' : 'rgba(76,175,125,0.08)', border: `1px solid ${notifResult.error ? 'rgba(224,112,112,0.3)' : 'rgba(76,175,125,0.3)'}` }}>
+                  <p className="font-cormorant text-sm"
+                    style={{ color: notifResult.error ? '#e07070' : '#4caf7d' }}>
                     {notifResult.error ? notifResult.error : `✓ ${notifResult.sent} emails sent`}
                   </p>
                 </div>

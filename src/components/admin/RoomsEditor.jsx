@@ -1,19 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { EVENTS_2026, sbFetch } from '@/lib/equiprix-data';
+import { MLSJ_EVENTS_2026_27 } from '@/lib/mlsj-data';
 import { Copy, Check, Plus, Trash2, CheckCircle, XCircle, Clock } from 'lucide-react';
 
-// Numeric only - no letter/number ambiguity (0, 1, I, O, l all look different in digits)
 function generateCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-export default function RoomsEditor() {
-  const [rooms, setRooms] = useState([]);
-  const [requests, setRequests] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [copied, setCopied] = useState('');
+// ── Props ─────────────────────────────────────────────────────────────────────
+// league: 'gcl' | 'mlsj' — passed from Admin.jsx to scope the event dropdown
+// and tag newly created rooms with the correct league.
+export default function RoomsEditor({ league = 'gcl' }) {
+  const [rooms, setRooms]         = useState([]);
+  const [requests, setRequests]   = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [creating, setCreating]   = useState(false);
+  const [saved, setSaved]         = useState(false);
+  const [copied, setCopied]       = useState('');
   const [approvingId, setApprovingId] = useState(null);
 
   const [form, setForm] = useState({
@@ -27,12 +30,24 @@ export default function RoomsEditor() {
     is_sponsored: false,
   });
 
-  useEffect(() => { loadRooms(); loadRequests(); }, []);
+  // Event list scoped to the active league
+  const EVENT_LIST = league === 'mlsj' ? MLSJ_EVENTS_2026_27 : EVENTS_2026;
+
+  // Reset form event when league changes (stale event_id from other league)
+  useEffect(() => {
+    setForm(p => ({ ...p, event_id: '' }));
+  }, [league]);
+
+  useEffect(() => {
+    loadRooms();
+    loadRequests();
+  }, [league]);
 
   const loadRooms = async () => {
     setLoading(true);
     try {
-      const rows = await sbFetch('rooms?order=created_at.desc');
+      // Filter rooms by league so each league view only shows its own rooms
+      const rows = await sbFetch('rooms?league=eq.' + league + '&order=created_at.desc');
       setRooms(rows || []);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
@@ -41,7 +56,12 @@ export default function RoomsEditor() {
   const loadRequests = async () => {
     try {
       const rows = await sbFetch('room_requests?status=eq.pending&order=created_at.desc');
-      setRequests(rows || []);
+      // Filter requests by league if the request has a league field;
+      // fall back to showing all pending requests for GCL (legacy requests have no league).
+      const filtered = (rows || []).filter(r =>
+        league === 'gcl' ? (!r.league || r.league === 'gcl') : r.league === league
+      );
+      setRequests(filtered);
     } catch (e) { console.error(e); }
   };
 
@@ -54,16 +74,17 @@ export default function RoomsEditor() {
       await sbFetch('rooms', {
         method: 'POST',
         body: JSON.stringify({
-          name: data.name || data.room_name,
-          event_id: data.event_id || '',
-          manager_email: data.manager_email || '',
-          max_size: data.max_size || data.max_members || 20,
+          name:              data.name || data.room_name,
+          event_id:          data.event_id || '',
+          manager_email:     data.manager_email || '',
+          max_size:          data.max_size || data.max_members || 20,
           prize_description: data.prize_description || data.prize_idea || '',
-          sponsor_name: data.sponsor_name || '',
-          sponsor_logo_url: data.sponsor_logo_url || '',
-          is_sponsored: data.is_sponsored || false,
+          sponsor_name:      data.sponsor_name || '',
+          sponsor_logo_url:  data.sponsor_logo_url || '',
+          is_sponsored:      data.is_sponsored || false,
+          league,             // CHANGED: tag every new room with its league
           join_code,
-        })
+        }),
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
@@ -76,7 +97,8 @@ export default function RoomsEditor() {
   const approveRequest = async (req) => {
     setApprovingId(req.id);
     try {
-      const matchedEvent = EVENTS_2026.find(ev =>
+      // Match event against the correct league's event list
+      const matchedEvent = EVENT_LIST.find(ev =>
         req.event_name?.toLowerCase().includes(ev.city?.toLowerCase()) ||
         req.event_name?.includes(ev.flag)
       );
@@ -85,40 +107,33 @@ export default function RoomsEditor() {
       await sbFetch('rooms', {
         method: 'POST',
         body: JSON.stringify({
-          name: req.room_name || `${req.requestor_name}'s Room`,
-          event_id: matchedEvent?.id || '',
-          manager_email: req.requestor_email,
-          max_size: req.max_members || 20,
+          name:              req.room_name || `${req.requestor_name}'s Room`,
+          event_id:          matchedEvent?.id || '',
+          manager_email:     req.requestor_email,
+          max_size:          req.max_members || 20,
           prize_description: req.prize_idea || '',
-          sponsor_name: '',
-          sponsor_logo_url: '',
-          is_sponsored: false,
+          sponsor_name: '', sponsor_logo_url: '', is_sponsored: false,
+          league,
           join_code,
-        })
+        }),
       });
 
       await sbFetch('room_requests?id=eq.' + req.id, {
         method: 'PATCH',
-        body: JSON.stringify({ status: 'approved' })
+        body: JSON.stringify({ status: 'approved' }),
       });
 
-      // Combined "your room was approved, here's the link to share"
-      // email — goes to the requestor, who is also the room's manager
-      // (manager_email is set to req.requestor_email above). Same
-      // template as a peer invite, but isApprovalNotice swaps the
-      // copy/subject to read as a notice to the room owner rather than
-      // an invite to join someone else's room.
       await fetch('/api/send-room-invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: req.requestor_email,
-          roomName: req.room_name || `${req.requestor_name}'s Room`,
-          prize: req.prize_idea || null,
-          eventName: matchedEvent?.city || req.event_name,
-          eventFlag: matchedEvent?.flag || '🏇',
-          joinUrl: `${window.location.origin}/room/${join_code}`,
-          managerName: req.requestor_name || null,
+          email:            req.requestor_email,
+          roomName:         req.room_name || `${req.requestor_name}'s Room`,
+          prize:            req.prize_idea || null,
+          eventName:        matchedEvent?.city || req.event_name,
+          eventFlag:        matchedEvent?.flag || '🏇',
+          joinUrl:          `${window.location.origin}/room/${join_code}`,
+          managerName:      req.requestor_name || null,
           isApprovalNotice: true,
         }),
       });
@@ -134,22 +149,19 @@ export default function RoomsEditor() {
     const req = requests.find(r => r.id === id);
     await sbFetch('room_requests?id=eq.' + id, {
       method: 'PATCH',
-      body: JSON.stringify({ status: 'denied' })
+      body: JSON.stringify({ status: 'denied' }),
     });
     setRequests(prev => prev.filter(r => r.id !== id));
-
-    // Let the requestor know, with a contact link rather than just
-    // leaving them wondering whether their request vanished.
     if (req?.requestor_email) {
       try {
         await fetch('/api/send-room-denial', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            email: req.requestor_email,
+            email:         req.requestor_email,
             requestorName: req.requestor_name || null,
-            roomName: req.room_name || null,
-            eventName: req.event_name || null,
+            roomName:      req.room_name || null,
+            eventName:     req.event_name || null,
           }),
         });
       } catch (e) { console.warn('Denial email failed:', e.message); }
@@ -159,12 +171,6 @@ export default function RoomsEditor() {
   const deleteRoom = async (id) => {
     if (!confirm('Delete this room? All members will be removed.')) return;
     try {
-      // Delete members explicitly first — don't rely on an ON DELETE
-      // CASCADE foreign key existing between room_members.room_id and
-      // rooms.id, since that wasn't confirmed to be set up. sbFetch now
-      // throws on a failed DELETE instead of silently returning null, so
-      // any real failure here (RLS, bad id, etc.) surfaces below instead
-      // of looking like nothing happened.
       await sbFetch('room_members?room_id=eq.' + id, { method: 'DELETE' });
       await sbFetch('rooms?id=eq.' + id, { method: 'DELETE' });
       loadRooms();
@@ -202,13 +208,18 @@ export default function RoomsEditor() {
 
   return (
     <div>
-      <h2 className="font-cinzel text-sm tracking-widest mb-1" style={{ color: 'var(--gold)' }}>PRIVATE ROOMS</h2>
+      <h2 className="font-cinzel text-sm tracking-widest mb-1" style={{ color: 'var(--gold)' }}>
+        {league.toUpperCase()} PRIVATE ROOMS
+      </h2>
       <p className="font-cormorant text-base italic mb-6" style={{ color: 'var(--mid)' }}>
-        Create and manage invite-only rooms.
+        Create and manage invite-only rooms for {league === 'gcl' ? 'GCL' : 'MLSJ'} events.
       </p>
 
-      <div className="rounded-xl p-5 mb-6" style={{ border: '1px solid rgba(180,149,48,0.2)', background: 'rgba(180,149,48,0.03)' }}>
-        <div className="font-cinzel text-xs tracking-widest mb-4" style={{ color: 'var(--gold)', fontSize: 10 }}>CREATE NEW ROOM</div>
+      {/* Create form */}
+      <div className="rounded-xl p-5 mb-6"
+        style={{ border: '1px solid rgba(180,149,48,0.2)', background: 'rgba(180,149,48,0.03)' }}>
+        <div className="font-cinzel text-xs tracking-widest mb-4"
+          style={{ color: 'var(--gold)', fontSize: 10 }}>CREATE NEW ROOM</div>
 
         <div className="grid grid-cols-2 gap-3 mb-3">
           <div>
@@ -217,10 +228,13 @@ export default function RoomsEditor() {
               placeholder="e.g. CWD VIP League" style={inputStyle} />
           </div>
           <div>
-            <label style={labelStyle}>EVENT</label>
-            <select value={form.event_id} onChange={e => setForm(p => ({ ...p, event_id: e.target.value }))} style={inputStyle}>
+            <label style={labelStyle}>EVENT ({league.toUpperCase()})</label>
+            <select value={form.event_id} onChange={e => setForm(p => ({ ...p, event_id: e.target.value }))}
+              style={inputStyle}>
               <option value="">— Select Event —</option>
-              {EVENTS_2026.map(ev => <option key={ev.id} value={ev.id}>{ev.flag} {ev.city} · {ev.dates}</option>)}
+              {EVENT_LIST.map(ev => (
+                <option key={ev.id} value={ev.id}>{ev.flag} {ev.city} · {ev.dates}</option>
+              ))}
             </select>
           </div>
         </div>
@@ -228,19 +242,23 @@ export default function RoomsEditor() {
         <div className="grid grid-cols-2 gap-3 mb-3">
           <div>
             <label style={labelStyle}>MANAGER EMAIL</label>
-            <input type="email" value={form.manager_email} onChange={e => setForm(p => ({ ...p, manager_email: e.target.value }))}
-              placeholder="manager@example.com" style={{ ...inputStyle, fontSize: '16px' }} />
+            <input type="email" value={form.manager_email}
+              onChange={e => setForm(p => ({ ...p, manager_email: e.target.value }))}
+              placeholder="manager@example.com"
+              style={{ ...inputStyle, fontSize: '16px' }} />
           </div>
           <div>
             <label style={labelStyle}>MAX MEMBERS</label>
-            <input type="number" value={form.max_size} onChange={e => setForm(p => ({ ...p, max_size: parseInt(e.target.value) }))}
+            <input type="number" value={form.max_size}
+              onChange={e => setForm(p => ({ ...p, max_size: parseInt(e.target.value) }))}
               min={2} max={500} style={inputStyle} />
           </div>
         </div>
 
         <div className="mb-3">
           <label style={labelStyle}>PRIZE / DESCRIPTION</label>
-          <input value={form.prize_description} onChange={e => setForm(p => ({ ...p, prize_description: e.target.value }))}
+          <input value={form.prize_description}
+            onChange={e => setForm(p => ({ ...p, prize_description: e.target.value }))}
             placeholder="e.g. €500 CWD gift voucher" style={inputStyle} />
         </div>
 
@@ -251,7 +269,7 @@ export default function RoomsEditor() {
               background: form.is_sponsored ? 'rgba(180,149,48,0.15)' : 'rgba(255,255,255,0.04)',
               border: `1px solid ${form.is_sponsored ? 'rgba(180,149,48,0.4)' : 'rgba(180,149,48,0.2)'}`,
               color: form.is_sponsored ? 'var(--gold)' : 'var(--mid)',
-              fontSize: 9, letterSpacing: '0.1em'
+              fontSize: 9, letterSpacing: '0.1em',
             }}>
             {form.is_sponsored ? '★ SPONSORED' : 'MARK AS SPONSORED'}
           </button>
@@ -261,12 +279,14 @@ export default function RoomsEditor() {
           <div className="grid grid-cols-2 gap-3 mb-3">
             <div>
               <label style={labelStyle}>SPONSOR NAME</label>
-              <input value={form.sponsor_name} onChange={e => setForm(p => ({ ...p, sponsor_name: e.target.value }))}
+              <input value={form.sponsor_name}
+                onChange={e => setForm(p => ({ ...p, sponsor_name: e.target.value }))}
                 placeholder="e.g. CWD Sellerie" style={inputStyle} />
             </div>
             <div>
               <label style={labelStyle}>SPONSOR LOGO URL</label>
-              <input value={form.sponsor_logo_url} onChange={e => setForm(p => ({ ...p, sponsor_logo_url: e.target.value }))}
+              <input value={form.sponsor_logo_url}
+                onChange={e => setForm(p => ({ ...p, sponsor_logo_url: e.target.value }))}
                 placeholder="https://..." style={inputStyle} />
             </div>
           </div>
@@ -276,30 +296,30 @@ export default function RoomsEditor() {
           className="flex items-center gap-2 font-cinzel text-xs px-4 py-2.5 rounded mt-2 transition-all"
           style={{
             background: saved ? 'rgba(76,175,125,0.2)' : 'var(--gold)',
-            color: saved ? '#4caf7d' : 'var(--ink)',
-            border: saved ? '1px solid #4caf7d' : 'none',
+            color:      saved ? '#4caf7d' : 'var(--ink)',
+            border:     saved ? '1px solid #4caf7d' : 'none',
             letterSpacing: '0.1em',
-            opacity: !form.name ? 0.4 : 1
+            opacity: !form.name ? 0.4 : 1,
           }}>
           <Plus size={13} />
           {saved ? 'ROOM CREATED ✓' : creating ? 'CREATING…' : 'CREATE ROOM'}
         </button>
       </div>
 
+      {/* Pending requests */}
       {requests.length > 0 && (
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-3">
             <Clock size={13} style={{ color: '#e0a030' }} />
-            <div className="font-cinzel text-xs tracking-widest" style={{ color: '#e0a030', fontSize: 10 }}>
+            <div className="font-cinzel text-xs tracking-widest"
+              style={{ color: '#e0a030', fontSize: 10 }}>
               PENDING REQUESTS ({requests.length})
             </div>
           </div>
-
           <div className="space-y-3">
             {requests.map(req => (
               <div key={req.id} className="rounded-xl p-4"
                 style={{ border: '1px solid rgba(224,160,48,0.3)', background: 'rgba(224,160,48,0.04)' }}>
-
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div>
                     <div className="font-cormorant text-base font-semibold" style={{ color: 'var(--cream)' }}>
@@ -326,32 +346,16 @@ export default function RoomsEditor() {
                     </div>
                   </div>
                 </div>
-
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => approveRequest(req)}
-                    disabled={approvingId === req.id}
+                  <button onClick={() => approveRequest(req)} disabled={approvingId === req.id}
                     className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded font-cinzel text-xs transition-all"
-                    style={{
-                      background: approvingId === req.id ? 'rgba(76,175,125,0.1)' : 'rgba(76,175,125,0.15)',
-                      border: '1px solid rgba(76,175,125,0.4)',
-                      color: '#4caf7d',
-                      letterSpacing: '0.08em',
-                      fontSize: 9,
-                    }}>
+                    style={{ background: 'rgba(76,175,125,0.15)', border: '1px solid rgba(76,175,125,0.4)', color: '#4caf7d', letterSpacing: '0.08em', fontSize: 9 }}>
                     <CheckCircle size={12} />
                     {approvingId === req.id ? 'CREATING…' : 'APPROVE & CREATE'}
                   </button>
-                  <button
-                    onClick={() => denyRequest(req.id)}
+                  <button onClick={() => denyRequest(req.id)}
                     className="flex items-center justify-center gap-1.5 px-3 py-2 rounded font-cinzel text-xs transition-all"
-                    style={{
-                      background: 'rgba(224,112,112,0.08)',
-                      border: '1px solid rgba(224,112,112,0.25)',
-                      color: '#e07070',
-                      letterSpacing: '0.08em',
-                      fontSize: 9,
-                    }}>
+                    style={{ background: 'rgba(224,112,112,0.08)', border: '1px solid rgba(224,112,112,0.25)', color: '#e07070', letterSpacing: '0.08em', fontSize: 9 }}>
                     <XCircle size={12} />
                     DENY
                   </button>
@@ -362,27 +366,32 @@ export default function RoomsEditor() {
         </div>
       )}
 
-      <div className="font-cinzel text-xs tracking-widest mb-3" style={{ color: 'var(--gold)', fontSize: 10 }}>
-        ACTIVE ROOMS ({rooms.length})
+      {/* Active rooms */}
+      <div className="font-cinzel text-xs tracking-widest mb-3"
+        style={{ color: 'var(--gold)', fontSize: 10 }}>
+        {league.toUpperCase()} ROOMS ({rooms.length})
       </div>
 
       {loading ? (
         <p className="font-cormorant italic text-sm" style={{ color: 'var(--mid)' }}>Loading…</p>
       ) : rooms.length === 0 ? (
-        <p className="font-cormorant italic text-sm" style={{ color: 'var(--mid)' }}>No rooms yet.</p>
+        <p className="font-cormorant italic text-sm" style={{ color: 'var(--mid)' }}>No {league.toUpperCase()} rooms yet.</p>
       ) : (
         <div className="space-y-3">
           {rooms.map(room => {
-            const event = EVENTS_2026.find(e => e.id === room.event_id);
+            const event = EVENT_LIST.find(e => e.id === room.event_id);
             return (
-              <div key={room.id} className="rounded-lg p-4" style={{ border: '1px solid rgba(180,149,48,0.15)', background: '#0d0c09' }}>
+              <div key={room.id} className="rounded-lg p-4"
+                style={{ border: '1px solid rgba(180,149,48,0.15)', background: '#0d0c09' }}>
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div>
                     <div className="font-cormorant text-base font-semibold" style={{ color: 'var(--cream)' }}>
                       {room.name}
                       {room.is_sponsored && (
                         <span className="ml-2 font-cinzel text-xs px-2 py-0.5 rounded"
-                          style={{ background: 'rgba(180,149,48,0.15)', color: 'var(--gold)', fontSize: 8 }}>SPONSORED</span>
+                          style={{ background: 'rgba(180,149,48,0.15)', color: 'var(--gold)', fontSize: 8 }}>
+                          SPONSORED
+                        </span>
                       )}
                     </div>
                     <div className="font-cinzel text-xs mt-0.5" style={{ color: 'var(--mid)', fontSize: 9 }}>
@@ -401,7 +410,6 @@ export default function RoomsEditor() {
                     <Trash2 size={14} />
                   </button>
                 </div>
-
                 <div className="flex flex-wrap gap-2 mt-2">
                   <div className="flex items-center gap-2 px-3 py-1.5 rounded"
                     style={{ background: 'rgba(180,149,48,0.08)', border: '1px solid rgba(180,149,48,0.2)' }}>
