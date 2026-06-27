@@ -16,7 +16,7 @@ import MlsjStartListEditor from '@/components/admin/MlsjStartListEditor';
 import { MlsjResultsEditor } from '@/components/admin/MlsjResultsEditor';
 import {
   Lock, BarChart3, Users, ListOrdered, Trophy, ShieldHalf,
-  CalendarCog, TrendingUp, DoorOpen, Bell, Horse, Globe,
+  CalendarCog, TrendingUp, DoorOpen, Bell, Database,
 } from 'lucide-react';
 
 // ── Tab definitions ───────────────────────────────────────────────────────────
@@ -48,7 +48,7 @@ const MLSJ_TABS = [
 const SHARED_TABS = [
   { id: 'rankings',      label: 'Rankings', icon: BarChart3 },
   { id: 'riders',        label: 'Riders',   icon: Users     },
-  { id: 'horses',        label: 'Horses',   icon: Horse     },
+  { id: 'horses',        label: 'Horses',   icon: Database  },
   { id: 'notifications', label: 'Notify',   icon: Bell      },
 ];
 
