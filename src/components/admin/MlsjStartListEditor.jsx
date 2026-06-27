@@ -4,6 +4,11 @@ import {
   getMlsjTeamRoster, sbFetch,
 } from '@/lib/mlsj-data';
 import { PREVIEW_RIDERS_2026 } from '@/lib/equiprix-data';
+// ── CHANGED: use the shared GCL horse DB so horses entered on the GCL
+// side are immediately available here, and vice-versa. Previously this
+// file loaded/saved from a separate mlsj_horse_db Supabase table, which
+// meant every horse had to be entered twice.
+import { loadHorseDBRemote, saveHorseDBRemote } from '@/lib/startListStore';
 import { Plus, X, Save } from 'lucide-react';
 
 function HorseInput({ riderName, value, onChange, horseDB, onAddHorse }) {
@@ -48,7 +53,6 @@ function HorseInput({ riderName, value, onChange, horseDB, onAddHorse }) {
   );
 }
 
-// Declares which 3 of a team's 6 roster riders compete in Round 1 this leg.
 function TeamTrioDeclarer({ teams, declaredTrioIds, setDeclaredTrioIds, riderList }) {
   const getTrio = (teamId) => declaredTrioIds[teamId] || [];
 
@@ -196,20 +200,24 @@ function GPRiderPicker({ riderList, gpRiders, setGpRiders }) {
 
 export default function MlsjStartListEditor() {
   const [selectedEventId, setSelectedEventId] = useState('');
-  const [activeSection, setActiveSection] = useState('trios'); // 'trios' | 'gp'
+  const [activeSection, setActiveSection] = useState('trios');
   const [gpRiders, setGpRiders] = useState([]);
   const [declaredTrioIds, setDeclaredTrioIds] = useState({});
   const [horseDB, setHorseDB] = useState({});
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Latest rankings (rank/salary) — read once for the picker/trio displays.
-  // Pulls from the SAME fei_rankings row GCL's RankingsImport writes to.
   const [riderList, setRiderList] = useState(PREVIEW_RIDERS_2026);
 
   const event = MLSJ_EVENTS_2026_27.find(e => e.id === selectedEventId);
 
   useEffect(() => {
+    // ── CHANGED: load from the shared GCL horse DB (horse_db Supabase
+    // table via loadHorseDBRemote) instead of the separate mlsj_horse_db
+    // table. All horses entered on either the GCL or MLSJ start list
+    // pages are now stored and read from the same place.
+    loadHorseDBRemote().then(db => setHorseDB(db || {}));
+
     sbFetch('results?event=eq.fei_rankings&limit=1').then(rows => {
       if (rows && rows.length && rows[0].gp_riders?.length) {
         const updated = PREVIEW_RIDERS_2026.map(r => ({ ...r }));
@@ -220,9 +228,6 @@ export default function MlsjStartListEditor() {
         setRiderList(updated);
       }
     });
-    sbFetch('mlsj_horse_db?limit=1').then(rows => {
-      if (rows && rows.length) setHorseDB(rows[0].db || {});
-    }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -240,6 +245,7 @@ export default function MlsjStartListEditor() {
     });
   }, [selectedEventId]);
 
+  // ── CHANGED: save horses to the shared GCL horse DB via saveHorseDBRemote
   const addHorse = async (riderName, horse) => {
     if (!riderName || !horse) return;
     const db = { ...horseDB };
@@ -247,11 +253,7 @@ export default function MlsjStartListEditor() {
     if (!db[riderName].includes(horse)) {
       db[riderName] = [...db[riderName], horse];
       setHorseDB(db);
-      try {
-        await sbFetch('mlsj_horse_db', { method: 'POST', body: JSON.stringify({ id: 1, db }) });
-      } catch (e) {
-        console.warn('mlsj_horse_db save skipped (table may not exist yet):', e.message);
-      }
+      await saveHorseDBRemote(db);
     }
   };
 
