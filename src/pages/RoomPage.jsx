@@ -36,6 +36,10 @@ export default function RoomPage() {
   const [sending, setSending] = useState(false);
   const [notifResult, setNotifResult] = useState(null);
   const [copied, setCopied] = useState('');
+  const [showReopen, setShowReopen] = useState(false);
+  const [reopenEventId, setReopenEventId] = useState('');
+  const [reopening, setReopening] = useState(false);
+  const [reopenResult, setReopenResult] = useState(null);
   const [inviteSearch, setInviteSearch] = useState('');
   const [inviteList, setInviteList] = useState([]); // confirmed recipients
   const [searchResults, setSearchResults] = useState([]);
@@ -216,6 +220,61 @@ export default function RoomPage() {
       setInviteResult({ success: false, msg: 'Failed to send invites' });
     }
     setInviting(false);
+  };
+
+  const reopenForEvent = async () => {
+    if (!reopenEventId) return;
+    setReopening(true);
+    setReopenResult(null);
+    try {
+      // Generate new code
+      const newCode = Math.floor(100000 + Math.random() * 900000).toString();
+      // Create new room with same settings but new event
+      await sbFetch('rooms', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: room.name,
+          event_id: reopenEventId,
+          manager_email: room.manager_email,
+          max_size: room.max_size,
+          prize_description: room.prize_description || '',
+          sponsor_name: room.sponsor_name || '',
+          sponsor_logo_url: room.sponsor_logo_url || '',
+          is_sponsored: room.is_sponsored || false,
+          join_code: newCode,
+        })
+      });
+
+      // Get all current members
+      const memberEmails = members.map(m => m.user_email);
+      const newEvent = EVENTS_2026.find(e => e.id === reopenEventId);
+      const joinUrl = `${window.location.origin}/room/${newCode}`;
+
+      // Send invite to all members
+      for (const email of memberEmails) {
+        try {
+          await fetch('/api/send-room-invite', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email,
+              roomName: room.name,
+              prize: room.prize_description || null,
+              eventName: newEvent?.city || '',
+              eventFlag: newEvent?.flag || '🏇',
+              joinUrl,
+              managerName: user?.user_metadata?.username || user?.email?.split('@')[0] || null,
+            }),
+          });
+        } catch (e) { console.warn('Failed to invite', email); }
+      }
+
+      setReopenResult({ success: true, code: newCode, count: memberEmails.length });
+    } catch (e) {
+      setReopenResult({ success: false, msg: e.message });
+    } finally {
+      setReopening(false);
+    }
   };
 
   const copyLink = (type) => {
@@ -419,7 +478,72 @@ export default function RoomPage() {
           </div>
         )}
 
-        {/* Member list */}
+        {/* Reopen for next event */}
+        {isManager && (
+          <div className="rounded-xl overflow-hidden mb-4" style={{ border: '1px solid rgba(180,149,48,0.15)', background: '#14130e' }}>
+            <button onClick={() => { setShowReopen(p => !p); setReopenResult(null); }}
+              className="w-full flex items-center justify-between px-5 py-3 transition-all"
+              style={{ background: showReopen ? 'rgba(180,149,48,0.06)' : 'transparent' }}>
+              <div>
+                <div className="font-cinzel text-xs tracking-widest text-left" style={{ color: 'var(--gold)', fontSize: 9 }}>REOPEN FOR ANOTHER EVENT</div>
+                <div className="font-cormorant italic text-xs text-left mt-0.5" style={{ color: 'var(--mid)' }}>
+                  Create a new room with the same members and notify them
+                </div>
+              </div>
+              <span className="font-cinzel text-xs" style={{ color: 'var(--gold)' }}>{showReopen ? '▲' : '+'}</span>
+            </button>
+
+            {showReopen && (
+              <div className="px-5 pb-4" style={{ borderTop: '1px solid rgba(180,149,48,0.1)' }}>
+                {reopenResult?.success ? (
+                  <div className="py-4 text-center">
+                    <div className="text-2xl mb-2">🏇</div>
+                    <p className="font-cormorant text-base font-semibold mb-1" style={{ color: '#4caf7d' }}>
+                      Room created!
+                    </p>
+                    <p className="font-cormorant italic text-sm mb-1" style={{ color: 'var(--mid)' }}>
+                      {reopenResult.count} member{reopenResult.count !== 1 ? 's' : ''} notified
+                    </p>
+                    <p className="font-cinzel text-sm font-bold mb-3" style={{ color: 'var(--gold)' }}>
+                      New code: {reopenResult.code}
+                    </p>
+                    <button onClick={() => { setShowReopen(false); setReopenResult(null); }}
+                      className="font-cinzel text-xs px-4 py-1.5 rounded"
+                      style={{ background: 'rgba(76,175,125,0.15)', color: '#4caf7d', border: '1px solid rgba(76,175,125,0.3)', letterSpacing: '0.08em' }}>
+                      CLOSE
+                    </button>
+                  </div>
+                ) : (
+                  <div className="pt-3">
+                    <label className="font-cinzel text-xs block mb-2" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>
+                      SELECT EVENT
+                    </label>
+                    <select value={reopenEventId} onChange={e => setReopenEventId(e.target.value)}
+                      style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(180,149,48,0.2)', color: reopenEventId ? 'var(--cream)' : 'var(--mid)', borderRadius: 4, padding: '8px 12px', fontSize: 13, outline: 'none', marginBottom: 12 }}>
+                      <option value="">— Select next event —</option>
+                      {EVENTS_2026.filter(e => e.id !== room.event_id).map(ev => (
+                        <option key={ev.id} value={ev.id}>{ev.flag} {ev.city} · {ev.dates}</option>
+                      ))}
+                    </select>
+                    <p className="font-cormorant italic text-xs mb-3" style={{ color: 'var(--mid)' }}>
+                      This will create a new room for {EVENTS_2026.find(e => e.id === reopenEventId)?.city || 'the selected event'} with the same name, prize, and {members.length} current members — all will receive an invite email.
+                    </p>
+                    {reopenResult?.success === false && (
+                      <p className="font-cormorant italic text-sm mb-2" style={{ color: '#e07070' }}>{reopenResult.msg}</p>
+                    )}
+                    <button onClick={reopenForEvent} disabled={reopening || !reopenEventId}
+                      className="w-full py-2.5 rounded font-cinzel text-xs tracking-widest flex items-center justify-center gap-2 transition-all"
+                      style={{ background: reopening ? 'rgba(180,149,48,0.1)' : 'var(--gold)', color: reopening ? 'var(--mid)' : 'var(--ink)', letterSpacing: '0.1em', opacity: !reopenEventId ? 0.4 : 1 }}>
+                      {reopening ? 'CREATING & NOTIFYING…' : `CREATE & NOTIFY ${members.length} MEMBERS`}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Member list */}}
         {(isMember || joined || isManager) && members.length > 0 && (
           <div className="rounded-xl overflow-hidden mb-4" style={{ border: '1px solid rgba(180,149,48,0.15)', background: '#14130e' }}>
             <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(180,149,48,0.1)' }}>

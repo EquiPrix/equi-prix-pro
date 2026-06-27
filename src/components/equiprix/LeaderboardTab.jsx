@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useEquiPrix, GENERAL_ROOM_ID } from '@/lib/EquiPrixContext';
+import { useEquiPrix } from '@/lib/EquiPrixContext';
 import { useAuth } from '@/lib/AuthContext';
 import {
-  sbFetch, ordinal, gpPosPts, teamPosPts,
+  sbFetch, ordinal, gclStagePts, gpPosPts, teamPosPts,
   GCL_TEAMS_2026, EVENTS_2026, PREVIEW_RIDERS_2026,
   CAP, CPT_PREMIUM, CAPTAIN_MULT, fmt
 } from '@/lib/equiprix-data';
@@ -11,32 +11,15 @@ import { ChevronDown, ChevronUp, Lock, Plus, Hash } from 'lucide-react';
 
 const TABS = [
   { id: 'event', label: 'This Event' },
-  { id: 'rooms', label: 'My Rooms' },
+  { id: 'season', label: '2026 Season' },
   { id: 'gcl', label: 'GCL Standings' },
+  { id: 'rooms', label: 'My Rooms' },
 ];
-
-// FIXED: when riders tie on a clear first round and go to a jump-off,
-// gpPos is entered as the tied value (e.g. several riders all at 1) and
-// joPos holds the real position once the jump-off resolves the tie —
-// same data shape as ResultsTab.jsx's GPResults. Scoring here was still
-// reading gpPos directly with no awareness of joPos, so every rider in
-// a jump-off group was being scored as if still tied for the same
-// position (all getting 1st-place points), instead of their real
-// 1st-through-Nth finish. This helper centralizes the "what position
-// actually counts" resolution so calcPickScore and buildScoredRows use
-// identical logic and can't drift apart from each other or from the
-// display in ResultsTab.jsx.
-function effectiveGpPos(res) {
-  if (!res) return null;
-  if (res.gpJO && res.joPos != null && res.joPos !== '') return Number(res.joPos);
-  return res.gpPos || null;
-}
 
 function calcPickScore(picksJson, riderResults, teamResults) {
   const riderPts = (picksJson.riders || []).reduce((sum, rp) => {
     const res = riderResults[String(rp.id)] || {};
-    const effPos = effectiveGpPos(res);
-    const gpPts = effPos ? gpPosPts(effPos) : null;
+    const gpPts = res.gpPos ? gpPosPts(res.gpPos) : null;
     if (gpPts === null) return sum;
     const raw = gpPts + (res.gpClear ? 20 : 0);
     return sum + (rp.isCpt ? raw * CAPTAIN_MULT : raw);
@@ -47,50 +30,6 @@ function calcPickScore(picksJson, riderResults, teamResults) {
     return sum + (pos ? teamPosPts(pos) : 0);
   }, 0);
   return riderPts + teamPts;
-}
-
-// Shared by both the General leaderboard (EventLeaderboard) and a
-// room's leaderboard (MyRooms) — previously each had its own row
-// builder, and the room version only kept a flat { email, username,
-// score } shape, dropping picks_json entirely. That meant the room
-// view had no way to show team picks, remaining budget, or GP riders
-// even though the data existed — this function restores parity so both
-// views render identical detail, just scoped to a different picks
-// query (room_id = GENERAL_ROOM_ID vs a specific room's id).
-function buildScoredRows(picks, ev, riderResults, teamResults, hasResults) {
-  const allRiders = [...(ev.gpRiders || []), ...(ev.riders || []), ...PREVIEW_RIDERS_2026];
-  const seenIds = new Set();
-  const evRiders = allRiders.filter(r => { if (seenIds.has(r.id)) return false; seenIds.add(r.id); return true; });
-
-  return picks.filter(p => p.picks_json && !p.picks_json.isPractice).map(p => {
-    const pj = p.picks_json;
-    const resolvedRiders = (pj.riders || []).map(rp => {
-      const rider = evRiders.find(r => r.id === rp.id);
-      if (!rider) return null;
-      const salary = rp.isCpt ? rider.salary + CPT_PREMIUM : rider.salary;
-      const res = riderResults[String(rp.id)] || {};
-      const effPos = effectiveGpPos(res);
-      const gpPts = effPos ? gpPosPts(effPos) : null;
-      const rawPts = gpPts !== null ? gpPts + (res.gpClear ? 20 : 0) : null;
-      const pts = rawPts !== null ? (rp.isCpt ? rawPts * CAPTAIN_MULT : rawPts) : null;
-      return { rider, isCpt: rp.isCpt, salary, pts };
-    }).filter(Boolean);
-    const resolvedTeams = (pj.teams || []).map(t => {
-      const team = GCL_TEAMS_2026.find(x => x.id === t.id);
-      if (!team) return null;
-      const tr = teamResults[t.id] || {};
-      const pos = tr.finalPos || null;
-      return { team, salary: team.salary, pts: pos ? teamPosPts(pos) : null };
-    }).filter(Boolean);
-    const totalSpent = resolvedRiders.reduce((s, r) => s + r.salary, 0) + resolvedTeams.reduce((s, t) => s + t.salary, 0);
-    const teamSalaryUsed = resolvedTeams.reduce((s, t) => s + t.salary, 0);
-    const remainingAfterTeams = CAP - teamSalaryUsed;
-    const hasTeamResults = Object.keys(teamResults).length > 0;
-    const teamPts = resolvedTeams.reduce((s, t) => s + (t.pts || 0), 0);
-    const riderPts = resolvedRiders.reduce((s, r) => s + (r.pts || 0), 0);
-    const totalPts = hasResults ? teamPts + riderPts : null;
-    return { user_email: p.user_email, username: p.username || p.user_email.split('@')[0], score: totalPts, teamPts, riders: resolvedRiders, teams: resolvedTeams, totalSpent, remainingAfterTeams, hasResults, hasTeamResults };
-  }).sort((a, b) => (b.score || 0) - (a.score || 0));
 }
 
 export default function LeaderboardTab() {
@@ -123,25 +62,51 @@ export default function LeaderboardTab() {
     if (!currentEvent) return;
     setLoading(true);
     try {
-      // "This Event" tab shows General Leaderboard picks only — room
-      // picks are scored separately on the "My Rooms" tab. GENERAL_ROOM_ID
-      // is the sentinel that marks a picks row as belonging to General
-      // (a real fixed UUID, not NULL — NULL doesn't work reliably with
-      // Postgres unique-constraint upserts).
-      const picks = await sbFetch('picks?select=user_email,username,score,picks_json&event=eq.' + currentEvent.id + '&room_id=eq.' + GENERAL_ROOM_ID) || [];
+      const picks = await sbFetch('picks?select=access_code,username,score,picks_json&event=eq.' + currentEvent.id) || [];
       let riderResults = {}, teamResults = {};
       if (['past', 'riders'].includes(currentEvent.status)) {
         const res = await sbFetch('results?event=eq.' + currentEvent.supabaseKey + '&limit=1') || [];
         if (res.length) { riderResults = res[0].rider_results || {}; teamResults = res[0].team_results || {}; }
       }
       const hasResults = Object.keys(teamResults).length > 0 || Object.keys(riderResults).length > 0;
-      const rows = buildScoredRows(picks, currentEvent, riderResults, teamResults, hasResults);
+      const allRiders = [...(currentEvent.gpRiders || []), ...(currentEvent.riders || []), ...PREVIEW_RIDERS_2026];
+      const seenIds = new Set();
+      const evRiders = allRiders.filter(r => { if (seenIds.has(r.id)) return false; seenIds.add(r.id); return true; });
+
+      const rows = picks.filter(p => p.picks_json && !p.picks_json.isPractice).map(p => {
+        const pj = p.picks_json;
+        const resolvedRiders = (pj.riders || []).map(rp => {
+          const rider = evRiders.find(r => r.id === rp.id);
+          if (!rider) return null;
+          const salary = rp.isCpt ? rider.salary + CPT_PREMIUM : rider.salary;
+          const res = riderResults[String(rp.id)] || {};
+          const gpPts = res.gpPos ? gpPosPts(res.gpPos) : null;
+          const rawPts = gpPts !== null ? gpPts + (res.gpClear ? 20 : 0) : null;
+          const pts = rawPts !== null ? (rp.isCpt ? rawPts * CAPTAIN_MULT : rawPts) : null;
+          return { rider, isCpt: rp.isCpt, salary, pts };
+        }).filter(Boolean);
+        const resolvedTeams = (pj.teams || []).map(t => {
+          const team = GCL_TEAMS_2026.find(x => x.id === t.id);
+          if (!team) return null;
+          const tr = teamResults[t.id] || {};
+          const pos = tr.finalPos || null;
+          return { team, salary: team.salary, pts: pos ? teamPosPts(pos) : null };
+        }).filter(Boolean);
+        const totalSpent = resolvedRiders.reduce((s, r) => s + r.salary, 0) + resolvedTeams.reduce((s, t) => s + t.salary, 0);
+        const teamSalaryUsed = resolvedTeams.reduce((s, t) => s + t.salary, 0);
+        const remainingAfterTeams = CAP - teamSalaryUsed;
+        const hasTeamResults = Object.keys(teamResults).length > 0;
+        const teamPts = resolvedTeams.reduce((s, t) => s + (t.pts || 0), 0);
+        const riderPts = resolvedRiders.reduce((s, r) => s + (r.pts || 0), 0);
+        const totalPts = hasResults ? teamPts + riderPts : null;
+        return { access_code: p.access_code, username: p.username || p.access_code, score: totalPts, teamPts, riders: resolvedRiders, teams: resolvedTeams, totalSpent, remainingAfterTeams, hasResults, hasTeamResults };
+      }).sort((a, b) => (b.score || 0) - (a.score || 0));
 
       setEventRows(rows);
       if (hasResults && currentEvent.status === 'past') {
         rows.forEach(async (row) => {
           if (row.score == null) return;
-          try { await sbFetch('picks?user_email=eq.' + encodeURIComponent(row.user_email) + '&event=eq.' + currentEvent.id + '&room_id=eq.' + GENERAL_ROOM_ID, { method: 'PATCH', body: JSON.stringify({ score: row.score }) }); } catch (e) {}
+          try { await sbFetch('picks?access_code=eq.' + encodeURIComponent(row.access_code) + '&event=eq.' + currentEvent.id, { method: 'PATCH', body: JSON.stringify({ score: row.score }) }); } catch (e) {}
         });
       }
     } catch (e) { console.error(e); } finally { setLoading(false); }
@@ -153,10 +118,8 @@ export default function LeaderboardTab() {
       const pastEvents = events.filter(e => e.status === 'past');
       const userTotals = {};
       for (const ev of pastEvents) {
-        // Season totals are General Leaderboard only — room competitions
-        // are self-contained and scored on the My Rooms tab instead.
         const [evPicks, evResults] = await Promise.all([
-          sbFetch('picks?select=user_email,username,picks_json&event=eq.' + ev.id + '&room_id=eq.' + GENERAL_ROOM_ID),
+          sbFetch('picks?select=access_code,username,picks_json&event=eq.' + ev.id),
           sbFetch('results?event=eq.' + ev.supabaseKey + '&limit=1'),
         ]);
         const riderResults = evResults?.[0]?.rider_results || {};
@@ -165,8 +128,8 @@ export default function LeaderboardTab() {
         (evPicks || []).forEach(p => {
           if (!p.picks_json || p.picks_json.isPractice) return;
           const score = hasResults ? calcPickScore(p.picks_json, riderResults, teamResults) : 0;
-          const key = p.user_email;
-          if (!userTotals[key]) userTotals[key] = { name: p.username || p.user_email.split('@')[0], total: 0, events: 0 };
+          const key = p.access_code;
+          if (!userTotals[key]) userTotals[key] = { name: p.username || p.access_code, total: 0, events: 0 };
           userTotals[key].total += score;
           userTotals[key].events++;
         });
@@ -175,31 +138,45 @@ export default function LeaderboardTab() {
     } catch (e) { console.error(e); } finally { setLoading(false); }
   };
 
-  // GCL Standings now read straight from GCL_TEAMS_2026 — rank and pts
-  // there are entirely manually entered (via the admin Leaderboard ->
-  // GCL Standings editor) and saved to the team_salaries row, then
-  // applied by EquiPrixContext.loadEventData on every load. This is the
-  // same array the admin editor and draft pricing both use, so there's
-  // one number per team everywhere, not a live-computed one here and a
-  // manual one elsewhere.
   const loadGCLStandings = async () => {
     setLoading(true);
     try {
-      const ranked = [...GCL_TEAMS_2026].sort((a, b) => (Number(a.rank) || 99) - (Number(b.rank) || 99));
-      setGclRows(ranked.map(t => ({ t, pts: t.pts })));
+      const pastEvents = events.filter(e => e.status === 'past');
+      const teamTotals = {};
+      for (const ev of pastEvents) {
+        const rows = await sbFetch('results?event=eq.' + ev.supabaseKey + '&limit=1') || [];
+        if (!rows.length) continue;
+        const tr = rows[0].team_results || {};
+        Object.entries(tr).forEach(([id, raw]) => {
+          const pos = typeof raw === 'object' ? raw.finalPos : raw;
+          const el = typeof raw === 'object' && (raw.el || raw.el2);
+          if (!pos && !el) return;
+          const pts = el ? 0 : gclStagePts(pos);
+          if (!teamTotals[id]) teamTotals[id] = { pts: 0, wins: 0, events: 0 };
+          teamTotals[id].pts += pts; teamTotals[id].events++;
+          if (pos === 1) teamTotals[id].wins++;
+        });
+      }
+      setGclRows(Object.entries(teamTotals).map(([id, data]) => {
+        const t = GCL_TEAMS_2026.find(x => x.id === id) || { id, name: 'Team ' + id };
+        return { t, ...data };
+      }).sort((a, b) => b.pts - a.pts || b.wins - a.wins));
     } catch (e) { console.error(e); } finally { setLoading(false); }
   };
 
   const loadMyRooms = async () => {
-    if (!user?.email) return;
+    if (!user?.email || !currentEvent) return;
     setLoading(true);
     try {
       const memberships = await sbFetch('room_members?user_email=eq.' + encodeURIComponent(user.email)) || [];
       if (!memberships.length) { setMyRooms([]); setLoading(false); return; }
       const roomIds = memberships.map(m => m.room_id);
       const roomList = await sbFetch('rooms?id=in.(' + roomIds.join(',') + ')') || [];
-      setMyRooms(roomList);
-      if (roomList.length && !activeRoom) setActiveRoom(roomList[0]);
+      // Only show rooms for the current event
+      const filtered = roomList.filter(r => r.event_id === currentEvent.id);
+      setMyRooms(filtered);
+      if (filtered.length && !activeRoom) setActiveRoom(filtered[0]);
+      else if (!filtered.length) setActiveRoom(null);
     } catch (e) { console.error(e); } finally { setLoading(false); }
   };
 
@@ -210,38 +187,21 @@ export default function LeaderboardTab() {
       const ev = EVENTS_2026.find(e => e.id === room.event_id);
       if (!ev || !members.length) { setRoomRows([]); setLoading(false); return; }
 
-      // Direct room_id match — every pick saved while this room was the
-      // active draft destination carries this room's id, so no more
-      // fuzzy matching by username/access_code needed.
       const [allPicks, evResults] = await Promise.all([
-        sbFetch('picks?select=user_email,username,picks_json&event=eq.' + ev.id + '&room_id=eq.' + room.id),
+        sbFetch('picks?select=access_code,username,picks_json&event=eq.' + ev.id),
         sbFetch('results?event=eq.' + ev.supabaseKey + '&limit=1'),
       ]);
       const riderResults = evResults?.[0]?.rider_results || {};
       const teamResults = evResults?.[0]?.team_results || {};
       const hasResults = Object.keys(riderResults).length > 0 || Object.keys(teamResults).length > 0;
 
-      // Build the same rich row shape (teams, riders, totalSpent,
-      // remainingAfterTeams, etc.) the General leaderboard uses — a
-      // member with picks but no row in `members` shouldn't happen, but
-      // a member with no picks yet should still show up so the room
-      // roster looks complete. buildScoredRows only returns rows for
-      // picks that exist, so merge in any missing members at score 0.
-      const scoredFromPicks = buildScoredRows(allPicks || [], ev, riderResults, teamResults, hasResults);
-      const pickedEmails = new Set(scoredFromPicks.map(r => r.user_email));
-      const missingMembers = members
-        .filter(m => !pickedEmails.has(m.user_email))
-        .map(m => ({
-          user_email: m.user_email, username: m.username || m.user_email.split('@')[0],
-          score: hasResults ? 0 : null, teamPts: 0, riders: [], teams: [],
-          totalSpent: 0, remainingAfterTeams: CAP, hasResults, hasTeamResults: Object.keys(teamResults).length > 0,
-        }));
+      const scored = members.map(member => {
+        const pick = (allPicks || []).find(p => p.access_code === member.user_email || p.username === member.username);
+        const score = pick && hasResults ? calcPickScore(pick.picks_json, riderResults, teamResults) : 0;
+        return { email: member.user_email, username: member.username || member.user_email.split('@')[0], score, isYou: user?.email === member.user_email };
+      }).sort((a, b) => b.score - a.score);
 
-      const rows = [...scoredFromPicks, ...missingMembers]
-        .map(r => ({ ...r, isYou: user?.email === r.user_email }))
-        .sort((a, b) => (b.score || 0) - (a.score || 0));
-
-      setRoomRows(rows);
+      setRoomRows(scored);
     } catch (e) { console.error(e); } finally { setLoading(false); }
   };
 
@@ -294,7 +254,6 @@ export default function LeaderboardTab() {
             roomRows={roomRows} loading={loading}
             joinCode={joinCode} setJoinCode={setJoinCode}
             joinWithCode={joinWithCode} joining={joining} joinMsg={joinMsg} user={user}
-            events={events}
           />
         )}
       </div>
@@ -302,23 +261,45 @@ export default function LeaderboardTab() {
   );
 }
 
-function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode, setJoinCode, joinWithCode, joining, joinMsg, user, events }) {
-  const [expanded, setExpanded] = useState({});
-  // FIXED: this used to look up EVENTS_2026 (the static, hardcoded array
-  // from equiprix-data.js) directly, ignoring the live-enriched `events`
-  // array from context — the same one EventLeaderboard already uses via
-  // `currentEvent`. Event status ('past'/'live'/etc) and lock timestamps
-  // are updated dynamically in Supabase via the admin panel, separate
-  // from the static array, so a completed event like Paris could show
-  // "Final scores" correctly on the General leaderboard while the room
-  // leaderboard still read Paris's stale hardcoded status and kept GP
-  // picks locked indefinitely. Now we look in the live `events` array
-  // first, falling back to EVENTS_2026 only if that array hasn't loaded
-  // yet (e.g. on very first render before context populates).
-  const liveEvents = events && events.length ? events : EVENTS_2026;
-  const roomEvent = activeRoom ? liveEvents.find(e => e.id === activeRoom.event_id) : null;
-  const teamLocked = roomEvent ? (roomEvent.status === 'past' || new Date() >= new Date(roomEvent.teamLockISO)) : true;
-  const gpLocked = roomEvent ? (roomEvent.status === 'past' || new Date() >= new Date(roomEvent.gpLockISO)) : true;
+function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode, setJoinCode, joinWithCode, joining, joinMsg, user }) {
+  const [showRequest, setShowRequest] = useState(false);
+  const [reqEvent, setReqEvent] = useState('');
+  const [reqName, setReqName] = useState('');
+  const [reqMax, setReqMax] = useState(20);
+  const [reqPrize, setReqPrize] = useState('');
+  const [reqNotes, setReqNotes] = useState('');
+  const [reqSending, setReqSending] = useState(false);
+  const [reqResult, setReqResult] = useState(null);
+
+  const submitRequest = async () => {
+    if (!reqEvent) return;
+    setReqSending(true);
+    setReqResult(null);
+    try {
+      const res = await fetch('/api/send-room-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestorEmail: user?.email || '',
+          requestorName: user?.user_metadata?.username || user?.email?.split('@')[0] || '',
+          eventName: reqEvent,
+          maxMembers: reqMax,
+          roomName: reqName,
+          prizeIdea: reqPrize || null,
+          notes: reqNotes || null,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setReqResult({ success: true });
+        setReqEvent(''); setReqName(''); setReqMax(20); setReqPrize(''); setReqNotes('');
+      } else {
+        setReqResult({ success: false, msg: data.error });
+      }
+    } catch (e) { setReqResult({ success: false, msg: e.message }); }
+    finally { setReqSending(false); }
+  };
+
   return (
     <div>
       {/* Join with code */}
@@ -345,9 +326,90 @@ function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode
             {joinMsg}
           </p>
         )}
-        <p className="font-cormorant italic text-xs mt-2" style={{ color: 'var(--mid)' }}>
-          Want a private room for your group? Open your account (top right) to request one.
-        </p>
+      </div>
+
+      {/* Request new room */}
+      <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--ep-border)' }}>
+        <button onClick={() => { setShowRequest(p => !p); setReqResult(null); }}
+          className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition-all"
+          style={{ background: showRequest ? 'rgba(180,149,48,0.1)' : 'rgba(180,149,48,0.04)', border: '1px solid rgba(180,149,48,0.2)' }}>
+          <div>
+            <div className="font-cinzel text-xs text-left" style={{ color: 'var(--gold)', fontSize: 9, letterSpacing: '0.1em' }}>REQUEST A PRIVATE ROOM</div>
+            <div className="font-cormorant italic text-xs text-left mt-0.5" style={{ color: 'var(--mid)' }}>Ask EquiPrix to create a room for your group</div>
+          </div>
+          <span className="font-cinzel text-xs" style={{ color: 'var(--gold)', fontSize: 12 }}>{showRequest ? '▲' : '+'}</span>
+        </button>
+
+        {showRequest && (
+          <div className="mt-3 space-y-3">
+            {reqResult?.success ? (
+              <div className="px-4 py-4 rounded-lg text-center" style={{ background: 'rgba(76,175,125,0.08)', border: '1px solid rgba(76,175,125,0.2)' }}>
+                <div className="text-2xl mb-2">🏇</div>
+                <div className="font-cormorant text-base font-semibold mb-1" style={{ color: '#4caf7d' }}>Request sent!</div>
+                <div className="font-cormorant italic text-sm" style={{ color: 'var(--mid)' }}>We'll create your room and send you the invite link shortly.</div>
+                <button onClick={() => { setShowRequest(false); setReqResult(null); }}
+                  className="mt-3 font-cinzel text-xs px-4 py-1.5 rounded"
+                  style={{ background: 'rgba(76,175,125,0.15)', color: '#4caf7d', border: '1px solid rgba(76,175,125,0.3)', letterSpacing: '0.08em' }}>
+                  CLOSE
+                </button>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label className="font-cinzel text-xs block mb-1" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>EVENT *</label>
+                  <select value={reqEvent} onChange={e => setReqEvent(e.target.value)}
+                    style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(180,149,48,0.2)', color: reqEvent ? 'var(--cream)' : 'var(--mid)', borderRadius: 4, padding: '8px 12px', fontSize: 13, outline: 'none' }}>
+                    <option value="">— Select Event —</option>
+                    {EVENTS_2026.map(ev => <option key={ev.id} value={`${ev.flag} ${ev.city} · ${ev.dates}`}>{ev.flag} {ev.city} · {ev.dates}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="font-cinzel text-xs block mb-1" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>ROOM NAME</label>
+                  <input value={reqName} onChange={e => setReqName(e.target.value)}
+                    placeholder="e.g. My Barn League"
+                    style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(180,149,48,0.2)', color: 'var(--cream)', borderRadius: 4, padding: '8px 12px', fontSize: '16px', outline: 'none' }} />
+                </div>
+                <div>
+                  <label className="font-cinzel text-xs block mb-1" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>MAX MEMBERS</label>
+                  <div className="flex gap-2">
+                    {[10, 25, 50, 100].map(n => (
+                      <button key={n} onClick={() => setReqMax(n)}
+                        className="flex-1 py-2 rounded font-cinzel text-xs transition-all"
+                        style={{ background: reqMax === n ? 'var(--gold)' : 'rgba(255,255,255,0.04)', color: reqMax === n ? 'var(--ink)' : 'var(--mid)', border: `1px solid ${reqMax === n ? 'var(--gold)' : 'rgba(180,149,48,0.2)'}`, fontSize: 10 }}>
+                        {n}
+                      </button>
+                    ))}
+                    <button onClick={() => setReqMax(999)}
+                      className="flex-1 py-2 rounded font-cinzel text-xs transition-all"
+                      style={{ background: reqMax === 999 ? 'var(--gold)' : 'rgba(255,255,255,0.04)', color: reqMax === 999 ? 'var(--ink)' : 'var(--mid)', border: `1px solid ${reqMax === 999 ? 'var(--gold)' : 'rgba(180,149,48,0.2)'}`, fontSize: 10 }}>
+                      100+
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="font-cinzel text-xs block mb-1" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>PRIZE IDEA (optional)</label>
+                  <input value={reqPrize} onChange={e => setReqPrize(e.target.value)}
+                    placeholder="e.g. Bottle of wine for the winner"
+                    style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(180,149,48,0.2)', color: 'var(--cream)', borderRadius: 4, padding: '8px 12px', fontSize: '16px', outline: 'none' }} />
+                </div>
+                <div>
+                  <label className="font-cinzel text-xs block mb-1" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>NOTES (optional)</label>
+                  <textarea value={reqNotes} onChange={e => setReqNotes(e.target.value)}
+                    placeholder="Any other details…" rows={2}
+                    style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(180,149,48,0.2)', color: 'var(--cream)', borderRadius: 4, padding: '8px 12px', fontSize: 13, outline: 'none', resize: 'vertical', lineHeight: 1.5 }} />
+                </div>
+                {reqResult?.success === false && (
+                  <p className="font-cormorant italic text-sm" style={{ color: '#e07070' }}>{reqResult.msg || 'Failed to send request.'}</p>
+                )}
+                <button onClick={submitRequest} disabled={reqSending || !reqEvent}
+                  className="w-full py-3 rounded font-cinzel text-xs tracking-widest flex items-center justify-center gap-2 transition-all"
+                  style={{ background: reqSending ? 'rgba(180,149,48,0.1)' : 'var(--gold)', color: reqSending ? 'var(--mid)' : 'var(--ink)', letterSpacing: '0.1em', opacity: !reqEvent ? 0.4 : 1 }}>
+                  {reqSending ? 'SENDING…' : 'SUBMIT REQUEST'}
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {!rooms.length ? (
@@ -409,103 +471,28 @@ function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode
           ) : !roomRows.length ? (
             <div className="text-center py-8 font-cormorant italic" style={{ color: 'var(--mid)' }}>No scores yet.</div>
           ) : roomRows.map((row, i) => (
-            <ScoredRow key={row.user_email} row={row} i={i} teamLocked={teamLocked} gpLocked={gpLocked}
-              expanded={expanded[row.user_email]} onToggle={() => setExpanded(p => ({ ...p, [row.user_email]: !p[row.user_email] }))} />
+            <motion.div key={row.email}
+              initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.03 }}
+              className="flex items-center gap-3 px-4 py-3"
+              style={{ borderBottom: '1px solid rgba(42,40,32,0.4)' }}>
+              <div className="font-cinzel text-sm w-7 text-center flex-shrink-0"
+                style={{ color: i < 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>
+                {i < 3 ? ['🥇', '🥈', '🥉'][i] : ordinal(i + 1)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-cormorant text-base truncate" style={{ color: row.isYou ? 'var(--gold-lt)' : 'var(--cream)' }}>
+                  {row.username}{row.isYou && ' ★'}
+                </div>
+              </div>
+              <div className="font-cormorant text-xl font-bold flex-shrink-0" style={{ color: 'var(--gold-lt)' }}>
+                {row.score % 1 === 0 ? row.score : row.score.toFixed(1)} pts
+              </div>
+            </motion.div>
           ))}
         </>
       )}
     </div>
-  );
-}
-
-// Shared expandable row used by both the General leaderboard and a
-// room's leaderboard — click to expand and see team picks, remaining
-// budget, and GP riders. Previously MyRooms had its own flat row with
-// no expand/detail at all; this is the same UI EventLeaderboard already
-// had, just lifted out so both can use it identically.
-function ScoredRow({ row, i, teamLocked, gpLocked, expanded, onToggle }) {
-  const open = expanded;
-  const hasScore = row.score != null && row.score > 0;
-  return (
-    <motion.div initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: i * 0.03 }} style={{ borderBottom: '1px solid rgba(42,40,32,0.4)' }}>
-      <div className="flex items-center gap-3 px-4 py-3 cursor-pointer" onClick={onToggle}>
-        <div className="font-cinzel text-sm w-7 text-center flex-shrink-0" style={{ color: i < 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>
-          {i < 3 ? ['🥇', '🥈', '🥉'][i] : ordinal(i + 1)}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="font-cormorant text-base truncate" style={{ color: row.isYou ? 'var(--gold-lt)' : 'var(--cream)' }}>
-            {row.username}{row.isYou && ' ★'}
-          </div>
-          {teamLocked && !gpLocked && <div className="text-xs" style={{ color: '#6aad8a' }}>{fmt(row.remainingAfterTeams)} remaining for GP</div>}
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {hasScore ? (
-            <div className="font-cormorant text-xl font-bold" style={{ color: 'var(--gold-lt)' }}>
-              {typeof row.score === 'number' ? row.score.toFixed(1) : row.score} pts
-            </div>
-          ) : (
-            <div className="font-cinzel text-xs" style={{ color: 'var(--mid)' }}>{fmt(row.totalSpent)} spent</div>
-          )}
-          {open ? <ChevronUp size={13} style={{ color: 'var(--mid)' }} /> : <ChevronDown size={13} style={{ color: 'var(--mid)' }} />}
-        </div>
-      </div>
-      {open && (
-        <div className="px-4 pb-3 pt-0" style={{ background: '#0d0c09', borderTop: '1px solid rgba(42,40,32,0.4)' }}>
-          {row.teams.length > 0 ? (
-            <div className="mb-3 mt-2">
-              <div className="font-cinzel text-xs mb-1.5" style={{ color: '#6aad8a', fontSize: 9, letterSpacing: '0.1em' }}>GCL TEAMS</div>
-              {row.teams.map(({ team, salary, pts }) => (
-                <div key={team.id} className="flex items-center gap-2 py-1">
-                  <div className="flex-1 font-cormorant text-sm" style={{ color: 'var(--cream)' }}>{team.name}</div>
-                  <div className="text-xs" style={{ color: 'var(--mid)' }}>{fmt(salary)}</div>
-                  {pts !== null ? <div className="font-cormorant text-sm font-bold w-16 text-right" style={{ color: 'var(--gold-lt)' }}>{pts} pts</div> : <div className="text-xs w-16 text-right" style={{ color: 'var(--mid)' }}>—</div>}
-                </div>
-              ))}
-              {row.hasTeamResults && row.teamPts > 0 && (
-                <div className="flex justify-end mt-1 pt-1" style={{ borderTop: '1px solid rgba(42,40,32,0.4)' }}>
-                  <div className="font-cinzel text-xs" style={{ color: 'var(--gold)', fontSize: 9 }}>TEAM TOTAL: {row.teamPts} pts</div>
-                </div>
-              )}
-            </div>
-          ) : <div className="mb-3 mt-2 text-xs font-cormorant italic" style={{ color: 'var(--mid)' }}>No team picks saved</div>}
-          {teamLocked && !gpLocked && (
-            <div className="mb-3 px-2 py-1.5 rounded text-xs font-cormorant" style={{ background: 'rgba(61,90,76,0.1)', border: '1px solid rgba(61,90,76,0.25)', color: '#6aad8a' }}>
-              {fmt(row.remainingAfterTeams)} available for GP rider picks
-            </div>
-          )}
-          {!gpLocked ? (
-            <div className="px-2 py-2 rounded text-xs font-cormorant italic text-center" style={{ background: 'rgba(180,149,48,0.05)', border: '1px solid rgba(180,149,48,0.15)', color: 'var(--mid)' }}>
-              🔒 GP rider picks hidden until lock closes
-            </div>
-          ) : row.riders.length > 0 ? (
-            <div>
-              <div className="font-cinzel text-xs mb-1.5" style={{ color: 'var(--gold)', fontSize: 9, letterSpacing: '0.1em' }}>GP RIDERS</div>
-              {row.riders.map(({ rider, isCpt, salary, pts }) => (
-                <div key={rider.id} className="flex items-center gap-2 py-1">
-                  {isCpt && <span className="font-cinzel text-xs px-1.5 py-0.5 rounded flex-shrink-0" style={{ background: 'rgba(180,149,48,0.15)', color: 'var(--gold)', fontSize: 8 }}>CPT</span>}
-                  <div className="flex-1 min-w-0">
-                    <div className="font-cormorant text-sm truncate" style={{ color: isCpt ? 'var(--gold-lt)' : 'var(--cream)' }}>{rider.name}</div>
-                    <div className="text-xs" style={{ color: 'var(--mid)', fontSize: 9 }}>{rider.nat}</div>
-                  </div>
-                  <div className="text-xs flex-shrink-0" style={{ color: 'var(--mid)' }}>{fmt(salary)}</div>
-                  {pts !== null ? (
-                    <div className="font-cormorant text-sm font-bold w-16 text-right flex-shrink-0" style={{ color: isCpt ? 'var(--gold)' : 'var(--gold-lt)' }}>
-                      {pts % 1 === 0 ? pts : pts.toFixed(1)} pts
-                      {isCpt && <span className="text-xs ml-0.5" style={{ color: 'var(--mid)' }}>×1.5</span>}
-                    </div>
-                  ) : <div className="text-xs w-16 text-right flex-shrink-0" style={{ color: 'var(--mid)' }}>—</div>}
-                </div>
-              ))}
-            </div>
-          ) : null}
-          <div className="flex items-center justify-between mt-3 pt-2" style={{ borderTop: '1px solid rgba(42,40,32,0.4)' }}>
-            <div className="font-cinzel text-xs" style={{ color: 'var(--mid)', fontSize: 9 }}>TOTAL SPENT: {fmt(row.totalSpent)}</div>
-            {hasScore && <div className="font-cormorant text-base font-bold" style={{ color: 'var(--gold)' }}>{typeof row.score === 'number' ? row.score.toFixed(1) : row.score} pts</div>}
-          </div>
-        </div>
-      )}
-    </motion.div>
   );
 }
 
@@ -527,10 +514,90 @@ function EventLeaderboard({ rows, event }) {
           {isComplete ? ' · Final scores' : gpLocked ? ' · GP picks locked' : ' · Team picks locked'}
         </span>
       </div>
-      {rows.map((row, i) => (
-        <ScoredRow key={row.user_email} row={row} i={i} teamLocked={teamLocked} gpLocked={gpLocked}
-          expanded={expanded[row.user_email]} onToggle={() => setExpanded(p => ({ ...p, [row.user_email]: !p[row.user_email] }))} />
-      ))}
+      {rows.map((row, i) => {
+        const open = expanded[row.access_code];
+        const hasScore = row.score != null && row.score > 0;
+        return (
+          <motion.div key={row.access_code} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: i * 0.03 }} style={{ borderBottom: '1px solid rgba(42,40,32,0.4)' }}>
+            <div className="flex items-center gap-3 px-4 py-3 cursor-pointer"
+              onClick={() => setExpanded(p => ({ ...p, [row.access_code]: !p[row.access_code] }))}>
+              <div className="font-cinzel text-sm w-7 text-center flex-shrink-0" style={{ color: i < 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>
+                {i < 3 ? ['🥇', '🥈', '🥉'][i] : ordinal(i + 1)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-cormorant text-base" style={{ color: 'var(--cream)' }}>{row.username}</div>
+                {teamLocked && !gpLocked && <div className="text-xs" style={{ color: '#6aad8a' }}>{fmt(row.remainingAfterTeams)} remaining for GP</div>}
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {hasScore ? (
+                  <div className="font-cormorant text-xl font-bold" style={{ color: 'var(--gold-lt)' }}>
+                    {typeof row.score === 'number' ? row.score.toFixed(1) : row.score} pts
+                  </div>
+                ) : (
+                  <div className="font-cinzel text-xs" style={{ color: 'var(--mid)' }}>{fmt(row.totalSpent)} spent</div>
+                )}
+                {open ? <ChevronUp size={13} style={{ color: 'var(--mid)' }} /> : <ChevronDown size={13} style={{ color: 'var(--mid)' }} />}
+              </div>
+            </div>
+            {open && (
+              <div className="px-4 pb-3 pt-0" style={{ background: '#0d0c09', borderTop: '1px solid rgba(42,40,32,0.4)' }}>
+                {row.teams.length > 0 ? (
+                  <div className="mb-3 mt-2">
+                    <div className="font-cinzel text-xs mb-1.5" style={{ color: '#6aad8a', fontSize: 9, letterSpacing: '0.1em' }}>GCL TEAMS</div>
+                    {row.teams.map(({ team, salary, pts }) => (
+                      <div key={team.id} className="flex items-center gap-2 py-1">
+                        <div className="flex-1 font-cormorant text-sm" style={{ color: 'var(--cream)' }}>{team.name}</div>
+                        <div className="text-xs" style={{ color: 'var(--mid)' }}>{fmt(salary)}</div>
+                        {pts !== null ? <div className="font-cormorant text-sm font-bold w-16 text-right" style={{ color: 'var(--gold-lt)' }}>{pts} pts</div> : <div className="text-xs w-16 text-right" style={{ color: 'var(--mid)' }}>—</div>}
+                      </div>
+                    ))}
+                    {row.hasTeamResults && row.teamPts > 0 && (
+                      <div className="flex justify-end mt-1 pt-1" style={{ borderTop: '1px solid rgba(42,40,32,0.4)' }}>
+                        <div className="font-cinzel text-xs" style={{ color: 'var(--gold)', fontSize: 9 }}>TEAM TOTAL: {row.teamPts} pts</div>
+                      </div>
+                    )}
+                  </div>
+                ) : <div className="mb-3 mt-2 text-xs font-cormorant italic" style={{ color: 'var(--mid)' }}>No team picks saved</div>}
+                {teamLocked && !gpLocked && (
+                  <div className="mb-3 px-2 py-1.5 rounded text-xs font-cormorant" style={{ background: 'rgba(61,90,76,0.1)', border: '1px solid rgba(61,90,76,0.25)', color: '#6aad8a' }}>
+                    {fmt(row.remainingAfterTeams)} available for GP rider picks
+                  </div>
+                )}
+                {!gpLocked ? (
+                  <div className="px-2 py-2 rounded text-xs font-cormorant italic text-center" style={{ background: 'rgba(180,149,48,0.05)', border: '1px solid rgba(180,149,48,0.15)', color: 'var(--mid)' }}>
+                    🔒 GP rider picks hidden until lock closes
+                  </div>
+                ) : row.riders.length > 0 ? (
+                  <div>
+                    <div className="font-cinzel text-xs mb-1.5" style={{ color: 'var(--gold)', fontSize: 9, letterSpacing: '0.1em' }}>GP RIDERS</div>
+                    {row.riders.map(({ rider, isCpt, salary, pts }) => (
+                      <div key={rider.id} className="flex items-center gap-2 py-1">
+                        {isCpt && <span className="font-cinzel text-xs px-1.5 py-0.5 rounded flex-shrink-0" style={{ background: 'rgba(180,149,48,0.15)', color: 'var(--gold)', fontSize: 8 }}>CPT</span>}
+                        <div className="flex-1 min-w-0">
+                          <div className="font-cormorant text-sm truncate" style={{ color: isCpt ? 'var(--gold-lt)' : 'var(--cream)' }}>{rider.name}</div>
+                          <div className="text-xs" style={{ color: 'var(--mid)', fontSize: 9 }}>{rider.nat}</div>
+                        </div>
+                        <div className="text-xs flex-shrink-0" style={{ color: 'var(--mid)' }}>{fmt(salary)}</div>
+                        {pts !== null ? (
+                          <div className="font-cormorant text-sm font-bold w-16 text-right flex-shrink-0" style={{ color: isCpt ? 'var(--gold)' : 'var(--gold-lt)' }}>
+                            {pts % 1 === 0 ? pts : pts.toFixed(1)} pts
+                            {isCpt && <span className="text-xs ml-0.5" style={{ color: 'var(--mid)' }}>×1.5</span>}
+                          </div>
+                        ) : <div className="text-xs w-16 text-right flex-shrink-0" style={{ color: 'var(--mid)' }}>—</div>}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="flex items-center justify-between mt-3 pt-2" style={{ borderTop: '1px solid rgba(42,40,32,0.4)' }}>
+                  <div className="font-cinzel text-xs" style={{ color: 'var(--mid)', fontSize: 9 }}>TOTAL SPENT: {fmt(row.totalSpent)}</div>
+                  {hasScore && <div className="font-cormorant text-base font-bold" style={{ color: 'var(--gold)' }}>{typeof row.score === 'number' ? row.score.toFixed(1) : row.score} pts</div>}
+                </div>
+              </div>
+            )}
+          </motion.div>
+        );
+      })}
     </div>
   );
 }
@@ -559,22 +626,18 @@ function SeasonLeaderboard({ rows }) {
   );
 }
 
-// GCL Standings — wins/events-played columns removed, since those came
-// from computeLiveGclStandings (now deleted) and there's no manual
-// equivalent. Position number now reflects t.rank as saved on the
-// Leaderboard editor, not just array index, so it stays correct even if
-// GCL_TEAMS_2026 ever fails to be in perfect sorted order for some reason.
 function GCLStandings({ rows }) {
-  if (!rows.length) return <Empty msg="No GCL standings entered yet" />;
+  if (!rows.length) return <Empty msg="No GCL results recorded yet" />;
   return (
     <div>
-      {rows.map(({ t, pts }, i) => (
+      {rows.map(({ t, pts, wins, events }, i) => (
         <motion.div key={t.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
           transition={{ delay: i * 0.02 }} className="flex items-center gap-2.5 px-4 py-2.5 border-b"
           style={{ borderColor: 'rgba(42,40,32,0.4)' }}>
-          <div className="font-cinzel text-xs w-5 text-center flex-shrink-0" style={{ color: i < 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>{t.rank || i + 1}</div>
+          <div className="font-cinzel text-xs w-5 text-center flex-shrink-0" style={{ color: i < 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>{i + 1}</div>
           <div className="flex-1 min-w-0">
             <div className="font-cormorant text-sm font-semibold" style={{ color: 'var(--cream)' }}>{t.name}</div>
+            <div className="text-xs" style={{ color: 'var(--mid)' }}>{events} events · {wins || 0} wins</div>
           </div>
           <div className="font-cormorant text-base font-bold" style={{ color: 'var(--gold-lt)' }}>{pts} pts</div>
         </motion.div>
