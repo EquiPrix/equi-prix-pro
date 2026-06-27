@@ -14,6 +14,7 @@ import MlsjEventStatusEditor from '@/components/admin/MlsjEventStatusEditor';
 import MlsjTeamStandingsEditor from '@/components/admin/MlsjTeamStandingsEditor';
 import MlsjStartListEditor from '@/components/admin/MlsjStartListEditor';
 import { MlsjResultsEditor } from '@/components/admin/MlsjResultsEditor';
+import MlsjTeamsEditor from '@/components/admin/MlsjTeamsEditor';
 import {
   Lock, BarChart3, Users, ListOrdered, Trophy, ShieldHalf,
   CalendarCog, TrendingUp, DoorOpen, Bell, Database,
@@ -35,6 +36,7 @@ const GCL_TABS = [
 const MLSJ_TABS = [
   { id: 'status',    label: 'Status',     icon: CalendarCog },
   { id: 'standings', label: 'Standings',  icon: TrendingUp  },
+  { id: 'teams',     label: 'Teams',      icon: ShieldHalf  },
   { id: 'startlist', label: 'Start List', icon: ListOrdered },
   { id: 'results',   label: 'Results',    icon: Trophy      },
   { id: 'rooms',     label: 'Rooms',      icon: DoorOpen    },
@@ -198,6 +200,7 @@ export default function Admin() {
         {/* ── League: MLSJ ── */}
         {!activeSharedTab && league === 'mlsj' && activeTab === 'status'    && <MlsjEventStatusEditor />}
         {!activeSharedTab && league === 'mlsj' && activeTab === 'standings' && <MlsjTeamStandingsEditor />}
+        {!activeSharedTab && league === 'mlsj' && activeTab === 'teams'     && <MlsjTeamsEditor />}
         {!activeSharedTab && league === 'mlsj' && activeTab === 'startlist' && <MlsjStartListEditor />}
         {!activeSharedTab && league === 'mlsj' && activeTab === 'results'   && <MlsjResultsEditor />}
         {!activeSharedTab && league === 'mlsj' && activeTab === 'rooms'     && <RoomsEditor league="mlsj" />}
