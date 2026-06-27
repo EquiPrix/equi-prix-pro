@@ -11,9 +11,8 @@ import { ChevronDown, ChevronUp, Lock, Plus, Hash } from 'lucide-react';
 
 const TABS = [
   { id: 'event', label: 'This Event' },
-  { id: 'season', label: '2026 Season' },
-  { id: 'gcl', label: 'GCL Standings' },
   { id: 'rooms', label: 'My Rooms' },
+  { id: 'gcl', label: 'GCL Standings' },
 ];
 
 function calcPickScore(picksJson, riderResults, teamResults) {
@@ -263,6 +262,12 @@ export default function LeaderboardTab() {
 
 function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode, setJoinCode, joinWithCode, joining, joinMsg, user }) {
   const [showRequest, setShowRequest] = useState(false);
+  const [showRecreate, setShowRecreate] = useState(false);
+  const [recreateFromRoom, setRecreateFromRoom] = useState('');
+  const [recreateEventId, setRecreateEventId] = useState('');
+  const [recreating, setRecreating] = useState(false);
+  const [recreateResult, setRecreateResult] = useState(null);
+  const [previousRooms, setPreviousRooms] = useState([]);
   const [reqEvent, setReqEvent] = useState('');
   const [reqName, setReqName] = useState('');
   const [reqMax, setReqMax] = useState(20);
@@ -270,6 +275,74 @@ function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode
   const [reqNotes, setReqNotes] = useState('');
   const [reqSending, setReqSending] = useState(false);
   const [reqResult, setReqResult] = useState(null);
+
+  const loadPreviousRooms = async () => {
+    if (!user?.email) return;
+    try {
+      const memberships = await sbFetch('room_members?user_email=eq.' + encodeURIComponent(user.email)) || [];
+      if (!memberships.length) return;
+      const roomIds = memberships.map(m => m.room_id);
+      const allRooms = await sbFetch('rooms?id=in.(' + roomIds.join(',') + ')') || [];
+      // Only show rooms NOT for the current event (historical)
+      const prev = allRooms.filter(r => r.event_id !== (currentEvent?.id || ''));
+      setPreviousRooms(prev);
+    } catch (e) { console.error(e); }
+  };
+
+  const recreateRoom = async () => {
+    const srcRoom = previousRooms.find(r => r.id === recreateFromRoom);
+    if (!srcRoom || !recreateEventId) return;
+    setRecreating(true);
+    setRecreateResult(null);
+    try {
+      const newCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const newEvent = EVENTS_2026.find(e => e.id === recreateEventId);
+
+      // Create new room
+      await sbFetch('rooms', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: srcRoom.name,
+          event_id: recreateEventId,
+          manager_email: srcRoom.manager_email,
+          max_size: srcRoom.max_size,
+          prize_description: srcRoom.prize_description || '',
+          sponsor_name: srcRoom.sponsor_name || '',
+          sponsor_logo_url: srcRoom.sponsor_logo_url || '',
+          is_sponsored: srcRoom.is_sponsored || false,
+          join_code: newCode,
+        })
+      });
+
+      // Get previous room members and invite them
+      const prevMembers = await sbFetch('room_members?room_id=eq.' + srcRoom.id) || [];
+      for (const m of prevMembers) {
+        try {
+          await fetch('/api/send-room-invite', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: m.user_email,
+              roomName: srcRoom.name,
+              prize: srcRoom.prize_description || null,
+              eventName: newEvent?.city || '',
+              eventFlag: newEvent?.flag || '🏇',
+              joinUrl: `${window.location.origin}/room/${newCode}`,
+              managerName: user?.user_metadata?.username || user?.email?.split('@')[0] || null,
+            }),
+          });
+        } catch (e) { console.warn('invite failed', m.user_email); }
+      }
+
+      setRecreateResult({ success: true, code: newCode, count: prevMembers.length, name: srcRoom.name });
+      setRecreateFromRoom('');
+      setRecreateEventId('');
+      loadMyRooms();
+    } catch (e) {
+      setRecreateResult({ success: false, msg: e.message });
+    } finally {
+      setRecreating(false); }
+  };
 
   const submitRequest = async () => {
     if (!reqEvent) return;
@@ -325,6 +398,74 @@ function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode
           <p className="font-cormorant italic text-sm mt-2" style={{ color: joinMsg.startsWith('✓') ? '#4caf7d' : '#e07070' }}>
             {joinMsg}
           </p>
+        )}
+      </div>
+
+      {/* Recreate from previous room */}
+      <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--ep-border)' }}>
+        <button onClick={() => { setShowRecreate(p => !p); if (!showRecreate) loadPreviousRooms(); setRecreateResult(null); }}
+          className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition-all"
+          style={{ background: showRecreate ? 'rgba(180,149,48,0.1)' : 'rgba(180,149,48,0.04)', border: '1px solid rgba(180,149,48,0.2)' }}>
+          <div>
+            <div className="font-cinzel text-xs text-left" style={{ color: 'var(--gold)', fontSize: 9, letterSpacing: '0.1em' }}>RECREATE FROM PREVIOUS ROOM</div>
+            <div className="font-cormorant italic text-xs text-left mt-0.5" style={{ color: 'var(--mid)' }}>Copy a past room and invite all its members to this event</div>
+          </div>
+          <span className="font-cinzel text-xs" style={{ color: 'var(--gold)', fontSize: 12 }}>{showRecreate ? '▲' : '+'}</span>
+        </button>
+
+        {showRecreate && (
+          <div className="mt-3 space-y-3">
+            {recreateResult?.success ? (
+              <div className="px-4 py-4 rounded-lg text-center" style={{ background: 'rgba(76,175,125,0.08)', border: '1px solid rgba(76,175,125,0.2)' }}>
+                <div className="text-2xl mb-2">🏇</div>
+                <div className="font-cormorant text-base font-semibold mb-1" style={{ color: '#4caf7d' }}>{recreateResult.name} recreated!</div>
+                <div className="font-cormorant italic text-sm mb-1" style={{ color: 'var(--mid)' }}>{recreateResult.count} member{recreateResult.count !== 1 ? 's' : ''} notified</div>
+                <div className="font-cinzel text-sm font-bold mb-3" style={{ color: 'var(--gold)' }}>New code: {recreateResult.code}</div>
+                <button onClick={() => { setShowRecreate(false); setRecreateResult(null); }}
+                  className="font-cinzel text-xs px-4 py-1.5 rounded"
+                  style={{ background: 'rgba(76,175,125,0.15)', color: '#4caf7d', border: '1px solid rgba(76,175,125,0.3)', letterSpacing: '0.08em' }}>
+                  CLOSE
+                </button>
+              </div>
+            ) : (
+              <>
+                {previousRooms.length === 0 ? (
+                  <p className="font-cormorant italic text-sm text-center py-2" style={{ color: 'var(--mid)' }}>No previous rooms found.</p>
+                ) : (
+                  <div>
+                    <label className="font-cinzel text-xs block mb-1" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>SELECT PREVIOUS ROOM</label>
+                    <select value={recreateFromRoom} onChange={e => setRecreateFromRoom(e.target.value)}
+                      style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(180,149,48,0.2)', color: recreateFromRoom ? 'var(--cream)' : 'var(--mid)', borderRadius: 4, padding: '8px 12px', fontSize: 13, outline: 'none', marginBottom: 8 }}>
+                      <option value="">— Select room —</option>
+                      {previousRooms.map(r => {
+                        const ev = EVENTS_2026.find(e => e.id === r.event_id);
+                        return <option key={r.id} value={r.id}>{r.name} · {ev ? `${ev.flag} ${ev.city}` : r.event_id}</option>;
+                      })}
+                    </select>
+                    <label className="font-cinzel text-xs block mb-1" style={{ color: 'var(--gold-lt)', fontSize: 9, letterSpacing: '0.08em' }}>NEW EVENT</label>
+                    <select value={recreateEventId} onChange={e => setRecreateEventId(e.target.value)}
+                      style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(180,149,48,0.2)', color: recreateEventId ? 'var(--cream)' : 'var(--mid)', borderRadius: 4, padding: '8px 12px', fontSize: 13, outline: 'none', marginBottom: 8 }}>
+                      <option value="">— Select event —</option>
+                      {EVENTS_2026.map(ev => <option key={ev.id} value={ev.id}>{ev.flag} {ev.city} · {ev.dates}</option>)}
+                    </select>
+                    {recreateFromRoom && (
+                      <p className="font-cormorant italic text-xs mb-3" style={{ color: 'var(--mid)' }}>
+                        All members from {previousRooms.find(r => r.id === recreateFromRoom)?.name} will receive an invite email.
+                      </p>
+                    )}
+                    {recreateResult?.success === false && (
+                      <p className="font-cormorant italic text-sm mb-2" style={{ color: '#e07070' }}>{recreateResult.msg}</p>
+                    )}
+                    <button onClick={recreateRoom} disabled={recreating || !recreateFromRoom || !recreateEventId}
+                      className="w-full py-3 rounded font-cinzel text-xs tracking-widest flex items-center justify-center gap-2 transition-all"
+                      style={{ background: recreating ? 'rgba(180,149,48,0.1)' : 'var(--gold)', color: recreating ? 'var(--mid)' : 'var(--ink)', letterSpacing: '0.1em', opacity: (!recreateFromRoom || !recreateEventId) ? 0.4 : 1 }}>
+                      {recreating ? 'CREATING & NOTIFYING…' : 'RECREATE & NOTIFY MEMBERS'}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         )}
       </div>
 

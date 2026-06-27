@@ -543,7 +543,7 @@ export default function RoomPage() {
           </div>
         )}
 
-        {/* Member list */}}
+        {/* Member list */}
         {(isMember || joined || isManager) && members.length > 0 && (
           <div className="rounded-xl overflow-hidden mb-4" style={{ border: '1px solid rgba(180,149,48,0.15)', background: '#14130e' }}>
             <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(180,149,48,0.1)' }}>
