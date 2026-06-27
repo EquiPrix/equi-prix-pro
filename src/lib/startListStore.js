@@ -1,7 +1,7 @@
 import { sbFetch } from '@/lib/equiprix-data';
 
-// localStorage cache key
-const KEY = 'equiprix_start_lists';
+// localStorage cache keys
+const KEY       = 'equiprix_start_lists';
 const HORSE_KEY = 'equiprix_horse_db';
 
 // ── localStorage helpers ──────────────────────────────────────────────────────
@@ -50,7 +50,6 @@ export async function loadStartListRemote(eventId) {
 // supabaseKey. Both are updated together on every save so they stay
 // in sync.
 export async function saveStartListRemote(eventId, data, supabaseKey) {
-  // Save to localStorage immediately
   saveLocal(eventId, data);
 
   try {
@@ -62,8 +61,8 @@ export async function saveStartListRemote(eventId, data, supabaseKey) {
         body: JSON.stringify({
           gp: data.gp || [],
           team_pairs: data.teamPairs || {},
-          updated_at: new Date().toISOString()
-        })
+          updated_at: new Date().toISOString(),
+        }),
       });
     } else {
       await sbFetch('start_lists', {
@@ -72,16 +71,13 @@ export async function saveStartListRemote(eventId, data, supabaseKey) {
           event: eventId,
           gp: data.gp || [],
           team_pairs: data.teamPairs || {},
-          updated_at: new Date().toISOString()
-        })
+          updated_at: new Date().toISOString(),
+        }),
       });
     }
 
     // 2. Mirror GP riders into results.gp_riders so EquiPrixContext's
     // loadEventData can read them for the Draft tab's Riders list.
-    // This is the existing read path — EquiPrixContext reads from
-    // results, not start_lists, so we write to both to keep them in
-    // sync rather than changing the read path.
     if (supabaseKey && data.gp?.length) {
       const resRows = await sbFetch('results?event=eq.' + supabaseKey + '&limit=1');
       if (resRows && resRows.length > 0) {
@@ -89,8 +85,8 @@ export async function saveStartListRemote(eventId, data, supabaseKey) {
           method: 'PATCH',
           body: JSON.stringify({
             gp_riders: data.gp,
-            updated_at: new Date().toISOString()
-          })
+            updated_at: new Date().toISOString(),
+          }),
         });
       } else {
         await sbFetch('results', {
@@ -98,8 +94,8 @@ export async function saveStartListRemote(eventId, data, supabaseKey) {
           body: JSON.stringify({
             event: supabaseKey,
             gp_riders: data.gp,
-            updated_at: new Date().toISOString()
-          })
+            updated_at: new Date().toISOString(),
+          }),
         });
       }
     }
@@ -108,15 +104,20 @@ export async function saveStartListRemote(eventId, data, supabaseKey) {
   }
 }
 
-// ── Horse DB: load from Supabase, merge with localStorage ────────────────────
+// ── Horse DB ─────────────────────────────────────────────────────────────────
+// CHANGED: reads/writes the dedicated `horse_db` table (id=1, data jsonb)
+// instead of the `results` hack (event='horse_registry'). Both leagues
+// (GCL and MLSJ) share this single source of truth — a horse entered for
+// any rider at any event is immediately available everywhere.
 
 export async function loadHorseDBRemote() {
   try {
-    const rows = await sbFetch('results?event=eq.horse_registry&limit=1');
-    if (rows && rows.length && rows[0].rider_results) {
-      const remoteDB = rows[0].rider_results;
-      const localDB = loadHorseDBLocal();
-      const merged = { ...localDB };
+    const rows = await sbFetch('horse_db?id=eq.1&limit=1');
+    if (rows && rows.length && rows[0].data) {
+      const remoteDB = rows[0].data;
+      // Merge with localStorage so offline edits aren't lost
+      const localDB  = loadHorseDBLocal();
+      const merged   = { ...localDB };
       Object.entries(remoteDB).forEach(([rider, horses]) => {
         if (!merged[rider]) merged[rider] = [];
         horses.forEach(h => {
@@ -135,20 +136,20 @@ export async function loadHorseDBRemote() {
 export async function saveHorseDBRemote(db) {
   saveHorseDBLocal(db);
   try {
-    await sbFetch('results', {
-      method: 'POST',
+    // Always upsert into id=1 — there is exactly one row in horse_db.
+    await sbFetch('horse_db?id=eq.1', {
+      method: 'PATCH',
       body: JSON.stringify({
-        event: 'horse_registry',
-        rider_results: db,
-        updated_at: new Date().toISOString()
-      })
+        data: db,
+        updated_at: new Date().toISOString(),
+      }),
     });
   } catch (e) {
     console.error('Could not save horse DB to Supabase:', e);
   }
 }
 
-// ── Legacy sync API (for backward compat with ResultsEditor) ─────────────────
+// ── Legacy sync API (backward compat with ResultsEditor) ─────────────────────
 
 export function loadStartLists() {
   return loadLocal();
