@@ -1,12 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { EVENTS_2026, GCL_TEAMS_2026, PREVIEW_RIDERS_2026, sbFetch, NAMES, VALID_CODES, calcEventRiderSalaries } from './equiprix-data';
 
-// Sentinel room_id representing "General Leaderboard" (not a real room).
-// Using NULL here would break Postgres's unique-constraint upsert logic,
-// since NULL is never considered equal to NULL in a uniqueness check —
-// every General save would silently fail to find/update the existing
-// row and either error or create duplicates. A real, fixed UUID avoids
-// that entirely while still being unambiguous as "not a real room."
 export const GENERAL_ROOM_ID = '00000000-0000-0000-0000-000000000000';
 
 const EquiPrixContext = createContext(null);
@@ -23,14 +17,8 @@ export function EquiPrixProvider({ children }) {
   const [toast, setToast] = useState(null);
   const hasAutoSelected = useRef(false);
 
-  // Destinations: where a user's picks for the CURRENT event get saved.
-  // null = General Leaderboard. A room object = that specific room.
-  // destinations is the list of options available right now (General,
-  // if not opted out, plus every room the user belongs to for this
-  // event); currentDestination is whichever one is selected in the
-  // Draft tab's selector.
-  const [currentDestination, setCurrentDestinationState] = useState(GENERAL_ROOM_ID); // GENERAL_ROOM_ID = General Leaderboard
-  const [destinations, setDestinations] = useState([]); // [{ id: null, name: 'General Leaderboard' }, { id: roomId, name, ... }]
+  const [currentDestination, setCurrentDestinationState] = useState(GENERAL_ROOM_ID);
+  const [destinations, setDestinations] = useState([]);
   const [generalOptedOut, setGeneralOptedOut] = useState(false);
   const [destinationsLoading, setDestinationsLoading] = useState(false);
 
@@ -41,10 +29,6 @@ export function EquiPrixProvider({ children }) {
     setTimeout(() => setToast(null), 2200);
   }, []);
 
-  // Builds the destination list for a given user+event: General (unless
-  // the user has opted out AND has at least one other room to fall back
-  // to — a user with zero rooms always keeps General, no toggle), plus
-  // every room scoped to this event the user is a member of.
   const loadDestinations = useCallback(async (identity, ev) => {
     if (!identity || !ev) { setDestinations([]); return; }
     setDestinationsLoading(true);
@@ -57,16 +41,12 @@ export function EquiPrixProvider({ children }) {
         myRooms = allRooms.filter(r => r.event_id === ev.supabaseKey || r.event_id === ev.id);
       }
 
-      // Opt-out preference is stored on the General picks row itself
-      // (picks_json.optedOutOfGeneral) so it's per-event and doesn't need
-      // a separate table. A user with no rooms can't opt out — General
-      // is their only destination, always on, no toggle shown.
       let optedOut = false;
       if (myRooms.length) {
         try {
           const genRows = await sbFetch('picks?user_email=eq.' + encodeURIComponent(identity) + '&event=eq.' + ev.id + '&room_id=eq.' + GENERAL_ROOM_ID + '&limit=1');
           optedOut = !!(genRows && genRows.length && genRows[0].picks_json?.optedOutOfGeneral);
-        } catch (e) { /* default to opted-in if we can't tell */ }
+        } catch (e) { /* default to opted-in */ }
       }
       setGeneralOptedOut(optedOut);
 
@@ -77,9 +57,6 @@ export function EquiPrixProvider({ children }) {
       myRooms.forEach(r => list.push({ id: r.id, name: r.name }));
       setDestinations(list);
 
-      // If the currently-selected destination no longer exists in the
-      // new list (e.g. switched events, or opted out of the one we were
-      // on), fall back to the first available option.
       setCurrentDestinationState(cur => {
         const stillValid = list.some(d => d.id === cur);
         return stillValid ? cur : (list[0]?.id ?? GENERAL_ROOM_ID);
@@ -100,10 +77,6 @@ export function EquiPrixProvider({ children }) {
     if (!identity || !ev) return;
     setGeneralOptedOut(optOut);
     try {
-      // Persist the flag on the General picks row (room_id = the
-      // GENERAL_ROOM_ID sentinel) so it survives reloads. Doesn't touch
-      // riders/teams already drafted for General — just marks visibility
-      // going forward.
       const rows = await sbFetch('picks?user_email=eq.' + encodeURIComponent(identity) + '&event=eq.' + ev.id + '&room_id=eq.' + GENERAL_ROOM_ID + '&limit=1');
       const existing = rows && rows.length ? rows[0].picks_json : { riders: [], teams: [] };
       await sbFetch('picks?on_conflict=user_email,event,room_id', {
@@ -124,20 +97,10 @@ export function EquiPrixProvider({ children }) {
   const getRiderList = (ev) => {
     const st = ev.status;
     if (st === 'past') return ev.riders || [];
-
-    // 'teams' status means the OFFICIAL GP start list isn't announced yet,
-    // but riders should still be visible so people can budget their team
-    // before the team lock — same gpRiders -> previewRiders -> riders
-    // fallback chain as every other open status. Once the real GP list
-    // is announced (ev.gpRiders populated), it takes over automatically;
-    // picks made against preview riders still resolve correctly since
-    // rider ids are stable across both lists.
     let rawRiders = null;
     if (ev.gpRiders?.length) rawRiders = ev.gpRiders;
     else if (ev.previewRiders?.length) rawRiders = ev.previewRiders;
     else rawRiders = ev.riders || [];
-
-    // Apply dynamic salary curve based on this event's field
     if (rawRiders.length) return calcEventRiderSalaries(rawRiders);
     return [];
   };
@@ -160,12 +123,10 @@ export function EquiPrixProvider({ children }) {
 
   const loadEventData = useCallback(async () => {
     try {
-      // Build the live events list FIRST (with Supabase status overrides
-      // merged in) — event status display/locking still depends on this.
+      // 1. Build live events list from results (status overrides, gp_riders, etc.)
       const rows = await sbFetch('results?select=event,event_status,gp_riders,preview_riders,team_lock_iso,gp_lock_iso');
 
       let updatedEvents = EVENTS_2026.map(e => ({ ...e }));
-
       if (rows && rows.length) {
         updatedEvents = updatedEvents.map(ev => {
           const row = rows.find(r => r.event === ev.supabaseKey);
@@ -180,40 +141,39 @@ export function EquiPrixProvider({ children }) {
           };
         });
       }
-
       setEvents(updatedEvents);
 
-      // GCL rank/pts/salary are now ENTIRELY manual — entered on the
-      // Leaderboard tab (TeamStandingsEditor) and saved into the
-      // team_salaries Supabase row. This is the single source of truth
-      // for GCL_TEAMS_2026; nothing is derived from entered event results
-      // anymore (that calculation — computeLiveGclStandings — has been
-      // removed, since it drifted from the official GCL site and produced
-      // a second, conflicting number). Draft pricing/ranking, the public
-      // Leaderboard, and this admin context all now read the same saved
-      // values, with no live-vs-manual disagreement possible.
-      const salRows = await sbFetch('results?event=eq.team_salaries&limit=1');
-      if (salRows && salRows.length && salRows[0].gp_riders) {
-        salRows[0].gp_riders.forEach(sv => {
+      // 2. CHANGED: GCL team standings now read from dedicated gcl_team_standings
+      // table (id=1, data jsonb) instead of results sentinel row 'team_salaries'.
+      // Shape is identical — array of { id, rank, pts, salary } objects.
+      const standingsRows = await sbFetch('gcl_team_standings?id=eq.1&limit=1');
+      if (standingsRows && standingsRows.length && standingsRows[0].data?.length) {
+        standingsRows[0].data.forEach(sv => {
           const t = GCL_TEAMS_2026.find(x => x.id === sv.id);
           if (!t) return;
           if (sv.rank !== undefined && sv.rank !== '') t.rank = Number(sv.rank);
-          if (sv.pts !== undefined && sv.pts !== '') t.pts = Number(sv.pts);
+          if (sv.pts  !== undefined && sv.pts  !== '') t.pts  = Number(sv.pts);
           if (sv.salary) t.salary = sv.salary;
         });
-        // Keep GCL_TEAMS_2026 sorted by rank so every consumer that reads
-        // it directly (Draft tab pricing order, public Leaderboard, etc.)
-        // sees the manually-entered order.
         GCL_TEAMS_2026.sort((a, b) => (Number(a.rank) || 99) - (Number(b.rank) || 99));
       }
 
-      // Load FEI rankings (updates PREVIEW_RIDERS_2026 base ranks)
-      const rankRows = await sbFetch('results?event=eq.fei_rankings&limit=1');
-      if (rankRows && rankRows.length && rankRows[0].gp_riders) {
-        rankRows[0].gp_riders.forEach(sr => {
-          const r = PREVIEW_RIDERS_2026.find(pr => pr.id === sr.id);
-          if (r) { r.rank = sr.rank; }
-          // Note: salary is now calculated dynamically, not stored
+      // 3. CHANGED: FEI rankings now read from the riders table directly
+      // (rank + salary columns updated by RankingsImport on each monthly
+      // upload) instead of the results sentinel row 'fei_rankings'.
+      // We fetch all riders in one call and overlay onto PREVIEW_RIDERS_2026
+      // so every consumer that reads that array gets live ranks.
+      const riderRows = await sbFetch('riders?select=id,rank,salary&limit=1000');
+      if (riderRows && riderRows.length) {
+        const rankMap = {};
+        riderRows.forEach(r => { rankMap[String(r.id)] = { rank: r.rank, salary: r.salary }; });
+        PREVIEW_RIDERS_2026.forEach(r => {
+          const live = rankMap[String(r.id)];
+          // Only overwrite if we have a real rank (not 999 placeholder)
+          if (live && live.rank && live.rank !== 999) {
+            r.rank   = live.rank;
+            r.salary = live.salary;
+          }
         });
       }
 
@@ -251,17 +211,12 @@ export function EquiPrixProvider({ children }) {
     loadEventData();
   }, [loadEventData]);
 
-  // identity is the user's email (activeUserIdentity from EquiPrix.jsx).
-  // roomId is GENERAL_ROOM_ID for General Leaderboard, or a room's real
-  // uuid — defaults to whatever's currently selected if not passed
-  // explicitly.
   const loadSavedPicks = useCallback(async (identity, ev, roomId = currentDestination) => {
     if (!ev || !['preview', 'teams', 'riders', 'open'].includes(ev.status)) return;
     try {
       const rows = await sbFetch('picks?user_email=eq.' + encodeURIComponent(identity) + '&event=eq.' + ev.id + '&room_id=eq.' + (roomId || GENERAL_ROOM_ID) + '&limit=1');
       if (rows && rows.length > 0) {
         const p = rows[0].picks_json;
-
         const allAvailableRiders = [
           ...(ev.gpRiders || []),
           ...(ev.previewRiders || []),
@@ -274,10 +229,7 @@ export function EquiPrixProvider({ children }) {
           seenIds.add(r.id);
           return true;
         });
-
-        // Apply dynamic salaries to restored picks too
         const evRidersWithSalaries = calcEventRiderSalaries(evRiders);
-
         const evTeams = ev.teams && ev.teams.length ? ev.teams : GCL_TEAMS_2026;
         const SLOT_IDS = ['cpt', 'r1', 'r2', 'r3', 'r4'];
         const newTeam = [];
@@ -294,8 +246,6 @@ export function EquiPrixProvider({ children }) {
         setTeamPicks(newTeamPicks);
         showToast('Picks restored ✓');
       } else {
-        // No saved picks for this destination yet — clear the roster
-        // rather than leaving the previous destination's picks showing.
         setTeam([]);
         setTeamPicks([]);
       }
@@ -306,9 +256,9 @@ export function EquiPrixProvider({ children }) {
 
   const login = useCallback((code) => {
     const upper = code.trim().toUpperCase();
-    const isNamedCode = VALID_CODES.includes(upper);
-    const isEqprixCode = /^EQPRIX\d{2}$/.test(upper);
-    const isDemoCode = upper === 'EQUIPRIX' || upper === 'BETA2026';
+    const isNamedCode   = VALID_CODES.includes(upper);
+    const isEqprixCode  = /^EQPRIX\d{2}$/.test(upper);
+    const isDemoCode    = upper === 'EQUIPRIX' || upper === 'BETA2026';
     if (isNamedCode || isEqprixCode || isDemoCode) {
       setUserCode(upper);
       localStorage.setItem('ep_code', upper);

@@ -4,33 +4,33 @@ import { supabase } from '@/lib/supabaseClient';
 import { Send, Users, CheckCircle, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 
 const NOTIFICATION_TYPES = [
-  { id: 'draft_open', label: 'Draft Open', description: 'Team picks are open', icon: '🟢' },
-  { id: 'team_results', label: 'Team Results + GP Draft', description: 'Team results + GP draft open', icon: '🏆' },
-  { id: 'final_results', label: 'Final Results', description: 'Event complete + leaderboard', icon: '🎯' },
-  { id: 'new_event', label: 'New Event', description: 'Announce upcoming event', icon: '📣' },
-  { id: 'custom', label: 'Custom', description: 'Write your own message', icon: '✉️' },
+  { id: 'draft_open',     label: 'Draft Open',          description: 'Team picks are open',              icon: '🟢' },
+  { id: 'team_results',   label: 'Team Results + GP Draft', description: 'Team results + GP draft open', icon: '🏆' },
+  { id: 'final_results',  label: 'Final Results',        description: 'Event complete + leaderboard',     icon: '🎯' },
+  { id: 'new_event',      label: 'New Event',            description: 'Announce upcoming event',           icon: '📣' },
+  { id: 'custom',         label: 'Custom',               description: 'Write your own message',            icon: '✉️' },
 ];
 
 export default function NotificationsEditor() {
-  const [selectedType, setSelectedType] = useState('draft_open');
+  const [selectedType, setSelectedType]       = useState('draft_open');
   const [selectedEventId, setSelectedEventId] = useState('');
-  const [eventStartTime, setEventStartTime] = useState(''); // e.g. "Saturday June 21 at 8:00 PM CET"
-  const [customMessage, setCustomMessage] = useState('');
-  const [customSubject, setCustomSubject] = useState('');
-  const [sponsorName, setSponsorName] = useState('');
+  const [eventStartTime, setEventStartTime]   = useState('');
+  const [customMessage, setCustomMessage]     = useState('');
+  const [customSubject, setCustomSubject]     = useState('');
+  const [sponsorName, setSponsorName]         = useState('');
 
-  const [allUsers, setAllUsers] = useState([]);
-  const [rooms, setRooms] = useState([]);
+  const [allUsers, setAllUsers]               = useState([]);
+  const [rooms, setRooms]                     = useState([]);
   const [selectedRoomIds, setSelectedRoomIds] = useState([]);
-  const [manualEmails, setManualEmails] = useState('');
-  const [recipientMode, setRecipientMode] = useState('all');
+  const [manualEmails, setManualEmails]       = useState('');
+  const [recipientMode, setRecipientMode]     = useState('all');
   const [loadingRecipients, setLoadingRecipients] = useState(false);
 
-  const [showUserList, setShowUserList] = useState(false);
+  const [showUserList, setShowUserList]         = useState(false);
   const [showUnsubscribed, setShowUnsubscribed] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [result, setResult] = useState(null);
-  const [preview, setPreview] = useState(false);
+  const [sending, setSending]   = useState(false);
+  const [result, setResult]     = useState(null);
+  const [preview, setPreview]   = useState(false);
 
   useEffect(() => { loadAll(); }, []);
 
@@ -42,13 +42,16 @@ export default function NotificationsEditor() {
         .select('email, username, email_notifications')
         .order('username');
 
+      // CHANGED: read user_mapping from its dedicated table (id=1, data jsonb)
+      // instead of the results sentinel row 'user_mapping'.
       const legacyEmails = new Map();
-      const mapping = await sbFetch('results?event=eq.user_mapping&limit=1');
-      if (mapping?.[0]?.rider_results) {
-        Object.entries(mapping[0].rider_results).forEach(([email, data]) => {
+      const mappingRows = await sbFetch('user_mapping?id=eq.1&limit=1');
+      if (mappingRows?.[0]?.data) {
+        Object.entries(mappingRows[0].data).forEach(([email, data]) => {
           if (email.includes('@')) legacyEmails.set(email, data.username || email.split('@')[0]);
         });
       }
+
       const members = await sbFetch('room_members?select=user_email,username') || [];
       members.forEach(m => { if (m.user_email?.includes('@')) legacyEmails.set(m.user_email, m.username); });
 
@@ -62,11 +65,14 @@ export default function NotificationsEditor() {
 
       const roomList = await sbFetch('rooms?order=name.asc&select=id,name,join_code,event_id') || [];
       setRooms(roomList);
-    } catch (e) { console.error(e); }
-    finally { setLoadingRecipients(false); }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingRecipients(false);
+    }
   };
 
-  const subscribedUsers = allUsers.filter(u => u.email_notifications !== false);
+  const subscribedUsers   = allUsers.filter(u => u.email_notifications !== false);
   const unsubscribedUsers = allUsers.filter(u => u.email_notifications === false);
 
   const getRecipients = async () => {
@@ -78,9 +84,11 @@ export default function NotificationsEditor() {
       const roomMembers = await Promise.all(
         selectedRoomIds.map(id => sbFetch('room_members?room_id=eq.' + id + '&select=user_email'))
       );
-      const unsub = new Set(unsubscribedUsers.map(u => u.email));
+      const unsub  = new Set(unsubscribedUsers.map(u => u.email));
       const emails = new Set();
-      roomMembers.flat().forEach(m => { if (m?.user_email?.includes('@') && !unsub.has(m.user_email)) emails.add(m.user_email); });
+      roomMembers.flat().forEach(m => {
+        if (m?.user_email?.includes('@') && !unsub.has(m.user_email)) emails.add(m.user_email);
+      });
       return [...emails];
     }
     const extras = manualEmails.split(/[\n,;]/).map(e => e.trim()).filter(e => e.includes('@'));
@@ -88,9 +96,7 @@ export default function NotificationsEditor() {
   };
 
   const selectedEvent = EVENTS_2026.find(e => e.id === selectedEventId);
-
-  // Build lock time string for email
-  const lockTimeStr = eventStartTime
+  const lockTimeStr   = eventStartTime
     ? `${eventStartTime} (picks lock 5 minutes before start)`
     : null;
 
@@ -104,21 +110,24 @@ export default function NotificationsEditor() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: selectedType,
-          recipients: to,
-          eventName: selectedEvent?.city || '',
-          eventFlag: selectedEvent?.flag || '🏇',
-          eventDates: selectedEvent?.dates || '',
-          lockTime: lockTimeStr,
+          type:          selectedType,
+          recipients:    to,
+          eventName:     selectedEvent?.city  || '',
+          eventFlag:     selectedEvent?.flag  || '🏇',
+          eventDates:    selectedEvent?.dates || '',
+          lockTime:      lockTimeStr,
           customMessage: customMessage || null,
           customSubject: customSubject || null,
-          sponsorName: sponsorName || null,
+          sponsorName:   sponsorName   || null,
         }),
       });
       const data = await res.json();
       setResult(data);
-    } catch (e) { setResult({ error: e.message }); }
-    finally { setSending(false); }
+    } catch (e) {
+      setResult({ error: e.message });
+    } finally {
+      setSending(false);
+    }
   };
 
   const inputStyle = {
@@ -149,18 +158,18 @@ export default function NotificationsEditor() {
           <span className="font-cormorant text-sm flex-1" style={{ color: 'var(--cream)' }}>
             {loadingRecipients ? 'Loading…' : `${allUsers.length} total · ${subscribedUsers.length} subscribed · ${unsubscribedUsers.length} unsubscribed`}
           </span>
-          <button onClick={loadAll} className="font-cinzel text-xs" style={{ color: 'var(--mid)', fontSize: 9, letterSpacing: '0.08em' }}>REFRESH</button>
+          <button onClick={loadAll} className="font-cinzel text-xs"
+            style={{ color: 'var(--mid)', fontSize: 9, letterSpacing: '0.08em' }}>REFRESH</button>
         </div>
 
-        {/* Mode tabs */}
         <div className="flex" style={{ borderTop: '1px solid rgba(180,149,48,0.1)' }}>
           {[{ id: 'all', label: 'All Users' }, { id: 'rooms', label: 'By Room' }, { id: 'manual', label: 'Manual' }].map(m => (
             <button key={m.id} onClick={() => setRecipientMode(m.id)}
               className="flex-1 py-2 font-cinzel text-xs transition-all"
               style={{
-                background: recipientMode === m.id ? 'rgba(180,149,48,0.1)' : 'transparent',
+                background:   recipientMode === m.id ? 'rgba(180,149,48,0.1)' : 'transparent',
                 borderBottom: `2px solid ${recipientMode === m.id ? 'var(--gold)' : 'transparent'}`,
-                color: recipientMode === m.id ? 'var(--gold)' : 'var(--mid)',
+                color:        recipientMode === m.id ? 'var(--gold)' : 'var(--mid)',
                 fontSize: 9, letterSpacing: '0.08em',
               }}>
               {m.label.toUpperCase()}
@@ -171,7 +180,6 @@ export default function NotificationsEditor() {
         <div className="p-3">
           {recipientMode === 'all' && (
             <>
-              {/* Subscribed */}
               <button onClick={() => setShowUserList(p => !p)}
                 className="w-full flex items-center justify-between px-3 py-2 rounded mb-2"
                 style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(180,149,48,0.15)' }}>
@@ -189,13 +197,13 @@ export default function NotificationsEditor() {
                         <div className="font-cormorant text-sm" style={{ color: 'var(--cream)' }}>{u.username || '—'}</div>
                         <div className="font-cormorant text-xs italic" style={{ color: 'var(--mid)' }}>{u.email}</div>
                       </div>
-                      <span className="font-cinzel px-1.5 py-0.5 rounded" style={{ background: 'rgba(76,175,125,0.1)', color: '#4caf7d', fontSize: 7 }}>✓</span>
+                      <span className="font-cinzel px-1.5 py-0.5 rounded"
+                        style={{ background: 'rgba(76,175,125,0.1)', color: '#4caf7d', fontSize: 7 }}>✓</span>
                     </div>
                   ))}
                 </div>
               )}
 
-              {/* Unsubscribed */}
               <button onClick={() => setShowUnsubscribed(p => !p)}
                 className="w-full flex items-center justify-between px-3 py-2 rounded"
                 style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(180,149,48,0.1)' }}>
@@ -215,7 +223,8 @@ export default function NotificationsEditor() {
                         <div className="font-cormorant text-sm" style={{ color: 'var(--cream)' }}>{u.username || '—'}</div>
                         <div className="font-cormorant text-xs italic" style={{ color: 'var(--mid)' }}>{u.email}</div>
                       </div>
-                      <span className="font-cinzel px-1.5 py-0.5 rounded" style={{ background: 'rgba(224,112,112,0.1)', color: '#e07070', fontSize: 7 }}>OFF</span>
+                      <span className="font-cinzel px-1.5 py-0.5 rounded"
+                        style={{ background: 'rgba(224,112,112,0.1)', color: '#e07070', fontSize: 7 }}>OFF</span>
                     </div>
                   ))}
                 </div>
@@ -238,7 +247,7 @@ export default function NotificationsEditor() {
               {rooms.length === 0 ? (
                 <p className="font-cormorant italic text-sm text-center py-2" style={{ color: 'var(--mid)' }}>No rooms yet.</p>
               ) : rooms.map(room => {
-                const ev = EVENTS_2026.find(e => e.id === room.event_id);
+                const ev  = EVENTS_2026.find(e => e.id === room.event_id);
                 const sel = selectedRoomIds.includes(room.id);
                 return (
                   <button key={room.id}
@@ -291,7 +300,6 @@ export default function NotificationsEditor() {
         </div>
       </div>
 
-      {/* Event */}
       {selectedType !== 'custom' && (
         <div className="mb-4">
           <label style={labelStyle}>EVENT</label>
@@ -304,26 +312,14 @@ export default function NotificationsEditor() {
         </div>
       )}
 
-      {/* Event start time — shown for draft_open and team_results */}
       {(selectedType === 'draft_open' || selectedType === 'team_results') && (
         <div className="mb-4 rounded-lg p-3" style={{ background: 'rgba(180,149,48,0.04)', border: '1px solid rgba(180,149,48,0.15)' }}>
           <label style={labelStyle}>EVENT START TIME (CET)</label>
-          <input
-            value={eventStartTime}
-            onChange={e => setEventStartTime(e.target.value)}
-            placeholder="e.g. Saturday June 21 at 8:00 PM CET"
-            style={inputStyle}
-          />
-          {eventStartTime && (
-            <p className="font-cormorant italic text-xs mt-2" style={{ color: 'var(--gold-lt)' }}>
-              Email will say: picks lock 5 minutes before <strong>{eventStartTime}</strong>
-            </p>
-          )}
-          {!eventStartTime && (
-            <p className="font-cormorant italic text-xs mt-2" style={{ color: 'var(--mid)' }}>
-              Leave blank to omit lock time from email
-            </p>
-          )}
+          <input value={eventStartTime} onChange={e => setEventStartTime(e.target.value)}
+            placeholder="e.g. Saturday June 21 at 8:00 PM CET" style={inputStyle} />
+          {eventStartTime
+            ? <p className="font-cormorant italic text-xs mt-2" style={{ color: 'var(--gold-lt)' }}>Email will say: picks lock 5 minutes before <strong>{eventStartTime}</strong></p>
+            : <p className="font-cormorant italic text-xs mt-2" style={{ color: 'var(--mid)' }}>Leave blank to omit lock time from email</p>}
         </div>
       )}
 
@@ -351,7 +347,6 @@ export default function NotificationsEditor() {
           rows={3} style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }} />
       </div>
 
-      {/* Preview */}
       <button onClick={() => setPreview(p => !p)}
         className="font-cinzel text-xs mb-4 px-3 py-1.5 rounded transition-all"
         style={{ background: preview ? 'rgba(180,149,48,0.12)' : 'rgba(255,255,255,0.03)', border: '1px solid rgba(180,149,48,0.2)', color: preview ? 'var(--gold)' : 'var(--mid)', letterSpacing: '0.08em', fontSize: 9 }}>
@@ -368,11 +363,11 @@ export default function NotificationsEditor() {
               </div>
               <div style={{ padding: '20px' }}>
                 <p style={{ fontSize: 16, color: '#e8e0cc', margin: '0 0 10px', fontStyle: 'italic', textAlign: 'center' }}>
-                  {selectedType === 'draft_open' ? 'The draft is open.' :
-                   selectedType === 'team_results' ? 'Team results are in.' :
-                   selectedType === 'final_results' ? 'Final results are in.' :
-                   selectedType === 'custom' ? (customSubject || 'Custom message.') :
-                   selectedEvent ? `${selectedEvent.city} is coming.` : 'New event.'}
+                  {selectedType === 'draft_open'    ? 'The draft is open.'
+                   : selectedType === 'team_results'  ? 'Team results are in.'
+                   : selectedType === 'final_results' ? 'Final results are in.'
+                   : selectedType === 'custom'        ? (customSubject || 'Custom message.')
+                   : selectedEvent ? `${selectedEvent.city} is coming.` : 'New event.'}
                 </p>
                 <p style={{ fontSize: 12, color: '#b49530', lineHeight: 1.6, margin: '0 0 16px' }}>
                   {selectedType === 'draft_open' && selectedEvent
@@ -387,9 +382,10 @@ export default function NotificationsEditor() {
                 </p>
                 <div style={{ textAlign: 'center' }}>
                   <span style={{ display: 'inline-block', background: '#b49530', color: '#0f0e0a', padding: '10px 24px', borderRadius: 3, fontSize: 10, fontWeight: 'bold', letterSpacing: '0.12em' }}>
-                    {selectedType === 'draft_open' ? 'MAKE YOUR PICKS' :
-                     selectedType === 'team_results' ? 'VIEW RESULTS & PICK RIDERS' :
-                     selectedType === 'final_results' ? 'VIEW FINAL LEADERBOARD' : 'OPEN EQUIPRIX'}
+                    {selectedType === 'draft_open'    ? 'MAKE YOUR PICKS'
+                     : selectedType === 'team_results'  ? 'VIEW RESULTS & PICK RIDERS'
+                     : selectedType === 'final_results' ? 'VIEW FINAL LEADERBOARD'
+                     : 'OPEN EQUIPRIX'}
                   </span>
                 </div>
               </div>
