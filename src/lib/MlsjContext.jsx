@@ -4,24 +4,23 @@ import {
 } from './mlsj-data';
 import { PREVIEW_RIDERS_2026 } from './equiprix-data';
 
+// Shared sentinel — picks with no room assigned land in the General
+// Leaderboard. Must match the value in EquiPrixContext.
+export const GENERAL_ROOM_ID = '00000000-0000-0000-0000-000000000000';
+const MLSJ_LEAGUE = 'mlsj';
+
 const MlsjContext = createContext(null);
 
 export function MlsjProvider({ children }) {
-  const [events, setEvents] = useState(() => MLSJ_EVENTS_2026_27.map(e => ({ ...e })));
+  const [events, setEvents]   = useState(() => MLSJ_EVENTS_2026_27.map(e => ({ ...e })));
   const [currentEvent, setCurrentEventState] = useState(null);
-
-  // Combined roster: GP riders (with captain) + 2 picked real MLSJ teams, single cap
-  const [gpTeam, setGpTeam] = useState([]);       // [{ rider, slotId, isCpt }]
-  const [teamPicks, setTeamPicks] = useState([]); // [{ ...mlsjTeam, slotId: 'mt1' | 'mt2' }]
-
-  const [riders, setRiders] = useState([]);       // available GP riders for current event
-  const [mlsjTeams, setMlsjTeams] = useState([]); // available MLSJ teams (priced) for current event
-  // Shared rider list (rank/salary) — same underlying data as GCL's rankings,
-  // since a rider's FEI rank doesn't change depending on which league reads it.
+  const [gpTeam, setGpTeam]       = useState([]);
+  const [teamPicks, setTeamPicks] = useState([]);
+  const [riders, setRiders]       = useState([]);
+  const [mlsjTeams, setMlsjTeams] = useState([]);
   const [mlsjRiderRankings, setMlsjRiderRankings] = useState(PREVIEW_RIDERS_2026);
-
   const [isLoading, setIsLoading] = useState(true);
-  const [toast, setToast] = useState(null);
+  const [toast, setToast]         = useState(null);
   const hasAutoSelected = useRef(false);
 
   const showToast = useCallback((msg) => {
@@ -29,16 +28,11 @@ export function MlsjProvider({ children }) {
     setTimeout(() => setToast(null), 2200);
   }, []);
 
-  // Build each team's declaredTrio with resolved rank (from latest shared
-  // rankings), then price by combined trio strength. Teams with no declared
-  // trio yet fall back to a neutral "worst-case" price via calcMlsjTeamSalaries.
   const getPricedTeams = (ev, riderList = mlsjRiderRankings) => {
-    const declaredByTeam = ev.declaredTrioIds || {}; // { [teamId]: [id, id, id] }
+    const declaredByTeam = ev.declaredTrioIds || {};
     const withTrio = MLSJ_TEAMS_2026.map(team => {
       const ids = declaredByTeam[team.id] || [];
-      const declaredTrio = ids
-        .map(id => riderList.find(r => r.id === id))
-        .filter(Boolean);
+      const declaredTrio = ids.map(id => riderList.find(r => r.id === id)).filter(Boolean);
       return { ...team, declaredTrio };
     });
     return calcMlsjTeamSalaries(withTrio);
@@ -69,44 +63,42 @@ export function MlsjProvider({ children }) {
 
   const loadEventData = useCallback(async () => {
     try {
-      // Shared rankings row — SAME row GCL's RankingsImport writes to
-      // (event = 'fei_rankings'). One upload updates every rider, in both
-      // leagues, since FEI rank doesn't depend on which league is reading it.
-      const rankRows = await sbFetch("results?event=eq.fei_rankings&limit=1");
+      // CHANGED: read live FEI rankings from riders table instead of
+      // results sentinel row 'fei_rankings' — same source as GCL.
+      const riderRows = await sbFetch('riders?select=id,rank,salary&limit=1000');
       let updatedRankings = PREVIEW_RIDERS_2026.map(r => ({ ...r }));
-      if (rankRows && rankRows.length && rankRows[0].gp_riders?.length) {
-        rankRows[0].gp_riders.forEach(sr => {
-          const r = updatedRankings.find(pr => pr.id === sr.id);
-          if (r && sr.rank) r.rank = sr.rank;
+      if (riderRows && riderRows.length) {
+        const rankMap = {};
+        riderRows.forEach(r => { rankMap[String(r.id)] = { rank: r.rank, salary: r.salary }; });
+        updatedRankings = updatedRankings.map(r => {
+          const live = rankMap[String(r.id)];
+          return live && live.rank && live.rank !== 999
+            ? { ...r, rank: live.rank, salary: live.salary }
+            : { ...r };
         });
       }
       setMlsjRiderRankings(updatedRankings);
 
-      // Each leg's row in `results` (event = mlsj supabaseKey) carries:
-      //   event_status, gp_riders (start list), declared_trio_ids ({teamId: [id,id,id]}),
-      //   team_results (per-team round outcomes), gp_lock_iso, team_lock_iso
       const rows = await sbFetch(
         'results?select=event,event_status,gp_riders,declared_trio_ids,team_results,gp_lock_iso,team_lock_iso'
       );
 
       let updatedEvents = MLSJ_EVENTS_2026_27.map(e => ({ ...e }));
-
       if (rows && rows.length) {
         updatedEvents = updatedEvents.map(ev => {
           const row = rows.find(r => r.event === ev.supabaseKey);
           if (!row) return ev;
           return {
             ...ev,
-            ...(row.event_status ? { status: row.event_status } : {}),
-            ...(row.gp_lock_iso ? { gpLockISO: row.gp_lock_iso } : {}),
-            ...(row.team_lock_iso ? { teamLockISO: row.team_lock_iso } : {}),
-            ...(row.gp_riders?.length ? { gpRiders: row.gp_riders } : {}),
-            ...(row.declared_trio_ids ? { declaredTrioIds: row.declared_trio_ids } : {}),
-            ...(row.team_results ? { teamResults: row.team_results } : {}),
+            ...(row.event_status      ? { status:           row.event_status      } : {}),
+            ...(row.gp_lock_iso       ? { gpLockISO:        row.gp_lock_iso       } : {}),
+            ...(row.team_lock_iso     ? { teamLockISO:      row.team_lock_iso     } : {}),
+            ...(row.gp_riders?.length ? { gpRiders:         row.gp_riders         } : {}),
+            ...(row.declared_trio_ids ? { declaredTrioIds:  row.declared_trio_ids } : {}),
+            ...(row.team_results      ? { teamResults:      row.team_results      } : {}),
           };
         });
       }
-
       setEvents(updatedEvents);
 
       if (!hasAutoSelected.current) {
@@ -148,19 +140,25 @@ export function MlsjProvider({ children }) {
     loadEventData();
   }, [loadEventData]);
 
-  const loadSavedPicks = useCallback(async (identity, ev) => {
+  // CHANGED: reads from shared picks table with league='mlsj' filter.
+  // room_id defaults to GENERAL_ROOM_ID so rooms support works from day one.
+  const loadSavedPicks = useCallback(async (identity, ev, roomId = GENERAL_ROOM_ID) => {
     if (!ev || !['preview', 'teams', 'riders', 'open'].includes(ev.status)) return;
     try {
-      let rows = await sbFetch(
-        'mlsj_picks?user_email=eq.' + encodeURIComponent(identity) + '&event=eq.' + ev.id + '&limit=1'
+      const rows = await sbFetch(
+        'picks?user_email=eq.' + encodeURIComponent(identity) +
+        '&event=eq.' + ev.id +
+        '&league=eq.' + MLSJ_LEAGUE +
+        '&room_id=eq.' + roomId +
+        '&limit=1'
       );
       if (!rows || !rows.length) return;
 
-      const p = rows[0].picks_json;
+      const p        = rows[0].picks_json;
       const evRiders = getRiderList(ev);
-      const evTeams = getPricedTeams(ev);
+      const evTeams  = getPricedTeams(ev);
 
-      const SLOT_IDS = ['cpt', 'r1', 'r2', 'r3', 'r4'];
+      const SLOT_IDS  = ['cpt', 'r1', 'r2', 'r3', 'r4'];
       const newGpTeam = [];
       (p.riders || []).forEach(s => {
         const rider = evRiders.find(r => r.id === s.id);
@@ -181,22 +179,26 @@ export function MlsjProvider({ children }) {
     }
   }, [showToast]);
 
-  const savePicks = useCallback(async (identity, ev, explicitGpTeam, explicitTeamPicks) => {
+  // CHANGED: upserts into shared picks table with league='mlsj'.
+  // Conflict key: user_email + event + league + room_id (picks_unique_league_dest).
+  const savePicks = useCallback(async (identity, ev, explicitGpTeam, explicitTeamPicks, roomId = GENERAL_ROOM_ID) => {
     if (!identity || !ev) return false;
-    const gt = explicitGpTeam ?? gpTeam;
+    const gt = explicitGpTeam   ?? gpTeam;
     const tp = explicitTeamPicks ?? teamPicks;
     try {
-      const body = [{
-        user_email: identity,
-        event: ev.id,
-        picks_json: {
-          riders: gt.map(t => ({ id: t.rider.id, isCpt: !!t.isCpt })),
-          teams: tp.map(t => ({ id: t.id })),
-        },
-      }];
-      await sbFetch('mlsj_picks?on_conflict=user_email,event', {
+      await sbFetch('picks?on_conflict=user_email,event,league,room_id', {
         method: 'POST',
-        body: JSON.stringify(body),
+        body: JSON.stringify([{
+          user_email: identity,
+          event:      ev.id,
+          league:     MLSJ_LEAGUE,
+          room_id:    roomId,
+          picks_json: {
+            riders: gt.map(t => ({ id: t.rider.id, isCpt: !!t.isCpt })),
+            teams:  tp.map(t => ({ id: t.id })),
+          },
+          updated_at: new Date().toISOString(),
+        }]),
       });
       showToast('Picks saved ✓');
       return true;
