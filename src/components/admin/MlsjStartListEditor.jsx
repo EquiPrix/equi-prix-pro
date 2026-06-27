@@ -218,12 +218,16 @@ export default function MlsjStartListEditor() {
     // pages are now stored and read from the same place.
     loadHorseDBRemote().then(db => setHorseDB(db || {}));
 
-    sbFetch('results?event=eq.fei_rankings&limit=1').then(rows => {
-      if (rows && rows.length && rows[0].gp_riders?.length) {
-        const updated = PREVIEW_RIDERS_2026.map(r => ({ ...r }));
-        rows[0].gp_riders.forEach(sr => {
-          const r = updated.find(pr => pr.id === sr.id);
-          if (r && sr.rank) r.rank = sr.rank;
+    // CHANGED: read live ranks from the riders table directly instead of
+    // the fei_rankings sentinel row in results. Every rider's rank and
+    // salary are now updated there by RankingsImport on each monthly upload.
+    sbFetch('riders?select=id,rank,salary&limit=1000').then(rows => {
+      if (rows && rows.length) {
+        const rankMap = {};
+        rows.forEach(r => { rankMap[String(r.id)] = { rank: r.rank, salary: r.salary }; });
+        const updated = PREVIEW_RIDERS_2026.map(r => {
+          const live = rankMap[String(r.id)];
+          return live ? { ...r, rank: live.rank, salary: live.salary } : { ...r };
         });
         setRiderList(updated);
       }

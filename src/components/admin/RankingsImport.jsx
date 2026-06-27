@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
-import { PREVIEW_RIDERS_2026, rankToSalary } from '@/lib/equiprix-data';
-import { Upload, AlertCircle, Loader2 } from 'lucide-react';
+import { PREVIEW_RIDERS_2026, rankToSalary, sbFetch } from '@/lib/equiprix-data';
+import { Upload, Loader2, Save } from 'lucide-react';
 
+// ── CSV parser ────────────────────────────────────────────────────────────────
 function parseCsv(text) {
-  // Expect columns: rank, name, country (header row optional)
   const lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
   const result = {};
   for (const line of lines) {
@@ -18,12 +18,18 @@ function parseCsv(text) {
   return result;
 }
 
-function buildResults(extracted) {
+// ── Match extracted rankings against the riders table ────────────────────────
+// Returns array of { id, name, oldRank, newRank, oldSalary, newSalary }
+// Skips riders whose rank hasn't changed and riders not found in the import.
+// Never writes 999 (unranked placeholder) as a new rank.
+function buildChanges(extracted) {
   const updated = [];
   const notFound = [];
+
   for (const rider of PREVIEW_RIDERS_2026) {
-    // Try exact match first, then case-insensitive partial
     let newRank = extracted[rider.name];
+
+    // Case-insensitive / partial fallback
     if (!newRank) {
       const key = Object.keys(extracted).find(k =>
         k.toLowerCase() === rider.name.toLowerCase() ||
@@ -31,21 +37,51 @@ function buildResults(extracted) {
       );
       if (key) newRank = extracted[key];
     }
-    if (newRank && newRank !== rider.rank) {
-      updated.push({ id: rider.id, name: rider.name, oldRank: rider.rank, newRank, oldSalary: rider.salary, newSalary: rankToSalary(newRank) });
+
+    if (newRank && newRank !== 999 && newRank !== rider.rank) {
+      updated.push({
+        id: String(rider.id),
+        name: rider.name,
+        oldRank: rider.rank,
+        newRank,
+        oldSalary: rider.salary,
+        newSalary: rankToSalary(newRank),
+      });
     } else if (!newRank) {
       notFound.push(rider.name);
     }
   }
+
   return { updated, notFound };
 }
 
+// ── Save changes to riders table ─────────────────────────────────────────────
+// Updates rank + salary for each changed rider by id.
+// Runs as individual PATCHes — Supabase REST doesn't support bulk upsert
+// on non-PK fields cleanly, and the list is small enough this is fine.
+async function saveRankingsToSupabase(changes) {
+  const errors = [];
+  for (const r of changes) {
+    try {
+      await sbFetch('riders?id=eq.' + r.id, {
+        method: 'PATCH',
+        body: JSON.stringify({ rank: r.newRank, salary: r.newSalary }),
+      });
+    } catch (e) {
+      errors.push(r.name);
+      console.error('Failed to update rider', r.name, e);
+    }
+  }
+  return errors;
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 export default function RankingsImport() {
-  const [file, setFile] = useState(null);
-  const [mode, setMode] = useState(null); // 'pdf' | 'csv'
-  const [status, setStatus] = useState('idle');
-  const [results, setResults] = useState(null);
-  const [copied, setCopied] = useState(false);
+  const [file, setFile]       = useState(null);
+  const [mode, setMode]       = useState(null);   // 'pdf' | 'csv'
+  const [status, setStatus]   = useState('idle'); // idle | uploading | parsing | done | saving | saved
+  const [results, setResults] = useState(null);   // { updated, notFound }
+  const [saveErrors, setSaveErrors] = useState([]);
 
   const handleFileChange = (e) => {
     const f = e.target.files[0];
@@ -54,6 +90,7 @@ export default function RankingsImport() {
     setMode(f.name.endsWith('.csv') ? 'csv' : 'pdf');
     setStatus('idle');
     setResults(null);
+    setSaveErrors([]);
   };
 
   const handleImport = async () => {
@@ -63,13 +100,13 @@ export default function RankingsImport() {
       setStatus('parsing');
       const text = await file.text();
       const extracted = parseCsv(text);
-      const { updated, notFound } = buildResults(extracted);
+      const { updated, notFound } = buildChanges(extracted);
       setResults({ updated, notFound });
       setStatus('done');
       return;
     }
 
-    // PDF path — AI extraction
+    // PDF — AI extraction
     setStatus('uploading');
     const { file_url } = await base44.integrations.Core.UploadFile({ file });
     setStatus('parsing');
@@ -77,38 +114,51 @@ export default function RankingsImport() {
     const extracted = await base44.integrations.Core.InvokeLLM({
       prompt: `Extract FEI Longines World Rankings from this PDF. Find the world ranking number for each of these riders (allow slight name variations): ${riderNames}. Return a JSON object: {"Rider Name": rankNumber, ...}. Use null if not found.`,
       file_urls: [file_url],
-      response_json_schema: { type: 'object', additionalProperties: { type: ['integer', 'null'] } }
+      response_json_schema: { type: 'object', additionalProperties: { type: ['integer', 'null'] } },
     });
-    const { updated, notFound } = buildResults(extracted);
+    const { updated, notFound } = buildChanges(extracted);
     setResults({ updated, notFound });
     setStatus('done');
   };
 
-  const copyChanges = () => {
-    if (!results) return;
-    const text = results.updated.map(r =>
-      `  { id: ${r.id}, name: "${r.name}", nat: "...", rank: ${r.newRank}, salary: ${r.newSalary}, region: "..." },`
-    ).join('\n');
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  // ── Save to Supabase riders table ─────────────────────────────────────────
+  const handleSave = async () => {
+    if (!results?.updated?.length) return;
+    setStatus('saving');
+    setSaveErrors([]);
+    const errors = await saveRankingsToSupabase(results.updated);
+    setSaveErrors(errors);
+    setStatus('saved');
+  };
+
+  const reset = () => {
+    setFile(null);
+    setStatus('idle');
+    setResults(null);
+    setMode(null);
+    setSaveErrors([]);
   };
 
   return (
     <div className="max-w-lg">
-      <h2 className="font-cinzel text-sm tracking-widest mb-1" style={{ color: 'var(--gold)' }}>IMPORT FEI RANKINGS</h2>
+      <h2 className="font-cinzel text-sm tracking-widest mb-1" style={{ color: 'var(--gold)' }}>
+        IMPORT FEI RANKINGS
+      </h2>
       <p className="font-cormorant text-base italic mb-4" style={{ color: 'var(--mid)' }}>
-        Upload the FEI Rankings as a <strong style={{ color: 'var(--ep-text)' }}>CSV</strong> (rank, name, country) or <strong style={{ color: 'var(--ep-text)' }}>PDF</strong>.
+        Upload the FEI Rankings as a <strong style={{ color: 'var(--ep-text)' }}>CSV</strong> (rank, name, country) or{' '}
+        <strong style={{ color: 'var(--ep-text)' }}>PDF</strong>. Changes are saved directly to the riders table — no manual edits needed.
       </p>
 
       {/* Format hint */}
-      <div className="rounded-lg p-3 mb-4 text-xs font-mono" style={{ background: '#0a0907', border: '1px solid var(--ep-border)', color: '#9fead4' }}>
+      <div className="rounded-lg p-3 mb-4 text-xs font-mono"
+        style={{ background: '#0a0907', border: '1px solid var(--ep-border)', color: '#9fead4' }}>
         CSV format: <span style={{ color: 'var(--gold-lt)' }}>rank,name,country</span><br />
         1,Kent Farrington,USA<br />
         2,Scott Brash,GBR<br />
         3,Henrik von Eckermann,SWE
       </div>
 
+      {/* File picker */}
       <label className="flex flex-col items-center justify-center gap-3 rounded-xl p-8 mb-4 cursor-pointer transition-all"
         style={{
           border: `2px dashed ${file ? 'rgba(180,149,48,0.5)' : 'rgba(180,149,48,0.2)'}`,
@@ -125,71 +175,112 @@ export default function RankingsImport() {
         <input type="file" accept=".pdf,.csv" onChange={handleFileChange} className="hidden" />
       </label>
 
+      {/* Extract button */}
       {file && status === 'idle' && (
-        <button onClick={handleImport} className="w-full py-3 rounded font-cinzel text-xs tracking-widest" style={{ background: 'var(--gold)', color: 'var(--ink)' }}>
+        <button onClick={handleImport}
+          className="w-full py-3 rounded font-cinzel text-xs tracking-widest"
+          style={{ background: 'var(--gold)', color: 'var(--ink)' }}>
           EXTRACT RANKINGS →
         </button>
       )}
 
-      {(status === 'uploading' || status === 'parsing') && (
+      {/* Loading states */}
+      {(status === 'uploading' || status === 'parsing' || status === 'saving') && (
         <div className="flex items-center gap-3 py-4 justify-center">
           <Loader2 size={18} className="animate-spin" style={{ color: 'var(--gold)' }} />
           <span className="font-cormorant text-base italic" style={{ color: 'var(--mid)' }}>
-            {status === 'uploading' ? 'Uploading…' : mode === 'pdf' ? 'AI extracting rankings…' : 'Parsing CSV…'}
+            {status === 'uploading' ? 'Uploading…'
+              : status === 'parsing' ? (mode === 'pdf' ? 'AI extracting rankings…' : 'Parsing CSV…')
+              : `Saving ${results?.updated?.length} riders to database…`}
           </span>
         </div>
       )}
 
-      {status === 'done' && results && (
+      {/* Results */}
+      {(status === 'done' || status === 'saved') && results && (
         <div className="mt-2 space-y-4">
+
+          {/* Summary counts */}
           <div className="flex gap-3">
-            <div className="flex-1 rounded-lg p-3 text-center" style={{ background: 'rgba(76,175,125,0.1)', border: '1px solid rgba(76,175,125,0.3)' }}>
+            <div className="flex-1 rounded-lg p-3 text-center"
+              style={{ background: 'rgba(76,175,125,0.1)', border: '1px solid rgba(76,175,125,0.3)' }}>
               <div className="font-cinzel text-xl" style={{ color: '#4caf7d' }}>{results.updated.length}</div>
               <div className="text-xs mt-1" style={{ color: 'var(--mid)' }}>Changes found</div>
             </div>
-            <div className="flex-1 rounded-lg p-3 text-center" style={{ background: 'rgba(139,26,26,0.1)', border: '1px solid rgba(139,26,26,0.3)' }}>
+            <div className="flex-1 rounded-lg p-3 text-center"
+              style={{ background: 'rgba(139,26,26,0.1)', border: '1px solid rgba(139,26,26,0.3)' }}>
               <div className="font-cinzel text-xl" style={{ color: 'var(--crimson)' }}>{results.notFound.length}</div>
               <div className="text-xs mt-1" style={{ color: 'var(--mid)' }}>Not matched</div>
             </div>
           </div>
 
+          {/* Saved confirmation */}
+          {status === 'saved' && (
+            <div className="rounded-lg px-4 py-3 text-sm font-cormorant"
+              style={{
+                background: saveErrors.length ? 'rgba(139,26,26,0.1)' : 'rgba(76,175,125,0.1)',
+                border: `1px solid ${saveErrors.length ? 'rgba(139,26,26,0.3)' : 'rgba(76,175,125,0.3)'}`,
+                color: saveErrors.length ? 'var(--crimson)' : '#4caf7d',
+              }}>
+              {saveErrors.length
+                ? `⚠ ${results.updated.length - saveErrors.length} saved, ${saveErrors.length} failed: ${saveErrors.join(', ')}`
+                : `✓ ${results.updated.length} riders updated in database. Rank and salary live everywhere immediately.`}
+            </div>
+          )}
+
+          {/* Change list */}
           {results.updated.length > 0 && (
             <div>
-              <div className="font-cinzel text-xs tracking-widest mb-2" style={{ color: 'var(--gold)' }}>RANKING CHANGES</div>
-              <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--ep-border)', maxHeight: 280, overflowY: 'auto' }}>
+              <div className="font-cinzel text-xs tracking-widest mb-2" style={{ color: 'var(--gold)' }}>
+                RANKING CHANGES
+              </div>
+              <div className="rounded-lg overflow-hidden"
+                style={{ border: '1px solid var(--ep-border)', maxHeight: 280, overflowY: 'auto' }}>
                 {results.updated.map((r, i) => (
-                  <div key={r.id} className="flex items-center gap-2 px-3 py-2 text-xs" style={{
-                    borderBottom: i < results.updated.length - 1 ? '1px solid var(--ep-border)' : 'none',
-                    background: i % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent'
-                  }}>
+                  <div key={r.id} className="flex items-center gap-2 px-3 py-2 text-xs"
+                    style={{
+                      borderBottom: i < results.updated.length - 1 ? '1px solid var(--ep-border)' : 'none',
+                      background: i % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent',
+                    }}>
                     <span className="flex-1 font-cormorant text-sm" style={{ color: 'var(--cream)' }}>{r.name}</span>
                     <span style={{ color: 'var(--mid)' }}>#{r.oldRank} →</span>
                     <span style={{ color: r.newRank < r.oldRank ? '#4caf7d' : 'var(--crimson)' }}>#{r.newRank}</span>
                     {r.newSalary !== r.oldSalary && (
-                      <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'rgba(180,149,48,0.1)', color: 'var(--gold)', fontSize: 9 }}>
+                      <span className="text-xs px-1.5 py-0.5 rounded"
+                        style={{ background: 'rgba(180,149,48,0.1)', color: 'var(--gold)', fontSize: 9 }}>
                         ${r.newSalary.toLocaleString()}
                       </span>
                     )}
                   </div>
                 ))}
               </div>
-              <button onClick={copyChanges} className="mt-2 w-full py-2.5 rounded font-cinzel text-xs tracking-widest transition-all"
-                style={{ background: copied ? 'rgba(76,175,125,0.15)' : 'var(--gold)', color: copied ? '#4caf7d' : 'var(--ink)', border: copied ? '1px solid #4caf7d' : 'none' }}>
-                {copied ? '✓ COPIED' : 'COPY UPDATED LINES → equiprix-data.js'}
-              </button>
+
+              {/* Save button — only shown before saving */}
+              {status === 'done' && (
+                <button onClick={handleSave}
+                  className="mt-3 w-full py-3 rounded font-cinzel text-xs tracking-widest flex items-center justify-center gap-2"
+                  style={{ background: 'var(--gold)', color: 'var(--ink)' }}>
+                  <Save size={13} />
+                  SAVE {results.updated.length} CHANGES TO DATABASE
+                </button>
+              )}
             </div>
           )}
 
+          {/* Not matched */}
           {results.notFound.length > 0 && (
             <div>
-              <div className="font-cinzel text-xs tracking-widest mb-1" style={{ color: 'var(--crimson)' }}>NOT MATCHED</div>
-              <div className="text-xs rounded-lg p-3" style={{ background: 'rgba(139,26,26,0.08)', border: '1px solid rgba(139,26,26,0.2)', color: 'var(--mid)' }}>
+              <div className="font-cinzel text-xs tracking-widest mb-1" style={{ color: 'var(--crimson)' }}>
+                NOT MATCHED
+              </div>
+              <div className="text-xs rounded-lg p-3"
+                style={{ background: 'rgba(139,26,26,0.08)', border: '1px solid rgba(139,26,26,0.2)', color: 'var(--mid)' }}>
                 {results.notFound.join(', ')}
               </div>
             </div>
           )}
 
-          <button onClick={() => { setFile(null); setStatus('idle'); setResults(null); setMode(null); }}
+          <button onClick={reset}
             className="w-full py-2 rounded text-xs font-cinzel tracking-widest"
             style={{ border: '1px solid var(--ep-border)', color: 'var(--mid)', background: 'none' }}>
             IMPORT ANOTHER FILE
