@@ -53,7 +53,8 @@ function HorseInput({ riderName, value, onChange, horseDB, onAddHorse }) {
   );
 }
 
-function TeamTrioDeclarer({ teams, declaredTrioIds, setDeclaredTrioIds, riderList }) {
+// trioHorses shape: { [teamId]: { [riderId]: horseName } }
+function TeamTrioDeclarer({ teams, declaredTrioIds, setDeclaredTrioIds, trioHorses, setTrioHorses, riderList, horseDB, onAddHorse }) {
   const getTrio = (teamId) => declaredTrioIds[teamId] || [];
 
   const toggleRider = (teamId, riderId) => {
@@ -63,12 +64,25 @@ function TeamTrioDeclarer({ teams, declaredTrioIds, setDeclaredTrioIds, riderLis
       let next;
       if (exists) {
         next = current.filter(id => id !== riderId);
+        // Clear horse for removed rider
+        setTrioHorses(ph => {
+          const copy = { ...ph };
+          if (copy[teamId]) { const { [riderId]: _, ...rest } = copy[teamId]; copy[teamId] = rest; }
+          return copy;
+        });
       } else {
         if (current.length >= 3) return prev;
         next = [...current, riderId];
       }
       return { ...prev, [teamId]: next };
     });
+  };
+
+  const setHorse = (teamId, riderId, horse) => {
+    setTrioHorses(prev => ({
+      ...prev,
+      [teamId]: { ...(prev[teamId] || {}), [riderId]: horse },
+    }));
   };
 
   return (
@@ -79,31 +93,69 @@ function TeamTrioDeclarer({ teams, declaredTrioIds, setDeclaredTrioIds, riderLis
       <div className="space-y-2">
         {teams.map(team => {
           const roster = getMlsjTeamRoster(team.id, riderList);
-          const trio = getTrio(team.id);
+          const trio   = getTrio(team.id);
+          const horses = trioHorses[team.id] || {};
+
+          // Split roster into declared and undeclared for layout
+          const declared   = roster.filter(r => trio.includes(r.id));
+          const undeclared = roster.filter(r => !trio.includes(r.id));
+
           return (
-            <div key={team.id} className="rounded-lg px-3 py-2.5" style={{ background: 'rgba(180,149,48,0.03)', border: '1px solid rgba(180,149,48,0.15)' }}>
+            <div key={team.id} className="rounded-lg px-3 py-2.5"
+              style={{ background: 'rgba(180,149,48,0.03)', border: '1px solid rgba(180,149,48,0.15)' }}>
               <div className="flex items-center justify-between mb-1.5">
                 <span className="font-cormorant text-sm font-semibold" style={{ color: 'var(--cream)' }}>{team.name}</span>
                 <span className="text-xs font-cinzel" style={{ color: trio.length === 3 ? '#4caf7d' : 'var(--mid)', fontSize: 9 }}>
                   {trio.length}/3 DECLARED
                 </span>
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {roster.map(r => {
-                  const selected = trio.includes(r.id);
-                  return (
+
+              {/* Declared riders — chip + inline horse input */}
+              {declared.length > 0 && (
+                <div className="space-y-1.5 mb-2">
+                  {declared.map(r => (
+                    <div key={r.id} className="flex items-center gap-2">
+                      {/* Rider chip — click to undeclare */}
+                      <button onClick={() => toggleRider(team.id, r.id)}
+                        className="flex items-center gap-1 text-xs px-2 py-1 rounded-full font-cormorant flex-shrink-0 transition-all"
+                        style={{ background: 'rgba(180,149,48,0.15)', border: '1px solid rgba(180,149,48,0.5)', color: 'var(--gold-lt)' }}>
+                        {r.name}
+                        <span style={{ color: 'var(--mid)', fontSize: 9 }}>#{r.rank >= 999 ? '—' : r.rank}</span>
+                        <X size={9} style={{ color: 'var(--mid)', marginLeft: 2 }} />
+                      </button>
+                      {/* Inline horse input */}
+                      <div className="flex-1 min-w-0">
+                        <HorseInput
+                          riderName={r.name}
+                          value={horses[r.id] || ''}
+                          onChange={h => setHorse(team.id, r.id, h)}
+                          horseDB={horseDB}
+                          onAddHorse={onAddHorse}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Undeclared riders — plain chips to add */}
+              {trio.length < 3 && undeclared.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {undeclared.map(r => (
                     <button key={r.id} onClick={() => toggleRider(team.id, r.id)}
                       className="text-xs px-2 py-1 rounded-full font-cormorant transition-all"
-                      style={{
-                        background: selected ? 'rgba(180,149,48,0.15)' : 'rgba(255,255,255,0.03)',
-                        border: `1px solid ${selected ? 'rgba(180,149,48,0.5)' : 'rgba(42,40,32,0.6)'}`,
-                        color: selected ? 'var(--gold-lt)' : 'var(--ep-text)',
-                      }}>
+                      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(42,40,32,0.6)', color: 'var(--ep-text)' }}>
                       {r.name} <span style={{ color: 'var(--mid)', fontSize: 9 }}>#{r.rank >= 999 ? '—' : r.rank}</span>
                     </button>
-                  );
-                })}
-              </div>
+                  ))}
+                </div>
+              )}
+
+              {trio.length === 3 && undeclared.length > 0 && (
+                <p className="font-cormorant italic text-xs mt-1" style={{ color: 'var(--mid)' }}>
+                  Tap a declared rider to swap them out.
+                </p>
+              )}
             </div>
           );
         })}
@@ -203,6 +255,7 @@ export default function MlsjStartListEditor() {
   const [activeSection, setActiveSection] = useState('trios');
   const [gpRiders, setGpRiders] = useState([]);
   const [declaredTrioIds, setDeclaredTrioIds] = useState({});
+  const [trioHorses, setTrioHorses] = useState({}); // { [teamId]: { [riderId]: horseName } }
   const [horseDB, setHorseDB] = useState({});
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -241,9 +294,11 @@ export default function MlsjStartListEditor() {
       if (rows && rows.length) {
         setGpRiders(rows[0].gp_riders || []);
         setDeclaredTrioIds(rows[0].declared_trio_ids || {});
+        setTrioHorses(rows[0].trio_horses || {});
       } else {
         setGpRiders([]);
         setDeclaredTrioIds({});
+        setTrioHorses({});
       }
       setLoading(false);
     });
@@ -268,6 +323,7 @@ export default function MlsjStartListEditor() {
         event: event.supabaseKey,
         gp_riders: gpRiders,
         declared_trio_ids: declaredTrioIds,
+        trio_horses: trioHorses,
         updated_at: new Date().toISOString(),
       };
       const existing = await sbFetch('results?event=eq.' + event.supabaseKey + '&limit=1');
@@ -328,7 +384,16 @@ export default function MlsjStartListEditor() {
 
           <div className="mb-4">
             {activeSection === 'trios' && (
-              <TeamTrioDeclarer teams={MLSJ_TEAMS_2026} declaredTrioIds={declaredTrioIds} setDeclaredTrioIds={setDeclaredTrioIds} riderList={riderList} />
+              <TeamTrioDeclarer
+                teams={MLSJ_TEAMS_2026}
+                declaredTrioIds={declaredTrioIds}
+                setDeclaredTrioIds={setDeclaredTrioIds}
+                trioHorses={trioHorses}
+                setTrioHorses={setTrioHorses}
+                riderList={riderList}
+                horseDB={horseDB}
+                onAddHorse={addHorse}
+              />
             )}
             {activeSection === 'gp' && (
               <>
