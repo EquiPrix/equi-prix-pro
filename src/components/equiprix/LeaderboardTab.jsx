@@ -137,29 +137,22 @@ export default function LeaderboardTab() {
     } catch (e) { console.error(e); } finally { setLoading(false); }
   };
 
+  // CHANGED: reads directly from gcl_team_standings (the manually-entered
+  // official standings) instead of recalculating from entered results.
+  // The recalculation was drifting from the official GCL site — this is
+  // now the single source of truth, same as the admin Standings page.
   const loadGCLStandings = async () => {
     setLoading(true);
     try {
-      const pastEvents = events.filter(e => e.status === 'past');
-      const teamTotals = {};
-      for (const ev of pastEvents) {
-        const rows = await sbFetch('results?event=eq.' + ev.supabaseKey + '&limit=1') || [];
-        if (!rows.length) continue;
-        const tr = rows[0].team_results || {};
-        Object.entries(tr).forEach(([id, raw]) => {
-          const pos = typeof raw === 'object' ? raw.finalPos : raw;
-          const el = typeof raw === 'object' && (raw.el || raw.el2);
-          if (!pos && !el) return;
-          const pts = el ? 0 : gclStagePts(pos);
-          if (!teamTotals[id]) teamTotals[id] = { pts: 0, wins: 0, events: 0 };
-          teamTotals[id].pts += pts; teamTotals[id].events++;
-          if (pos === 1) teamTotals[id].wins++;
+      const rows = await sbFetch('gcl_team_standings?id=eq.1&limit=1');
+      const data = (rows && rows.length && rows[0].data) || [];
+      const ranked = [...data]
+        .sort((a, b) => (Number(a.rank) || 99) - (Number(b.rank) || 99))
+        .map(s => {
+          const t = GCL_TEAMS_2026.find(x => x.id === s.id) || { id: s.id, name: 'Team ' + s.id };
+          return { t, pts: s.pts || 0, salary: s.salary, rank: s.rank };
         });
-      }
-      setGclRows(Object.entries(teamTotals).map(([id, data]) => {
-        const t = GCL_TEAMS_2026.find(x => x.id === id) || { id, name: 'Team ' + id };
-        return { t, ...data };
-      }).sort((a, b) => b.pts - a.pts || b.wins - a.wins));
+      setGclRows(ranked);
     } catch (e) { console.error(e); } finally { setLoading(false); }
   };
 
@@ -171,7 +164,6 @@ export default function LeaderboardTab() {
       if (!memberships.length) { setMyRooms([]); setLoading(false); return; }
       const roomIds = memberships.map(m => m.room_id);
       const roomList = await sbFetch('rooms?id=in.(' + roomIds.join(',') + ')') || [];
-      // Only show rooms for the current event
       const filtered = roomList.filter(r => r.event_id === currentEvent.id);
       setMyRooms(filtered);
       if (filtered.length && !activeRoom) setActiveRoom(filtered[0]);
@@ -284,7 +276,6 @@ function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode
       if (!memberships.length) return;
       const roomIds = memberships.map(m => m.room_id);
       const allRooms = await sbFetch('rooms?id=in.(' + roomIds.join(',') + ')') || [];
-      // Only show rooms NOT for the current event (historical)
       const prev = allRooms.filter(r => r.event_id !== (currentEvent?.id || ''));
       setPreviousRooms(prev);
     } catch (e) { console.error(e); }
@@ -298,8 +289,6 @@ function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode
     try {
       const newEvent = EVENTS_2026.find(e => e.id === recreateEventId);
       const prevMembers = await sbFetch('room_members?room_id=eq.' + srcRoom.id) || [];
-
-      // Submit as a room request — requires admin approval
       const res = await fetch('/api/send-room-request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -543,7 +532,6 @@ function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode
         </div>
       ) : (
         <>
-          {/* Room tabs */}
           {rooms.length > 1 && (
             <div className="flex gap-1 px-4 py-2 overflow-x-auto" style={{ borderBottom: '1px solid var(--ep-border)' }}>
               {rooms.map(room => (
@@ -554,7 +542,7 @@ function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode
                     border: `1px solid ${activeRoom?.id === room.id ? 'rgba(180,149,48,0.4)' : 'rgba(180,149,48,0.1)'}`,
                     color: activeRoom?.id === room.id ? 'var(--gold)' : 'var(--mid)',
                     fontSize: 9, letterSpacing: '0.08em',
-                    maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                    maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   }}>
                   {room.name}
                 </button>
@@ -562,7 +550,6 @@ function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode
             </div>
           )}
 
-          {/* Active room header */}
           {activeRoom && (
             <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--ep-border)' }}>
               <div className="flex items-start justify-between gap-2">
@@ -589,7 +576,6 @@ function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode
             </div>
           )}
 
-          {/* Room leaderboard */}
           {loading ? (
             <div className="text-center py-8 font-cormorant italic" style={{ color: 'var(--mid)' }}>Loading…</div>
           ) : !roomRows.length ? (
@@ -750,20 +736,31 @@ function SeasonLeaderboard({ rows }) {
   );
 }
 
+// CHANGED: reads from gcl_team_standings directly — shows manually-entered
+// official standings, not a recalculation from entered results.
 function GCLStandings({ rows }) {
-  if (!rows.length) return <Empty msg="No GCL results recorded yet" />;
+  if (!rows.length) return <Empty msg="No GCL standings entered yet" />;
   return (
     <div>
-      {rows.map(({ t, pts, wins, events }, i) => (
+      {rows.map(({ t, pts, rank, salary }, i) => (
         <motion.div key={t.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
           transition={{ delay: i * 0.02 }} className="flex items-center gap-2.5 px-4 py-2.5 border-b"
           style={{ borderColor: 'rgba(42,40,32,0.4)' }}>
-          <div className="font-cinzel text-xs w-5 text-center flex-shrink-0" style={{ color: i < 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>{i + 1}</div>
+          <div className="font-cinzel text-xs w-5 text-center flex-shrink-0"
+            style={{ color: i < 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>
+            {rank || i + 1}
+          </div>
           <div className="flex-1 min-w-0">
             <div className="font-cormorant text-sm font-semibold" style={{ color: 'var(--cream)' }}>{t.name}</div>
-            <div className="text-xs" style={{ color: 'var(--mid)' }}>{events} events · {wins || 0} wins</div>
+            {salary && (
+              <div className="text-xs" style={{ color: 'var(--mid)' }}>
+                Draft salary: ${Number(salary).toLocaleString()}
+              </div>
+            )}
           </div>
-          <div className="font-cormorant text-base font-bold" style={{ color: 'var(--gold-lt)' }}>{pts} pts</div>
+          <div className="font-cormorant text-base font-bold" style={{ color: 'var(--gold-lt)' }}>
+            {pts} pts
+          </div>
         </motion.div>
       ))}
     </div>
