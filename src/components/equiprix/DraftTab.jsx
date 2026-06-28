@@ -421,7 +421,7 @@ export default function DraftTab() {
       </div>
 
       {/* RIGHT PANEL — My Roster */}
-      <div className="flex flex-col min-h-0 overflow-hidden" style={{ width: '45%', background: '#0d0c09' }}>
+         <div className="flex flex-col overflow-hidden" style={{ width: '45%', background: '#0d0c09', height: '100%' }}>
 
         {/* Cap bar */}
         <div className="px-3 py-2 flex-shrink-0" style={{ borderBottom: '1px solid var(--ep-border)' }}>
@@ -453,7 +453,7 @@ export default function DraftTab() {
         </div>
 
         {/* Roster slots */}
-        <div className="flex-1 overflow-y-auto px-2 py-2 pb-24">
+        <div className="flex-1 overflow-y-auto px-2 py-2 pb-4">
 
           {/* Captain */}
           <div className="mb-2">

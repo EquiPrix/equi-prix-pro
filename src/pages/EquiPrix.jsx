@@ -107,7 +107,7 @@ function EquiPrixInner() {
   // time the user or event changes — the Draft tab's selector reads this
   // from context.
   useEffect(() => {
-    if (activeUserIdentity && currentEvent && ['teams', 'riders', 'open'].includes(currentEvent.status)) {
+    if (activeUserIdentity && currentEvent && ['preview', 'teams', 'riders', 'open'].includes(currentEvent.status)) {
       loadDestinations(activeUserIdentity, currentEvent);
     }
   }, [activeUserIdentity, currentEvent?.id]);
