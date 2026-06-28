@@ -10,8 +10,6 @@ import ScoringPanel from './ScoringPanel';
 
 const SLOT_IDS = ['cpt', 'r1', 'r2', 'r3', 'r4'];
 
-// Modal shown when user hits Save — lets them choose which destinations
-// to save to (General + any rooms they're in for this event).
 function SaveConfirmModal({ destinations, onConfirm, onCancel, saving }) {
   const [checked, setChecked] = useState(() => {
     const init = {};
@@ -29,14 +27,12 @@ function SaveConfirmModal({ destinations, onConfirm, onCancel, saving }) {
       <div className="w-full max-w-sm rounded-xl p-5"
         style={{ background: 'var(--ep-card)', border: '1px solid rgba(180,149,48,0.3)' }}
         onClick={e => e.stopPropagation()}>
-
         <div className="font-cinzel text-xs tracking-widest mb-1" style={{ color: 'var(--gold)', fontSize: 10 }}>
           SAVE PICKS TO
         </div>
         <p className="font-cormorant italic text-sm mb-4" style={{ color: 'var(--mid)' }}>
           Choose which leaderboards to enter. All are selected by default.
         </p>
-
         <div className="space-y-2 mb-5">
           {destinations.map(d => (
             <label key={d.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all"
@@ -68,7 +64,6 @@ function SaveConfirmModal({ destinations, onConfirm, onCancel, saving }) {
             </label>
           ))}
         </div>
-
         <div className="flex gap-2">
           <button onClick={onCancel} disabled={saving}
             className="flex-1 py-2.5 rounded font-cinzel text-xs tracking-widest"
@@ -94,10 +89,10 @@ function SaveConfirmModal({ destinations, onConfirm, onCancel, saving }) {
 }
 
 export default function DraftTab() {
- const {
-  currentEvent, userCode, userName, team, setTeam, teamPicks, setTeamPicks, riders, teams, showToast,
-  destinations, currentDestination, setCurrentDestination, loadSavedPicks,
-} = useEquiPrix();
+  const {
+    currentEvent, userCode, userName, team, setTeam, teamPicks, setTeamPicks, riders, teams, showToast,
+    destinations, currentDestination, setCurrentDestination, loadSavedPicks,
+  } = useEquiPrix();
   const { user } = useAuth();
   const identity = user?.email || userCode;
   const [view, setView] = useState('riders');
@@ -116,7 +111,6 @@ export default function DraftTab() {
     });
   }, [ev?.id]);
 
-  // Reset dirty flag when event changes
   useEffect(() => { setDirty(false); }, [ev?.id]);
 
   const isTeamLocked = () => {
@@ -191,7 +185,6 @@ export default function DraftTab() {
     setDirty(true);
   };
 
-  // Save to one specific destination (room_id)
   const saveToDestination = async (destId, t, tp) => {
     const spent = t.reduce((s, r) => s + (r.isCpt ? r.rider.salary + CPT_PREMIUM : r.rider.salary), 0) +
       tp.reduce((s, pk) => s + pk.salary, 0);
@@ -214,7 +207,6 @@ export default function DraftTab() {
     });
   };
 
-  // Called when user confirms the modal — saves to each checked destination
   const handleConfirmSave = async (selectedIds) => {
     if (!identity || !ev || !selectedIds.length) return;
     setSaving(true);
@@ -231,10 +223,11 @@ export default function DraftTab() {
     setSaving(false);
   };
 
+  // FIX: clearing counts as a change that needs saving
   const clearAll = () => {
     setTeam([]);
     if (!isTeamLocked()) setTeamPicks([]);
-    setDirty(false);
+    setDirty(true);
   };
 
   if (!ev) {
@@ -257,8 +250,7 @@ export default function DraftTab() {
           {ev.flag} {ev.city}
         </div>
         <div className="font-cormorant text-lg italic" style={{ color: 'rgba(242,237,226,0.5)' }}>
-          {ev.status === 'past' ? 'Event complete — view results in the Results tab' :
-            'Draft opens closer to the event'}
+          {ev.status === 'past' ? 'Event complete — view results in the Results tab' : 'Draft opens closer to the event'}
         </div>
         <div className="font-cinzel text-xs tracking-widest" style={{ color: 'var(--gold)' }}>
           {ev.dateLabel}
@@ -298,51 +290,35 @@ export default function DraftTab() {
         />
       )}
 
-      {/* LEFT PANEL — Pool */}
+      {/* LEFT PANEL */}
       <div className="flex flex-col min-h-0 overflow-hidden" style={{ width: '55%', borderRight: '1px solid var(--ep-border)' }}>
-
         {practiceBanner}
 
-        {/* View toggle */}
         <div className="flex gap-1.5 px-2 py-2 flex-shrink-0" style={{ borderBottom: '1px solid var(--ep-border)', background: '#0d0c09' }}>
           {['riders', 'teams'].map(v => (
-            <button
-              key={v}
-              onClick={() => { setView(v); setSearch(''); }}
+            <button key={v} onClick={() => { setView(v); setSearch(''); }}
               className="flex-1 py-1.5 rounded font-cinzel text-xs transition-all"
               style={{
                 background: view === v ? 'rgba(180,149,48,0.12)' : 'none',
                 border: `1px solid ${view === v ? 'rgba(180,149,48,0.4)' : 'transparent'}`,
                 color: view === v ? 'var(--gold)' : 'var(--mid)',
                 letterSpacing: '0.08em',
-              }}
-            >
+              }}>
               {v === 'riders' ? 'RIDERS' : 'TEAMS'}
             </button>
           ))}
         </div>
 
-        {/* Search */}
         <div className="px-2 py-1.5 flex-shrink-0" style={{ borderBottom: '1px solid var(--ep-border)' }}>
           <div className="flex items-center gap-2 px-2 py-1.5 rounded" style={{ background: 'var(--ep-card)', border: '1px solid var(--ep-border)' }}>
             <Search size={12} style={{ color: 'var(--mid)', flexShrink: 0 }} />
-            <input
-              type="text"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search…"
-              className="flex-1 text-xs outline-none bg-transparent"
-              style={{ color: 'var(--ep-text)' }}
-            />
-            {search && (
-              <button onClick={() => setSearch('')}>
-                <X size={11} style={{ color: 'var(--mid)' }} />
-              </button>
-            )}
+            <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Search…" className="flex-1 text-xs outline-none bg-transparent"
+              style={{ color: 'var(--ep-text)' }} />
+            {search && <button onClick={() => setSearch('')}><X size={11} style={{ color: 'var(--mid)' }} /></button>}
           </div>
         </div>
 
-        {/* Pool list */}
         <div className="flex-1 overflow-y-auto pb-20">
           {view === 'riders' ? (
             <>
@@ -357,15 +333,9 @@ export default function DraftTab() {
                 const canAfford = !inTeam && (totalSpent() + rider.salary <= CAP);
                 const band = getBand(rider.rank);
                 return (
-                  <RiderRow
-                    key={rider.id}
-                    rider={rider}
-                    band={band}
-                    inTeam={!!inTeam}
-                    unaffordable={(!canAfford || maxed) && !inTeam}
-                    locked={isRiderLocked()}
-                    onAdd={() => addRider(rider)}
-                  />
+                  <RiderRow key={rider.id} rider={rider} band={band} inTeam={!!inTeam}
+                    unaffordable={(!canAfford || maxed) && !inTeam} locked={isRiderLocked()}
+                    onAdd={() => addRider(rider)} />
                 );
               })}
             </>
@@ -377,8 +347,7 @@ export default function DraftTab() {
                 const canAfford = !picked && (totalSpent() + t.salary <= CAP);
                 const locked = isTeamLocked();
                 return (
-                  <div
-                    key={t.id}
+                  <div key={t.id}
                     onClick={() => !locked && !maxed && canAfford && !picked ? addTeam(t) : picked && !locked ? removeTeam(t.id) : null}
                     className="flex items-center gap-2 px-2 py-2 border-b transition-all"
                     style={{
@@ -386,11 +355,9 @@ export default function DraftTab() {
                       background: picked ? 'rgba(61,90,76,0.08)' : 'transparent',
                       opacity: ((maxed || !canAfford) && !picked) || locked ? 0.3 : 1,
                       cursor: locked ? 'default' : 'pointer',
-                    }}
-                  >
-                    <div className="font-cormorant text-sm font-semibold w-5 text-center flex-shrink-0" style={{ color: t.rank <= 4 ? 'var(--gold)' : 'var(--mid)' }}>
-                      {t.rank}
-                    </div>
+                    }}>
+                    <div className="font-cormorant text-sm font-semibold w-5 text-center flex-shrink-0"
+                      style={{ color: t.rank <= 4 ? 'var(--gold)' : 'var(--mid)' }}>{t.rank}</div>
                     <div className="flex-1 min-w-0">
                       <div className="font-cormorant text-sm font-semibold truncate" style={{ color: 'var(--cream)' }}>{t.name}</div>
                       {(() => {
@@ -420,37 +387,40 @@ export default function DraftTab() {
         </div>
       </div>
 
-      {/* RIGHT PANEL — My Roster */}
-         <div className="flex flex-col overflow-hidden" style={{ width: '45%', background: '#0d0c09', height: '100%' }}>
+      {/* RIGHT PANEL */}
+      <div className="flex flex-col overflow-hidden" style={{ width: '45%', background: '#0d0c09', height: '100%' }}>
 
-        {/* Cap bar */}
         <div className="px-3 py-2 flex-shrink-0" style={{ borderBottom: '1px solid var(--ep-border)' }}>
-          <div className="flex items-center justify-between mb-1">
-  <span className="font-cinzel text-xs" style={{ color: 'var(--gold)', letterSpacing: '0.12em' }}>MY TEAM</span>
-  <button onClick={clearAll} className="text-xs underline" style={{ color: 'var(--mid)' }}>Clear</button>
-</div>
 
-{/* Destination toggle — only shown when user has rooms */}
-{destinations.length > 1 && (
-  <div className="flex gap-1 mb-1.5 flex-wrap">
-    {destinations.map(d => (
-      <button key={d.id}
-        onClick={() => {
-          setCurrentDestination(d.id);
-          if (identity && ev) loadSavedPicks(identity, ev, d.id);
-        }}
-        className="px-2 py-0.5 rounded font-cinzel text-xs transition-all"
-        style={{
-          background: currentDestination === d.id ? 'rgba(180,149,48,0.15)' : 'rgba(255,255,255,0.04)',
-          border: `1px solid ${currentDestination === d.id ? 'rgba(180,149,48,0.4)' : 'var(--ep-border)'}`,
-          color: currentDestination === d.id ? 'var(--gold)' : 'var(--mid)',
-          fontSize: 9, letterSpacing: '0.08em',
-        }}>
-        {d.id === GENERAL_ROOM_ID ? 'GENERAL' : d.name.toUpperCase()}
-      </button>
-    ))}
-  </div>
-)}
+          {/* Header row */}
+          <div className="flex items-center justify-between mb-1">
+            <span className="font-cinzel text-xs" style={{ color: 'var(--gold)', letterSpacing: '0.12em' }}>MY TEAM</span>
+            <button onClick={clearAll} className="text-xs underline" style={{ color: 'var(--mid)' }}>Clear</button>
+          </div>
+
+          {/* Destination toggle */}
+          {destinations.length > 1 && (
+            <div className="flex gap-1 mb-1.5 flex-wrap">
+              {destinations.map(d => (
+                <button key={d.id}
+                  onClick={() => {
+                    setCurrentDestination(d.id);
+                    if (identity && ev) loadSavedPicks(identity, ev, d.id);
+                  }}
+                  className="px-2 py-0.5 rounded font-cinzel text-xs transition-all"
+                  style={{
+                    background: currentDestination === d.id ? 'rgba(180,149,48,0.15)' : 'rgba(255,255,255,0.04)',
+                    border: `1px solid ${currentDestination === d.id ? 'rgba(180,149,48,0.4)' : 'var(--ep-border)'}`,
+                    color: currentDestination === d.id ? 'var(--gold)' : 'var(--mid)',
+                    fontSize: 9, letterSpacing: '0.08em',
+                  }}>
+                  {d.id === GENERAL_ROOM_ID ? 'GENERAL' : d.name.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Cap bar */}
           <div className="flex items-center gap-2">
             <div className="flex-1 h-1 rounded-full" style={{ background: 'var(--ep-border)' }}>
               <div className="h-1 rounded-full transition-all" style={{
@@ -462,67 +432,58 @@ export default function DraftTab() {
               {fmt(capRemaining)}
             </span>
           </div>
+
+          {/* Status + Save button row */}
           <div className="mt-1.5 flex items-center justify-between">
-  <span className="text-xs" style={{ color: dirty ? '#e88a3a' : 'var(--mid)' }}>
-    {team.length + teamPicks.length === 0
-      ? 'Empty'
-      : dirty
-        ? '● Unsaved changes'
-        : `${team.length} rider${team.length !== 1 ? 's' : ''} · ${teamPicks.length} team${teamPicks.length !== 1 ? 's' : ''} · saved`
-    }
-  </span>
-       <button
-    onClick={() => setShowSaveModal(true)}
-    disabled={saving || team.length + teamPicks.length === 0}
-    className="flex items-center gap-1.5 px-3 py-1 rounded font-cinzel text-xs tracking-widest transition-all"
-    style={{
-      background: dirty ? 'var(--gold)' : 'rgba(180,149,48,0.1)',
-      color: dirty ? 'var(--ink)' : 'var(--mid)',
-      border: dirty ? 'none' : '1px solid rgba(180,149,48,0.2)',
-      opacity: saving || team.length + teamPicks.length === 0 ? 0.4 : 1,
-      fontSize: 9,
-    }}>
-    <Save size={10} />
-    {saving ? 'SAVING…' : dirty ? 'SAVE' : 'SAVED'}
-                </button>
-             </div>
+            <span className="text-xs" style={{ color: dirty ? '#e88a3a' : 'var(--mid)' }}>
+              {team.length + teamPicks.length === 0
+                ? 'Empty'
+                : dirty
+                  ? '● Unsaved changes'
+                  : `${team.length} rider${team.length !== 1 ? 's' : ''} · ${teamPicks.length} team${teamPicks.length !== 1 ? 's' : ''} · saved`
+              }
+            </span>
+            {/* FIX: only disabled while actively saving, always available when dirty */}
+            <button
+              onClick={() => setShowSaveModal(true)}
+              disabled={saving || !dirty}
+              className="flex items-center gap-1.5 px-3 py-1 rounded font-cinzel text-xs tracking-widest transition-all"
+              style={{
+                background: dirty ? 'var(--gold)' : 'rgba(180,149,48,0.1)',
+                color: dirty ? 'var(--ink)' : 'var(--mid)',
+                border: dirty ? 'none' : '1px solid rgba(180,149,48,0.2)',
+                opacity: saving ? 0.4 : dirty ? 1 : 0.4,
+                fontSize: 9,
+              }}>
+              <Save size={10} />
+              {saving ? 'SAVING…' : dirty ? 'SAVE' : 'SAVED'}
+            </button>
+          </div>
         </div>
 
         {/* Roster slots */}
         <div className="flex-1 overflow-y-auto px-2 py-2 pb-4">
 
-          {/* Captain */}
           <div className="mb-2">
             <div className="font-cinzel text-xs mb-1" style={{ color: 'var(--mid)', letterSpacing: '0.1em', fontSize: 9 }}>
               CAPTAIN · 1.5× · +$1k
             </div>
-            <TeamSlot
-              entry={team.find(r => r.slotId === 'cpt')}
-              isCpt={true}
-              onRemove={removeRider}
-              isLocked={isRiderLocked()}
-            />
+            <TeamSlot entry={team.find(r => r.slotId === 'cpt')} isCpt={true}
+              onRemove={removeRider} isLocked={isRiderLocked()} />
           </div>
 
-          {/* Riders */}
           <div className="mb-2">
             <div className="font-cinzel text-xs mb-1" style={{ color: 'var(--mid)', letterSpacing: '0.1em', fontSize: 9 }}>
               RIDERS
             </div>
             {['r1', 'r2', 'r3', 'r4'].map(sid => (
               <div key={sid} className="mb-1">
-                <TeamSlot
-                  entry={team.find(r => r.slotId === sid)}
-                  isCpt={false}
-                  onRemove={removeRider}
-                  onMakeCpt={makeCpt}
-                  isLocked={isRiderLocked()}
-                />
+                <TeamSlot entry={team.find(r => r.slotId === sid)} isCpt={false}
+                  onRemove={removeRider} onMakeCpt={makeCpt} isLocked={isRiderLocked()} />
               </div>
             ))}
           </div>
 
-          {/* GCL Teams */}
           <div className="mb-3">
             <div className="font-cinzel text-xs mb-1" style={{ color: '#6aad8a', letterSpacing: '0.1em', fontSize: 9 }}>
               GCL TEAMS
@@ -535,7 +496,8 @@ export default function DraftTab() {
                   border: `1px ${pick ? 'solid' : 'dashed'} rgba(61,90,76,0.4)`,
                   minHeight: 36
                 }}>
-                  <span className="text-xs px-1 py-0.5 rounded flex-shrink-0" style={{ background: 'rgba(61,90,76,0.3)', color: '#6aad8a', fontSize: 9 }}>T</span>
+                  <span className="text-xs px-1 py-0.5 rounded flex-shrink-0"
+                    style={{ background: 'rgba(61,90,76,0.3)', color: '#6aad8a', fontSize: 9 }}>T</span>
                   {pick ? (
                     <>
                       <span className="flex-1 text-xs font-semibold truncate" style={{ color: 'var(--cream)', fontSize: 11 }}>{pick.name}</span>

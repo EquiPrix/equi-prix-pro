@@ -72,7 +72,12 @@ export default function LeaderboardTab() {
       const seenIds = new Set();
       const evRiders = allRiders.filter(r => { if (seenIds.has(r.id)) return false; seenIds.add(r.id); return true; });
 
-      const rows = picks.filter(p => p.picks_json && !p.picks_json.isPractice).map(p => {
+      const rows = picks.filter(p => {
+      if (!p.picks_json || p.picks_json.isPractice) return false;
+      const hasRiders = (p.picks_json.riders || []).length > 0;
+      const hasTeams = (p.picks_json.teams || []).length > 0;
+      return hasRiders || hasTeams;
+    }).map(p => {
         const pj = p.picks_json;
         const resolvedRiders = (pj.riders || []).map(rp => {
           const rider = evRiders.find(r => r.id === rp.id);
