@@ -23,7 +23,7 @@ function SaveConfirmModal({ destinations, onConfirm, onCancel, saving }) {
   const anyChecked = Object.values(checked).some(Boolean);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center px-4"
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4"
       style={{ background: 'rgba(0,0,0,0.6)' }}
       onClick={onCancel}>
       <div className="w-full max-w-sm rounded-xl p-5"
@@ -94,10 +94,10 @@ function SaveConfirmModal({ destinations, onConfirm, onCancel, saving }) {
 }
 
 export default function DraftTab() {
-  const {
-    currentEvent, userCode, userName, team, setTeam, teamPicks, setTeamPicks, riders, teams, showToast,
-    destinations,
-  } = useEquiPrix();
+ const {
+  currentEvent, userCode, userName, team, setTeam, teamPicks, setTeamPicks, riders, teams, showToast,
+  destinations, currentDestination, setCurrentDestination, loadSavedPicks,
+} = useEquiPrix();
   const { user } = useAuth();
   const identity = user?.email || userCode;
   const [view, setView] = useState('riders');
@@ -426,9 +426,31 @@ export default function DraftTab() {
         {/* Cap bar */}
         <div className="px-3 py-2 flex-shrink-0" style={{ borderBottom: '1px solid var(--ep-border)' }}>
           <div className="flex items-center justify-between mb-1">
-            <span className="font-cinzel text-xs" style={{ color: 'var(--gold)', letterSpacing: '0.12em' }}>MY TEAM</span>
-            <button onClick={clearAll} className="text-xs underline" style={{ color: 'var(--mid)' }}>Clear</button>
-          </div>
+  <span className="font-cinzel text-xs" style={{ color: 'var(--gold)', letterSpacing: '0.12em' }}>MY TEAM</span>
+  <button onClick={clearAll} className="text-xs underline" style={{ color: 'var(--mid)' }}>Clear</button>
+</div>
+
+{/* Destination toggle — only shown when user has rooms */}
+{destinations.length > 1 && (
+  <div className="flex gap-1 mb-1.5 flex-wrap">
+    {destinations.map(d => (
+      <button key={d.id}
+        onClick={() => {
+          setCurrentDestination(d.id);
+          if (identity && ev) loadSavedPicks(identity, ev, d.id);
+        }}
+        className="px-2 py-0.5 rounded font-cinzel text-xs transition-all"
+        style={{
+          background: currentDestination === d.id ? 'rgba(180,149,48,0.15)' : 'rgba(255,255,255,0.04)',
+          border: `1px solid ${currentDestination === d.id ? 'rgba(180,149,48,0.4)' : 'var(--ep-border)'}`,
+          color: currentDestination === d.id ? 'var(--gold)' : 'var(--mid)',
+          fontSize: 9, letterSpacing: '0.08em',
+        }}>
+        {d.id === GENERAL_ROOM_ID ? 'GENERAL' : d.name.toUpperCase()}
+      </button>
+    ))}
+  </div>
+)}
           <div className="flex items-center gap-2">
             <div className="flex-1 h-1 rounded-full" style={{ background: 'var(--ep-border)' }}>
               <div className="h-1 rounded-full transition-all" style={{
