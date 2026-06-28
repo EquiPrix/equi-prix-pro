@@ -23,7 +23,7 @@ function SaveConfirmModal({ destinations, onConfirm, onCancel, saving }) {
   const anyChecked = Object.values(checked).some(Boolean);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center px-4 pb-8"
+    <div className="fixed inset-0 z-50 flex items-end justify-center px-4"
       style={{ background: 'rgba(0,0,0,0.6)' }}
       onClick={onCancel}>
       <div className="w-full max-w-sm rounded-xl p-5"
