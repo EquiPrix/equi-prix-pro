@@ -440,16 +440,30 @@ export default function DraftTab() {
               {fmt(capRemaining)}
             </span>
           </div>
-          <div className="mt-1.5">
-            <span className="text-xs" style={{ color: dirty ? '#e88a3a' : 'var(--mid)' }}>
-              {team.length + teamPicks.length === 0
-                ? 'Empty'
-                : dirty
-                  ? '● Unsaved changes'
-                  : `${team.length} rider${team.length !== 1 ? 's' : ''} · ${teamPicks.length} team${teamPicks.length !== 1 ? 's' : ''} · saved`
-              }
-            </span>
-          </div>
+          <div className="mt-1.5 flex items-center justify-between">
+  <span className="text-xs" style={{ color: dirty ? '#e88a3a' : 'var(--mid)' }}>
+    {team.length + teamPicks.length === 0
+      ? 'Empty'
+      : dirty
+        ? '● Unsaved changes'
+        : `${team.length} rider${team.length !== 1 ? 's' : ''} · ${teamPicks.length} team${teamPicks.length !== 1 ? 's' : ''} · saved`
+    }
+  </span>
+       <button
+    onClick={() => setShowSaveModal(true)}
+    disabled={saving || team.length + teamPicks.length === 0}
+    className="flex items-center gap-1.5 px-3 py-1 rounded font-cinzel text-xs tracking-widest transition-all"
+    style={{
+      background: dirty ? 'var(--gold)' : 'rgba(180,149,48,0.1)',
+      color: dirty ? 'var(--ink)' : 'var(--mid)',
+      border: dirty ? 'none' : '1px solid rgba(180,149,48,0.2)',
+      opacity: saving || team.length + teamPicks.length === 0 ? 0.4 : 1,
+      fontSize: 9,
+    }}>
+    <Save size={10} />
+    {saving ? 'SAVING…' : dirty ? 'SAVE' : 'SAVED'}
+                </button>
+             </div>
         </div>
 
         {/* Roster slots */}
@@ -521,27 +535,6 @@ export default function DraftTab() {
           </div>
 
           <ScoringPanel />
-        </div>
-
-        {/* Sticky Save button */}
-        <div className="flex-shrink-0 px-3 py-3" style={{ borderTop: '1px solid var(--ep-border)', background: '#0d0c09' }}>
-          <button
-            onClick={() => setShowSaveModal(true)}
-            disabled={saving || team.length + teamPicks.length === 0}
-            className="w-full py-3 rounded font-cinzel text-xs tracking-widest flex items-center justify-center gap-2 transition-all"
-            style={{
-              background: dirty
-                ? 'var(--gold)'
-                : team.length + teamPicks.length > 0
-                  ? 'rgba(180,149,48,0.15)'
-                  : 'rgba(255,255,255,0.04)',
-              color: dirty ? 'var(--ink)' : team.length + teamPicks.length > 0 ? 'var(--gold)' : 'var(--mid)',
-              border: dirty ? 'none' : `1px solid ${team.length + teamPicks.length > 0 ? 'rgba(180,149,48,0.3)' : 'var(--ep-border)'}`,
-              opacity: saving || team.length + teamPicks.length === 0 ? 0.5 : 1,
-            }}>
-            <Save size={13} />
-            {saving ? 'SAVING…' : dirty ? 'SAVE PICKS' : 'PICKS SAVED'}
-          </button>
         </div>
       </div>
     </div>
