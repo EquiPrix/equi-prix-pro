@@ -16,14 +16,12 @@ function SaveConfirmModal({ destinations, onConfirm, onCancel, saving }) {
     destinations.forEach(d => { init[d.id] = true; });
     return init;
   });
-
   const toggle = (id) => setChecked(prev => ({ ...prev, [id]: !prev[id] }));
   const anyChecked = Object.values(checked).some(Boolean);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4"
-      style={{ background: 'rgba(0,0,0,0.6)' }}
-      onClick={onCancel}>
+      style={{ background: 'rgba(0,0,0,0.6)' }} onClick={onCancel}>
       <div className="w-full max-w-sm rounded-xl p-5"
         style={{ background: 'var(--ep-card)', border: '1px solid rgba(180,149,48,0.3)' }}
         onClick={e => e.stopPropagation()}>
@@ -58,9 +56,7 @@ function SaveConfirmModal({ destinations, onConfirm, onCancel, saving }) {
                   </div>
                 )}
               </div>
-              {checked[d.id] && (
-                <span style={{ color: '#4caf7d', fontSize: 16, flexShrink: 0 }}>✓</span>
-              )}
+              {checked[d.id] && <span style={{ color: '#4caf7d', fontSize: 16, flexShrink: 0 }}>✓</span>}
             </label>
           ))}
         </div>
@@ -163,8 +159,7 @@ export default function DraftTab() {
     const newTeam = [...team];
     const [cpt] = newTeam.splice(idx, 1);
     newTeam.unshift(cpt);
-    const reindexed = newTeam.map((r, i) => ({ ...r, slotId: SLOT_IDS[i], isCpt: i === 0 }));
-    setTeam(reindexed);
+    setTeam(newTeam.map((r, i) => ({ ...r, slotId: SLOT_IDS[i], isCpt: i === 0 })));
     showToast(cpt.rider.name + ' is your captain — 1.5×');
     setDirty(true);
   };
@@ -199,7 +194,7 @@ export default function DraftTab() {
           riders: t.map(r => ({ id: r.rider.id, isCpt: r.isCpt })),
           teams: tp.map(pk => ({ id: pk.id })),
           totalSpent: spent,
-          isPractice: ev.status === 'preview',
+          isPractice: false,
           savedAt: new Date().toISOString()
         },
         updated_at: new Date().toISOString()
@@ -223,7 +218,6 @@ export default function DraftTab() {
     setSaving(false);
   };
 
-  // FIX: clearing counts as a change that needs saving
   const clearAll = () => {
     setTeam([]);
     if (!isTeamLocked()) setTeamPicks([]);
@@ -264,7 +258,7 @@ export default function DraftTab() {
   const practiceBanner = isPractice ? (
     <div className="flex items-start gap-2 px-3 py-2 text-xs font-cormorant italic flex-shrink-0"
       style={{ background: 'rgba(61,90,76,0.15)', borderBottom: '1px solid rgba(61,90,76,0.3)', color: '#6aad8a' }}>
-      <span>⚡ <strong>Practice mode</strong> — start lists not yet confirmed. Draft freely to plan your budget. Picks are saved but won't count until the official draft opens.</span>
+      <span>⚡ <strong>Practice mode</strong> — start lists not yet confirmed. Draft freely to plan your budget. Picks are not saved in practice mode.</span>
     </div>
   ) : isPreviewRiderPool && view === 'teams' ? (
     <div className="flex items-start gap-2 px-3 py-2 text-xs font-cormorant italic flex-shrink-0"
@@ -389,16 +383,14 @@ export default function DraftTab() {
 
       {/* RIGHT PANEL */}
       <div className="flex flex-col overflow-hidden" style={{ width: '45%', background: '#0d0c09', height: '100%' }}>
-
         <div className="px-3 py-2 flex-shrink-0" style={{ borderBottom: '1px solid var(--ep-border)' }}>
 
-          {/* Header row */}
           <div className="flex items-center justify-between mb-1">
             <span className="font-cinzel text-xs" style={{ color: 'var(--gold)', letterSpacing: '0.12em' }}>MY TEAM</span>
             <button onClick={clearAll} className="text-xs underline" style={{ color: 'var(--mid)' }}>Clear</button>
           </div>
 
-          {/* Destination toggle */}
+          {/* Destination toggle — only when user has rooms */}
           {destinations.length > 1 && (
             <div className="flex gap-1 mb-1.5 flex-wrap">
               {destinations.map(d => (
@@ -433,37 +425,40 @@ export default function DraftTab() {
             </span>
           </div>
 
-          {/* Status + Save button row */}
+          {/* Status line + Save button (hidden in practice mode) */}
           <div className="mt-1.5 flex items-center justify-between">
-            <span className="text-xs" style={{ color: dirty ? '#e88a3a' : 'var(--mid)' }}>
-              {team.length + teamPicks.length === 0
-                ? 'Empty'
-                : dirty
-                  ? '● Unsaved changes'
-                  : `${team.length} rider${team.length !== 1 ? 's' : ''} · ${teamPicks.length} team${teamPicks.length !== 1 ? 's' : ''} · saved`
+            <span className="text-xs" style={{ color: isPractice ? '#6aad8a' : dirty ? '#e88a3a' : 'var(--mid)' }}>
+              {isPractice
+                ? '⚡ Practice — picks not saved'
+                : team.length + teamPicks.length === 0
+                  ? 'Empty'
+                  : dirty
+                    ? '● Unsaved changes'
+                    : `${team.length} rider${team.length !== 1 ? 's' : ''} · ${teamPicks.length} team${teamPicks.length !== 1 ? 's' : ''} · saved`
               }
             </span>
-            {/* FIX: only disabled while actively saving, always available when dirty */}
-            <button
-              onClick={() => setShowSaveModal(true)}
-              disabled={saving || !dirty}
-              className="flex items-center gap-1.5 px-3 py-1 rounded font-cinzel text-xs tracking-widest transition-all"
-              style={{
-                background: dirty ? 'var(--gold)' : 'rgba(180,149,48,0.1)',
-                color: dirty ? 'var(--ink)' : 'var(--mid)',
-                border: dirty ? 'none' : '1px solid rgba(180,149,48,0.2)',
-                opacity: saving ? 0.4 : dirty ? 1 : 0.4,
-                fontSize: 9,
-              }}>
-              <Save size={10} />
-              {saving ? 'SAVING…' : dirty ? 'SAVE' : 'SAVED'}
-            </button>
+            {/* Save button hidden in practice mode — nothing to save */}
+            {!isPractice && (
+              <button
+                onClick={() => setShowSaveModal(true)}
+                disabled={saving || !dirty}
+                className="flex items-center gap-1.5 px-3 py-1 rounded font-cinzel text-xs tracking-widest transition-all"
+                style={{
+                  background: dirty ? 'var(--gold)' : 'rgba(180,149,48,0.1)',
+                  color: dirty ? 'var(--ink)' : 'var(--mid)',
+                  border: dirty ? 'none' : '1px solid rgba(180,149,48,0.2)',
+                  opacity: saving ? 0.4 : dirty ? 1 : 0.4,
+                  fontSize: 9,
+                }}>
+                <Save size={10} />
+                {saving ? 'SAVING…' : dirty ? 'SAVE' : 'SAVED'}
+              </button>
+            )}
           </div>
         </div>
 
         {/* Roster slots */}
         <div className="flex-1 overflow-y-auto px-2 py-2 pb-4">
-
           <div className="mb-2">
             <div className="font-cinzel text-xs mb-1" style={{ color: 'var(--mid)', letterSpacing: '0.1em', fontSize: 9 }}>
               CAPTAIN · 1.5× · +$1k
