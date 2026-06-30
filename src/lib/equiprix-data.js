@@ -69,13 +69,25 @@ export function rankToSalary(rank) {
   if (rank <= 200) return 1500;
   return 1000;
 }
-// Add this function to equiprix-data.js after rankToSalary()
-// Replace the static salary on each rider with a dynamic one based on field strength
 
+// ── calcEventRiderSalaries ──────────────────────────────────────────────────
+// Hybrid pricing model.
+//
+// Top of the field (field-rank 1-30) stays field-relative — this is where
+// draft strategy matters most: who's the best rider AVAILABLE IN THIS
+// FIELD, priced against their direct competition for the event.
+//
+// Below field-rank 30, pricing switches to the rider's actual global FEI
+// rank via rankToSalary() instead of bucketing everyone into one flat
+// floor band. This means a globally-ranked-150 rider and a genuinely
+// unranked (999) rider are no longer priced identically just because a
+// field happens to be large — the bottom of the roster now has real
+// price spread, which rewards drafters who do the homework to find an
+// undervalued rider who outperforms their price tag, rather than every
+// "deep bench" pick being functionally interchangeable.
 export function calcEventRiderSalaries(gpRiders) {
   if (!gpRiders || !gpRiders.length) return gpRiders;
 
-  // Sort by FEI rank within this event's field — rank 999/missing = worst
   const sorted = [...gpRiders].sort((a, b) => {
     const ra = (!a.rank || a.rank >= 999) ? 99999 : a.rank;
     const rb = (!b.rank || b.rank >= 999) ? 99999 : b.rank;
@@ -83,27 +95,27 @@ export function calcEventRiderSalaries(gpRiders) {
   });
 
   return sorted.map((rider, i) => {
-    const fieldRank = i + 1; // 1 = best FEI rank in this event's GP field
-    let raw;
+    const fieldRank = i + 1;
 
-    if (fieldRank <= 5) {
-      // Top 5: $11,000 → $9,000
-      raw = 11000 - (fieldRank - 1) * 500;
-    } else if (fieldRank <= 15) {
-      // Ranks 6–15: $9,000 → $7,000
-      raw = 9000 - (fieldRank - 6) * 200;
-    } else if (fieldRank <= 30) {
-      // Ranks 16–30: $7,500 → $5,000
-      raw = 7500 - (fieldRank - 16) * 167;
-    } else {
-      // Ranks 31–40: $4,000 → $3,000
-      raw = 4000 - (fieldRank - 31) * 100;
+    if (fieldRank <= 30) {
+      let raw;
+      if (fieldRank <= 5) {
+        raw = 11000 - (fieldRank - 1) * 500;
+      } else if (fieldRank <= 15) {
+        raw = 9000 - (fieldRank - 6) * 200;
+      } else {
+        raw = 7500 - (fieldRank - 16) * 167;
+      }
+      const salary = Math.max(5000, Math.round(raw / 500) * 500);
+      return { ...rider, salary, fieldRank };
     }
 
-    const salary = Math.max(3000, Math.round(raw / 500) * 500);
+    const globalRank = (!rider.rank || rider.rank >= 999) ? 999 : rider.rank;
+    const salary = rankToSalary(globalRank);
     return { ...rider, salary, fieldRank };
   });
 }
+
 export function getBand(rank) {
   if (rank <= 10) return { label: 'Top 10', cls: 'band-1' };
   if (rank <= 25) return { label: '11–25', cls: 'band-2' };
@@ -120,7 +132,6 @@ export function ordinal(n) {
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
-// Supabase API helper
 export async function sbFetch(path, opts = {}) {
   const url = SUPABASE_URL + '/rest/v1/' + path;
   const headers = {
@@ -128,17 +139,17 @@ export async function sbFetch(path, opts = {}) {
     'Authorization': 'Bearer ' + SUPABASE_KEY,
     'Content-Type': 'application/json'
   };
-if (opts.method === 'POST') headers['Prefer'] = 'resolution=merge-duplicates,return=representation';
+  if (opts.method === 'POST') headers['Prefer'] = 'resolution=merge-duplicates,return=representation';
   if (opts.method === 'PATCH') headers['Prefer'] = 'return=representation';
   if (opts.method === 'DELETE') headers['Prefer'] = 'return=representation';
-  try {    
+  try {
     const resp = await fetch(url, { ...opts, headers });
     if (!resp.ok) {
       const errText = await resp.text().catch(() => '');
-if (opts.method === 'POST' || opts.method === 'PATCH' || opts.method === 'DELETE') {
+      if (opts.method === 'POST' || opts.method === 'PATCH' || opts.method === 'DELETE') {
         throw new Error('Supabase ' + resp.status + ': ' + errText.slice(0, 120));
       }
-            return null;
+      return null;
     }
     const txt = await resp.text();
     return txt ? JSON.parse(txt) : [];
@@ -148,24 +159,6 @@ if (opts.method === 'POST' || opts.method === 'PATCH' || opts.method === 'DELETE
     return null;
   }
 }
-
-// ─────────────────────────────────────────────────────────────────
-// PREVIEW_RIDERS_2026 — the ONE master rider list shared across GCL and
-// MLSJ. Every rider, regardless of which league(s) they compete in, has
-// exactly one entry here under one continuous ascending id sequence.
-// New riders (from either league) get the next available id — no
-// separate id blocks, no duplicate entries. The monthly FEI rankings
-// upload updates this list, and both leagues' draft pools, pricing, and
-// scoring read from it automatically.
-//
-// ids 1-230: original GCL roster
-// ids 231-236: added for Paris 2026 (Dilasser, Moissonnier, Leprevost,
-//   Bost, Keenan, Rizvi)
-// ids 237-268: MLSJ-only riders (not previously in the GCL pool). Lillie
-//   Keenan is NOT duplicated here — her MLSJ roster slot (Trelawny
-//   Trailblazers) points directly at id 235 in mlsj-data.js.
-// Next new rider, from either league: id 269.
-// ─────────────────────────────────────────────────────────────────
 
 export const PREVIEW_RIDERS_2026 = [
   { id: 101, name: "Henrik von Eckermann", nat: "🇸🇪 Sweden", rank: 999, salary: 1000, region: "europe" },
@@ -336,15 +329,8 @@ export const PREVIEW_RIDERS_2026 = [
   { id: 266, name: "Stella Wasserman", nat: "🇺🇸 USA", rank: 999, salary: 1000, region: "mlsj" },
   { id: 267, name: "Mario Deslauriers", nat: "🇨🇦 Canada", rank: 999, salary: 1000, region: "mlsj" },
   { id: 268, name: "Rodrigo Pessoa", nat: "🇧🇷 Brazil", rank: 999, salary: 1000, region: "mlsj" },
-{ id: 999, nat: '🇮🇹 Italy', name: 'Charlotte Leoni', rank: 582, horse: '', region: 'europe', salary: 1000 },
+  { id: 999, nat: '🇮🇹 Italy', name: 'Charlotte Leoni', rank: 582, horse: '', region: 'europe', salary: 1000 },
 ];
-
-// REPLACE the existing GCL_TEAMS_2026 array in equiprix-data.js with this
-// block in its entirety. Corrected to match the official GCL 2026 Standings
-// PDF exactly (rank, pts). Salary follows the same banding curve the app
-// already used (11000 down to 3000 across 17 teams), now applied in the
-// CORRECT rank order so the highest real points total gets the highest
-// salary — this was previously out of sync because pts were stale.
 
 export const GCL_TEAMS_2026 = [
   { id: 't03', name: 'Prague Lions', pts: 114, rank: 1, salary: 11000, key: 'Spits · Devos · Bruynseels · Demirsoy' },
