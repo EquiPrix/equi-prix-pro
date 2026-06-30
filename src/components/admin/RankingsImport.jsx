@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
-import { PREVIEW_RIDERS_2026, rankToSalary, sbFetch } from '@/lib/equiprix-data';
+import { rankToSalary, sbFetch } from '@/lib/equiprix-data';
 import { Upload, Loader2, Save } from 'lucide-react';
 
 // ── CSV parser ────────────────────────────────────────────────────────────────
@@ -18,15 +18,19 @@ function parseCsv(text) {
   return result;
 }
 
-// ── Match extracted rankings against the riders table ────────────────────────
-// Returns array of { id, name, oldRank, newRank, oldSalary, newSalary }
-// Skips riders whose rank hasn't changed and riders not found in the import.
-// Never writes 999 (unranked placeholder) as a new rank.
-function buildChanges(extracted) {
+// ── Match extracted rankings against the LIVE riders table ───────────────────
+// CHANGED: now matches against every rider currently in Supabase (the
+// `riders` table), not just the static PREVIEW_RIDERS_2026 array. Any
+// rider added later via the admin Riders page — like Kevin Staut, added
+// directly through the UI — is now included in future ranking imports.
+// Previously, riders not present in PREVIEW_RIDERS_2026 were silently
+// skipped no matter how many times the import ran, since the match loop
+// only iterated that static array.
+function buildChanges(extracted, liveRiders) {
   const updated = [];
   const notFound = [];
 
-  for (const rider of PREVIEW_RIDERS_2026) {
+  for (const rider of liveRiders) {
     let newRank = extracted[rider.name];
 
     // Case-insensitive / partial fallback
@@ -56,9 +60,6 @@ function buildChanges(extracted) {
 }
 
 // ── Save changes to riders table ─────────────────────────────────────────────
-// Updates rank + salary for each changed rider by id.
-// Runs as individual PATCHes — Supabase REST doesn't support bulk upsert
-// on non-PK fields cleanly, and the list is small enough this is fine.
 async function saveRankingsToSupabase(changes) {
   const errors = [];
   for (const r of changes) {
@@ -78,10 +79,23 @@ async function saveRankingsToSupabase(changes) {
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function RankingsImport() {
   const [file, setFile]       = useState(null);
-  const [mode, setMode]       = useState(null);   // 'pdf' | 'csv'
-  const [status, setStatus]   = useState('idle'); // idle | uploading | parsing | done | saving | saved
-  const [results, setResults] = useState(null);   // { updated, notFound }
+  const [mode, setMode]       = useState(null);
+  const [status, setStatus]   = useState('idle');
+  const [results, setResults] = useState(null);
   const [saveErrors, setSaveErrors] = useState([]);
+
+  // CHANGED: load the full live riders list from Supabase on mount,
+  // instead of relying on the static PREVIEW_RIDERS_2026 array. This is
+  // what the import is matched against.
+  const [liveRiders, setLiveRiders] = useState([]);
+  const [loadingRiders, setLoadingRiders] = useState(true);
+
+  useEffect(() => {
+    sbFetch('riders?select=id,name,rank,salary&limit=2000')
+      .then(rows => setLiveRiders(rows || []))
+      .catch(e => console.error('Failed to load riders for ranking import:', e))
+      .finally(() => setLoadingRiders(false));
+  }, []);
 
   const handleFileChange = (e) => {
     const f = e.target.files[0];
@@ -100,7 +114,7 @@ export default function RankingsImport() {
       setStatus('parsing');
       const text = await file.text();
       const extracted = parseCsv(text);
-      const { updated, notFound } = buildChanges(extracted);
+      const { updated, notFound } = buildChanges(extracted, liveRiders);
       setResults({ updated, notFound });
       setStatus('done');
       return;
@@ -110,18 +124,17 @@ export default function RankingsImport() {
     setStatus('uploading');
     const { file_url } = await base44.integrations.Core.UploadFile({ file });
     setStatus('parsing');
-    const riderNames = PREVIEW_RIDERS_2026.map(r => r.name).join(', ');
+    const riderNames = liveRiders.map(r => r.name).join(', ');
     const extracted = await base44.integrations.Core.InvokeLLM({
       prompt: `Extract FEI Longines World Rankings from this PDF. Find the world ranking number for each of these riders (allow slight name variations): ${riderNames}. Return a JSON object: {"Rider Name": rankNumber, ...}. Use null if not found.`,
       file_urls: [file_url],
       response_json_schema: { type: 'object', additionalProperties: { type: ['integer', 'null'] } },
     });
-    const { updated, notFound } = buildChanges(extracted);
+    const { updated, notFound } = buildChanges(extracted, liveRiders);
     setResults({ updated, notFound });
     setStatus('done');
   };
 
-  // ── Save to Supabase riders table ─────────────────────────────────────────
   const handleSave = async () => {
     if (!results?.updated?.length) return;
     setStatus('saving');
@@ -146,8 +159,19 @@ export default function RankingsImport() {
       </h2>
       <p className="font-cormorant text-base italic mb-4" style={{ color: 'var(--mid)' }}>
         Upload the FEI Rankings as a <strong style={{ color: 'var(--ep-text)' }}>CSV</strong> (rank, name, country) or{' '}
-        <strong style={{ color: 'var(--ep-text)' }}>PDF</strong>. Changes are saved directly to the riders table — no manual edits needed.
+        <strong style={{ color: 'var(--ep-text)' }}>PDF</strong>. Matches against every rider currently in the database — changes save directly, no manual edits needed.
       </p>
+
+      {loadingRiders && (
+        <div className="flex items-center gap-2 mb-3 text-xs font-cormorant italic" style={{ color: 'var(--mid)' }}>
+          <Loader2 size={13} className="animate-spin" /> Loading rider database…
+        </div>
+      )}
+      {!loadingRiders && (
+        <div className="mb-4 text-xs font-cormorant italic" style={{ color: 'var(--mid)' }}>
+          Matching against {liveRiders.length} riders currently in the database.
+        </div>
+      )}
 
       {/* Format hint */}
       <div className="rounded-lg p-3 mb-4 text-xs font-mono"
@@ -172,19 +196,17 @@ export default function RankingsImport() {
           {!file && <div className="text-xs mt-1" style={{ color: 'var(--mid)' }}>CSV or PDF</div>}
           {file && <div className="text-xs mt-1 uppercase" style={{ color: 'var(--mid)' }}>{mode} detected</div>}
         </div>
-        <input type="file" accept=".pdf,.csv" onChange={handleFileChange} className="hidden" />
+        <input type="file" accept=".pdf,.csv" onChange={handleFileChange} className="hidden" disabled={loadingRiders} />
       </label>
 
-      {/* Extract button */}
       {file && status === 'idle' && (
-        <button onClick={handleImport}
+        <button onClick={handleImport} disabled={loadingRiders}
           className="w-full py-3 rounded font-cinzel text-xs tracking-widest"
-          style={{ background: 'var(--gold)', color: 'var(--ink)' }}>
+          style={{ background: 'var(--gold)', color: 'var(--ink)', opacity: loadingRiders ? 0.5 : 1 }}>
           EXTRACT RANKINGS →
         </button>
       )}
 
-      {/* Loading states */}
       {(status === 'uploading' || status === 'parsing' || status === 'saving') && (
         <div className="flex items-center gap-3 py-4 justify-center">
           <Loader2 size={18} className="animate-spin" style={{ color: 'var(--gold)' }} />
@@ -196,11 +218,9 @@ export default function RankingsImport() {
         </div>
       )}
 
-      {/* Results */}
       {(status === 'done' || status === 'saved') && results && (
         <div className="mt-2 space-y-4">
 
-          {/* Summary counts */}
           <div className="flex gap-3">
             <div className="flex-1 rounded-lg p-3 text-center"
               style={{ background: 'rgba(76,175,125,0.1)', border: '1px solid rgba(76,175,125,0.3)' }}>
@@ -214,7 +234,6 @@ export default function RankingsImport() {
             </div>
           </div>
 
-          {/* Saved confirmation */}
           {status === 'saved' && (
             <div className="rounded-lg px-4 py-3 text-sm font-cormorant"
               style={{
@@ -228,7 +247,6 @@ export default function RankingsImport() {
             </div>
           )}
 
-          {/* Change list */}
           {results.updated.length > 0 && (
             <div>
               <div className="font-cinzel text-xs tracking-widest mb-2" style={{ color: 'var(--gold)' }}>
@@ -255,7 +273,6 @@ export default function RankingsImport() {
                 ))}
               </div>
 
-              {/* Save button — only shown before saving */}
               {status === 'done' && (
                 <button onClick={handleSave}
                   className="mt-3 w-full py-3 rounded font-cinzel text-xs tracking-widest flex items-center justify-center gap-2"
@@ -267,7 +284,6 @@ export default function RankingsImport() {
             </div>
           )}
 
-          {/* Not matched */}
           {results.notFound.length > 0 && (
             <div>
               <div className="font-cinzel text-xs tracking-widest mb-1" style={{ color: 'var(--crimson)' }}>
