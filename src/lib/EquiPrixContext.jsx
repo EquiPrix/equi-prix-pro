@@ -141,6 +141,34 @@ export function EquiPrixProvider({ children }) {
           };
         });
       }
+
+      // 2.5 CHANGED: fetch live rank/salary once here (moved up from where
+      // it used to only apply to PREVIEW_RIDERS_2026) and overlay it onto
+      // every event's gpRiders/previewRiders snapshot too. Those arrays are
+      // saved snapshots from results.gp_riders / results.preview_riders —
+      // frozen at whatever rank values existed the last time RidersEditor's
+      // "Save GP" button ran. Without this, a rider's rank could be fixed
+      // in the riders table (e.g. via RankingsImport) and still show 999
+      // everywhere the Draft tab reads gpRiders/previewRiders, since that
+      // overlay previously only ever touched the separate PREVIEW_RIDERS_2026
+      // array, not these per-event snapshots.
+      const riderRowsForOverlay = await sbFetch('riders?select=id,rank,salary&limit=1000');
+      const liveRankMap = {};
+      if (riderRowsForOverlay && riderRowsForOverlay.length) {
+        riderRowsForOverlay.forEach(r => {
+          if (r.rank && r.rank !== 999) liveRankMap[String(r.id)] = { rank: r.rank, salary: r.salary };
+        });
+      }
+      const overlayLiveRanks = (list) => (list || []).map(r => {
+        const live = liveRankMap[String(r.id)];
+        return live ? { ...r, rank: live.rank, salary: live.salary } : r;
+      });
+      updatedEvents = updatedEvents.map(ev => ({
+        ...ev,
+        ...(ev.gpRiders?.length ? { gpRiders: overlayLiveRanks(ev.gpRiders) } : {}),
+        ...(ev.previewRiders?.length ? { previewRiders: overlayLiveRanks(ev.previewRiders) } : {}),
+      }));
+
       setEvents(updatedEvents);
 
       // 2. CHANGED: GCL team standings now read from dedicated gcl_team_standings
@@ -158,19 +186,13 @@ export function EquiPrixProvider({ children }) {
         GCL_TEAMS_2026.sort((a, b) => (Number(a.rank) || 99) - (Number(b.rank) || 99));
       }
 
-      // 3. CHANGED: FEI rankings now read from the riders table directly
-      // (rank + salary columns updated by RankingsImport on each monthly
-      // upload) instead of the results sentinel row 'fei_rankings'.
-      // We fetch all riders in one call and overlay onto PREVIEW_RIDERS_2026
-      // so every consumer that reads that array gets live ranks.
-      const riderRows = await sbFetch('riders?select=id,rank,salary&limit=1000');
-      if (riderRows && riderRows.length) {
-        const rankMap = {};
-        riderRows.forEach(r => { rankMap[String(r.id)] = { rank: r.rank, salary: r.salary }; });
+      // 3. Apply the same live rank/salary data (already fetched above) onto
+      // PREVIEW_RIDERS_2026 as well, so every consumer that reads that
+      // array directly also gets live ranks — same map, no second fetch.
+      if (riderRowsForOverlay && riderRowsForOverlay.length) {
         PREVIEW_RIDERS_2026.forEach(r => {
-          const live = rankMap[String(r.id)];
-          // Only overwrite if we have a real rank (not 999 placeholder)
-          if (live && live.rank && live.rank !== 999) {
+          const live = liveRankMap[String(r.id)];
+          if (live) {
             r.rank   = live.rank;
             r.salary = live.salary;
           }
