@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { EVENTS_2026, GCL_TEAMS_2026 } from '@/lib/equiprix-data';
+import { EVENTS_2026, GCL_TEAMS_2026, sbFetch } from '@/lib/equiprix-data';
 import { GCL_TEAM_ROSTERS } from '@/components/admin/TeamsEditor';
 import { loadStartListRemote, saveStartListRemote, loadHorseDBRemote, saveHorseDBRemote } from '@/lib/startListStore';
 import { Plus, X, Save, RefreshCw } from 'lucide-react';
@@ -8,7 +8,6 @@ function HorseInput({ riderName, value, onChange, horseDB, onAddHorse }) {
   const [adding, setAdding] = useState(false);
   const [newHorse, setNewHorse] = useState('');
 
-  // Include the current saved value in the dropdown even if not in horse DB
   const dbHorses = horseDB[riderName] || [];
   const horses = [...new Set([...dbHorses, ...(value ? [value] : [])])];
 
@@ -65,7 +64,7 @@ function GPStartList({ riders, setRiders, horseDB, onAddHorse, onRefresh, refres
         </button>
       </div>
       <p className="font-cormorant text-sm italic mb-3" style={{ color: 'var(--mid)' }}>
-        Riders are set via the Riders tab. If you just changed selections there, hit refresh to pull them in. Add horses here then hit Save.
+        Riders and selections are set via the Riders tab. Refresh pulls in both new selections and any updated FEI ranks. Add horses here then hit Save.
       </p>
       {sorted.length === 0 ? (
         <div className="rounded-lg p-6 text-center" style={{ border: '1px dashed var(--ep-border)' }}>
@@ -162,21 +161,35 @@ export default function StartListEditor() {
     loadHorseDBRemote().then(db => setHorseDB(db));
   }, []);
 
-  // Pulls the full start_lists row (gp + teamPairs) for the selected event.
-  // Used both by the event-change effect below AND by the GP tab's manual
-  // refresh button — the refresh button just re-runs this same fetch
-  // on demand instead of waiting for selectedEventId to change, which is
-  // what was making the GP tab look "stuck" after editing in the Riders
-  // tab: this effect only fires once per event selection, not on every
-  // render, so changes saved elsewhere never appeared until you reselected
-  // the event from the dropdown (easy to miss since it's already selected).
+  // CHANGED: takes the saved gp[] snapshot (riders + horses) and overlays
+  // each rider's CURRENT rank/salary from the live riders table by id.
+  // This is what fixes stale 999s — the saved snapshot in start_lists.gp
+  // freezes rank/salary at whatever they were the last time someone hit
+  // Save GP in the Riders tab, so any rank updated afterward (e.g. via
+  // RankingsImport) never showed up here until now. Horse assignments are
+  // untouched since those only live in this snapshot, not in riders.
+  const rehydrateRanks = async (riders) => {
+    if (!riders.length) return riders;
+    try {
+      const ids = riders.map(r => `"${r.id}"`).join(',');
+      const liveRows = await sbFetch('riders?id=in.(' + ids + ')&select=id,rank,salary');
+      const liveMap = {};
+      (liveRows || []).forEach(r => { liveMap[String(r.id)] = r; });
+      return riders.map(r => {
+        const live = liveMap[String(r.id)];
+        return live ? { ...r, rank: live.rank, salary: live.salary } : r;
+      });
+    } catch (e) {
+      console.warn('Could not rehydrate live ranks for start list:', e);
+      return riders;
+    }
+  };
+
   const fetchStartList = async (eventId, { preserveTeamPairs = true } = {}) => {
     const data = await loadStartListRemote(eventId);
     if (data) {
-      setGpRiders(data.gp || []);
-      // Only overwrite teamPairs when NOT doing a GP-only refresh, so
-      // clicking "refresh" on the GP tab can't accidentally discard
-      // team pair edits you're mid-way through on the R1/R2 tabs.
+      const freshGp = await rehydrateRanks(data.gp || []);
+      setGpRiders(freshGp);
       if (!preserveTeamPairs) setTeamPairs(data.teamPairs || {});
     } else {
       setGpRiders([]);
