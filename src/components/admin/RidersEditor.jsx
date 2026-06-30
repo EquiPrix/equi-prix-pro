@@ -1,30 +1,36 @@
 import React, { useState, useEffect } from 'react';
 import { EVENTS_2026, sbFetch } from '@/lib/equiprix-data';
 import { loadStartListRemote, saveStartListRemote } from '@/lib/startListStore';
+import { feiCodeToFlag, FEI_COUNTRIES, parseNatDisplay } from '@/lib/countryFlags';
 import { Search, UserPlus, X } from 'lucide-react';
 
 function AddRiderForm({ onAdded, nextId }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
-  const [nat, setNat] = useState('');
+  // CHANGED: nat is now a 3-letter FEI country code chosen from a dropdown,
+  // not a free-text field where the flag emoji had to be typed manually.
+  const [natCode, setNatCode] = useState('');
   const [rank, setRank] = useState('');
   const [salary, setSalary] = useState('1000');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   const reset = () => {
-    setName(''); setNat(''); setRank(''); setSalary('1000'); setError('');
+    setName(''); setNatCode(''); setRank(''); setSalary('1000'); setError('');
   };
 
   const submit = async () => {
     if (!name.trim()) { setError('Name is required'); return; }
+    if (!natCode) { setError('Nationality is required'); return; }
     setSaving(true);
     setError('');
     const newRider = {
       id: String(nextId),
       name: name.trim(),
       rank: rank ? Number(rank) : 999,
-      nat: nat.trim(),
+      // Stored as the clean 3-letter FEI code from now on — flag is
+      // derived on render via feiCodeToFlag(), never typed manually.
+      nat: natCode,
       salary: salary ? Number(salary) : 1000,
     };
     try {
@@ -62,9 +68,17 @@ function AddRiderForm({ onAdded, nextId }) {
         <input value={name} onChange={e => setName(e.target.value)} placeholder="Full name"
           className="col-span-2 rounded px-2 py-1.5 text-xs outline-none"
           style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--ep-border)', color: 'var(--ep-text)' }} />
-        <input value={nat} onChange={e => setNat(e.target.value)} placeholder="Nationality e.g. 🇫🇷 France"
+
+        {/* CHANGED: nationality dropdown — auto-derives the flag, no manual emoji entry */}
+        <select value={natCode} onChange={e => setNatCode(e.target.value)}
           className="rounded px-2 py-1.5 text-xs outline-none"
-          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--ep-border)', color: 'var(--ep-text)' }} />
+          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--ep-border)', color: natCode ? 'var(--ep-text)' : 'var(--mid)' }}>
+          <option value="">— Nationality —</option>
+          {FEI_COUNTRIES.map(([code, name]) => (
+            <option key={code} value={code}>{feiCodeToFlag(code)} {name}</option>
+          ))}
+        </select>
+
         <input type="number" value={rank} onChange={e => setRank(e.target.value)} placeholder="FEI rank (blank = 999)"
           className="rounded px-2 py-1.5 text-xs outline-none"
           style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--ep-border)', color: 'var(--ep-text)' }} />
@@ -93,10 +107,6 @@ export default function RidersEditor() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Load the full roster from Supabase (replaces the old static
-  // PREVIEW_RIDERS_2026 import). This is the single live source now —
-  // both this list and the "add rider" form read/write here, so a
-  // newly-added rider shows up immediately without a code deploy.
   const loadRiders = async () => {
     const data = await sbFetch('riders?order=rank.asc');
     setAllRiders(data || []);
@@ -107,8 +117,6 @@ export default function RidersEditor() {
     loadRiders();
   }, []);
 
-  // Load existing GP start list checkboxes from Supabase (start_lists)
-  // when event changes.
   useEffect(() => {
     if (!selectedEventId) { setGpChecked({}); setExistingGP([]); return; }
     setLoading(true);
@@ -126,8 +134,6 @@ export default function RidersEditor() {
     !search || r.name.toLowerCase().includes(search.toLowerCase())
   );
 
-  // Next free id: max of all current numeric ids + 1. Falls back to 269
-  // (the documented next slot) if the table is somehow empty.
   const nextId = allRiders.length
     ? Math.max(...allRiders.map(r => Number(r.id) || 0)) + 1
     : 269;
@@ -142,10 +148,6 @@ export default function RidersEditor() {
     if (!event) return;
     setSaving(true);
 
-    // Preserve existing horse assignments when rebuilding the GP list —
-    // previously horses were preserved from localStorage only, which meant
-    // they were invisible after a cache clear or on a different machine.
-    // Now we preserve them from the Supabase-loaded existingGP instead.
     const existingMap = {};
     existingGP.forEach(r => { existingMap[r.id] = r; });
 
@@ -154,22 +156,11 @@ export default function RidersEditor() {
       horse: existingMap[r.id]?.horse || ''
     }));
 
-    // Load existing teamPairs so we don't wipe them when re-saving
-    // (saveStartListRemote overwrites the whole start_lists row)
     const existing = await loadStartListRemote(selectedEventId);
     const teamPairs = existing?.teamPairs || {};
 
-    // Single save writes to three places:
-    // 1. start_lists.gp — shared source for StartListEditor's GP horse tab
-    // 2. results.gp_riders — read by EquiPrixContext for Draft tab Riders list
-    // 3. results.preview_riders — read by EquiPrixContext for preview mode
-    // (2 and 3 happen inside saveStartListRemote via the supabaseKey param)
     await saveStartListRemote(selectedEventId, { gp, teamPairs }, event.supabaseKey);
 
-    // Also write preview_riders separately since saveStartListRemote only
-    // mirrors to gp_riders, not preview_riders — and preview mode still
-    // needs its own field so it can show expected riders before the
-    // official GP list is confirmed.
     try {
       await sbFetch('results', {
         method: 'POST',
@@ -246,6 +237,10 @@ export default function RidersEditor() {
         <div className="overflow-y-auto" style={{ maxHeight: 480 }}>
           {filtered.map((rider, i) => {
             const checked = !!gpChecked[rider.id];
+            // CHANGED: derive flag + label from whatever is stored in nat,
+            // handling legacy plain-text, legacy emoji+text, and the new
+            // clean 3-letter code format all at once.
+            const { flag, label } = parseNatDisplay(rider.nat);
             return (
               <div key={rider.id}
                 className="grid grid-cols-12 items-center px-3 py-2 text-xs cursor-pointer"
@@ -270,7 +265,9 @@ export default function RidersEditor() {
                 </div>
                 <div className="col-span-7 pl-2">
                   <div className="font-cormorant text-sm truncate" style={{ color: checked ? 'var(--gold-lt)' : 'var(--cream)' }}>{rider.name}</div>
-                  <div style={{ color: 'var(--mid)', fontSize: 9 }}>{rider.nat}</div>
+                  <div style={{ color: 'var(--mid)', fontSize: 9 }}>
+                    {flag && <span className="mr-1">{flag}</span>}{label}
+                  </div>
                 </div>
                 <div className="col-span-3 text-right font-cormorant text-sm" style={{ color: 'var(--mid)' }}>
                   ${rider.salary.toLocaleString()}
