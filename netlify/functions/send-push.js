@@ -80,6 +80,7 @@ exports.handler = async (event) => {
     let sent = 0;
     let failed = 0;
     const staleEndpoints = [];
+    const errors = [];
 
     await Promise.all(subs.map(async (sub) => {
       try {
@@ -93,6 +94,7 @@ exports.handler = async (event) => {
         sent++;
       } catch (err) {
         failed++;
+        errors.push({ statusCode: err.statusCode, body: err.body, message: err.message });
         // 404/410 means the subscription is no longer valid (user
         // uninstalled, cleared data, etc.) — mark for cleanup.
         if (err.statusCode === 404 || err.statusCode === 410) {
@@ -116,7 +118,7 @@ exports.handler = async (event) => {
       ).catch(() => {});
     }
 
-    return { statusCode: 200, body: JSON.stringify({ sent, failed }) };
+    return { statusCode: 200, body: JSON.stringify({ sent, failed, errors }) };
   } catch (e) {
     return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
   }
