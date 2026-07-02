@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/lib/AuthContext';
 import { EVENTS_2026 } from '@/lib/equiprix-data';
 import { X, Save, LogOut, Key, Bell, BellOff, DoorOpen } from 'lucide-react';
+import PushOptIn from './PushOptIn';
 
 export default function AccountModal({ onClose }) {
   const { user } = useAuth();
@@ -234,6 +235,17 @@ export default function AccountModal({ onClose }) {
                 {savingPrefs ? '…' : emailNotifications ? 'UNSUBSCRIBE' : 'SUBSCRIBE'}
               </button>
             </div>
+          </div>
+
+          {/* NEW: Push notifications — separate from email preference above
+              since it's tied to this specific device/browser, not the
+              account as a whole (a user could have push on for their phone
+              but off for a laptop, for example). */}
+          <div className="mb-5">
+            <label className="font-cinzel text-xs tracking-widest mb-3 block" style={{ color: 'var(--gold-lt)', fontSize: 9 }}>
+              PUSH NOTIFICATIONS (THIS DEVICE)
+            </label>
+            <PushOptIn userEmail={user?.email} />
           </div>
 
           <div style={{ borderTop: '1px solid rgba(42,40,32,0.6)', margin: '20px 0' }} />
