@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { supabase } from '@/lib/supabaseClient';
 import { EVENTS_2026, GCL_TEAMS_2026, PREVIEW_RIDERS_2026, sbFetch, NAMES, VALID_CODES, calcEventRiderSalaries } from './equiprix-data';
 
 export const GENERAL_ROOM_ID = '00000000-0000-0000-0000-000000000000';
@@ -142,16 +143,13 @@ export function EquiPrixProvider({ children }) {
         });
       }
 
-      // 2.5 CHANGED: fetch live rank/salary once here (moved up from where
-      // it used to only apply to PREVIEW_RIDERS_2026) and overlay it onto
-      // every event's gpRiders/previewRiders snapshot too. Those arrays are
-      // saved snapshots from results.gp_riders / results.preview_riders —
-      // frozen at whatever rank values existed the last time RidersEditor's
-      // "Save GP" button ran. Without this, a rider's rank could be fixed
-      // in the riders table (e.g. via RankingsImport) and still show 999
-      // everywhere the Draft tab reads gpRiders/previewRiders, since that
-      // overlay previously only ever touched the separate PREVIEW_RIDERS_2026
-      // array, not these per-event snapshots.
+      // 2.5 fetch live rank/salary once here and overlay it onto every
+      // event's gpRiders/previewRiders snapshot too. Those arrays are
+      // saved snapshots — frozen at whatever rank values existed the last
+      // time RidersEditor's "Save GP" button ran. Without this, a rider's
+      // rank could be fixed in the riders table (e.g. via RankingsImport)
+      // and still show 999 everywhere the Draft tab reads gpRiders/
+      // previewRiders.
       const riderRowsForOverlay = await sbFetch('riders?select=id,rank,salary&limit=1000');
       const liveRankMap = {};
       if (riderRowsForOverlay && riderRowsForOverlay.length) {
@@ -171,9 +169,8 @@ export function EquiPrixProvider({ children }) {
 
       setEvents(updatedEvents);
 
-      // 2. CHANGED: GCL team standings now read from dedicated gcl_team_standings
-      // table (id=1, data jsonb) instead of results sentinel row 'team_salaries'.
-      // Shape is identical — array of { id, rank, pts, salary } objects.
+      // 2. GCL team standings read from dedicated gcl_team_standings table
+      // (id=1, data jsonb). Shape: array of { id, rank, pts, salary }.
       const standingsRows = await sbFetch('gcl_team_standings?id=eq.1&limit=1');
       if (standingsRows && standingsRows.length && standingsRows[0].data?.length) {
         standingsRows[0].data.forEach(sv => {
@@ -231,6 +228,31 @@ export function EquiPrixProvider({ children }) {
 
   useEffect(() => {
     loadEventData();
+  }, [loadEventData]);
+
+  // NEW: realtime subscription — any change to `results` (event status,
+  // lock times, gp_riders snapshots) or `gcl_team_standings` (official GCL
+  // standings) re-runs loadEventData() for everyone with the app open.
+  // This is what makes an admin flipping event status, or updating team
+  // standings, show up live for all users instead of requiring a manual
+  // page refresh.
+  useEffect(() => {
+    let debounceTimer = null;
+    const scheduleReload = () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => { loadEventData(); }, 300);
+    };
+
+    const channel = supabase
+      .channel('equiprix-events-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'results' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'gcl_team_standings' }, scheduleReload)
+      .subscribe();
+
+    return () => {
+      clearTimeout(debounceTimer);
+      supabase.removeChannel(channel);
+    };
   }, [loadEventData]);
 
   const loadSavedPicks = useCallback(async (identity, ev, roomId = currentDestination) => {

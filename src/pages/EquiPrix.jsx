@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabaseClient';
 import { useEquiPrix } from '@/lib/EquiPrixContext';
 import { MlsjProvider, useMlsj } from '@/lib/MlsjContext';
 import GateScreen from '@/components/equiprix/GateScreen';
@@ -112,12 +113,38 @@ function EquiPrixInner() {
     }
   }, [activeUserIdentity, currentEvent?.id]);
 
-  // GCL saved-picks load — re-fires when the selected destination changes
-  // too, so switching rooms in the Draft tab loads that room's picks.
+  // GCL saved-picks load — re-fires when the selected destination changes,
+  // AND now also when the event's status changes (e.g. Team Draft -> GP
+  // Draft). Previously this only depended on currentEvent?.id, so a status
+  // change on an already-open tab left team/teamPicks state stale until a
+  // manual page refresh — this is what caused the cap to briefly show
+  // empty/full after an admin status change.
   useEffect(() => {
     if (activeUserIdentity && currentEvent && ['teams', 'riders', 'open'].includes(currentEvent.status)) {
       loadSavedPicks(activeUserIdentity, currentEvent, currentDestination);
     }
+  }, [activeUserIdentity, currentEvent?.id, currentEvent?.status, currentDestination]);
+
+  // NEW: realtime subscription on `picks` — any change matching the
+  // current user + event + destination re-runs loadSavedPicks so Draft
+  // tab state (team, teamPicks, cap) stays live without a page refresh.
+  // Covers: saving picks from another device/tab, or a status transition
+  // that requires re-reading the row.
+  useEffect(() => {
+    if (!activeUserIdentity || !currentEvent) return;
+    const channel = supabase
+      .channel('equiprix-picks-live-' + currentEvent.id + '-' + currentDestination)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'picks',
+        filter: 'event=eq.' + currentEvent.id,
+      }, (payload) => {
+        const row = payload.new || payload.old;
+        if (row?.user_email !== activeUserIdentity) return;
+        if (row?.room_id !== currentDestination) return;
+        loadSavedPicks(activeUserIdentity, currentEvent, currentDestination);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, [activeUserIdentity, currentEvent?.id, currentDestination]);
 
   // MLSJ saved-picks load
@@ -125,7 +152,7 @@ function EquiPrixInner() {
     if (activeUserIdentity && mlsjCurrentEvent && ['teams', 'riders', 'open'].includes(mlsjCurrentEvent.status)) {
       loadMlsjSavedPicks(activeUserIdentity, mlsjCurrentEvent);
     }
-  }, [activeUserIdentity, mlsjCurrentEvent?.id]);
+  }, [activeUserIdentity, mlsjCurrentEvent?.id, mlsjCurrentEvent?.status]);
 
   if (!user) return <GateScreen />;
 

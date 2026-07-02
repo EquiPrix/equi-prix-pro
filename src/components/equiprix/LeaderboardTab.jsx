@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabaseClient';
 import { useEquiPrix, GENERAL_ROOM_ID } from '@/lib/EquiPrixContext';
 import { useAuth } from '@/lib/AuthContext';
 import {
@@ -294,6 +295,31 @@ export default function LeaderboardTab() {
       setJoinMsg(e.message?.includes('unique') ? '✓ Already a member!' : 'Could not join room.');
     } finally { setJoining(false); }
   };
+
+  // NEW: realtime subscription — pushes leaderboard updates live instead of
+  // requiring a manual page refresh. Listens on `picks` (new/changed picks),
+  // `results` (rider/team results entered, including partial Round 1 data),
+  // and `gcl_team_standings` (official GCL standings), and refreshes
+  // whichever leaderboard tab is currently visible.
+  useEffect(() => {
+    const channel = supabase
+      .channel('equiprix-leaderboard-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'picks' }, () => {
+        if (tab === 'event' && currentEvent) loadEventLB();
+        if (tab === 'rooms' && activeRoom) loadRoomLB(activeRoom);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'results' }, () => {
+        if (tab === 'event' && currentEvent) loadEventLB();
+        if (tab === 'rooms' && activeRoom) loadRoomLB(activeRoom);
+        if (tab === 'season') loadSeasonLB();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'gcl_team_standings' }, () => {
+        if (tab === 'gcl') loadGCLStandings();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [tab, currentEvent?.id, activeRoom?.id]);
 
   return (
     <div className="flex-1 flex flex-col min-h-0" style={{ background: 'var(--ink)' }}>
