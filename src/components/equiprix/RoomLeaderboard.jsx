@@ -41,8 +41,11 @@ export default function RoomLeaderboard({ room }) {
       const ev = EVENTS_2026.find(e => e.id === room.event_id);
       if (!ev) { setLoading(false); return; }
 
+      // CHANGED: added room_id filter (was pulling every room's picks for
+      // this event) and select user_email instead of access_code, since
+      // access_code is no longer the reliable/unique join key.
       const [allPicks, evResults] = await Promise.all([
-        sbFetch('picks?select=access_code,username,picks_json&event=eq.' + ev.id),
+        sbFetch('picks?select=user_email,username,picks_json&event=eq.' + ev.id + '&room_id=eq.' + room.id),
         sbFetch('results?event=eq.' + ev.supabaseKey + '&limit=1'),
       ]);
 
@@ -54,12 +57,9 @@ export default function RoomLeaderboard({ room }) {
       const seenIds = new Set();
       const evRiders = allRiders.filter(r => { if (seenIds.has(r.id)) return false; seenIds.add(r.id); return true; });
 
-      // Match picks to room members by email
+      // Match picks to room members by user_email (the reliable unique key)
       const scored = members.map(member => {
-        const pick = (allPicks || []).find(p =>
-          p.access_code === member.user_email ||
-          p.username === member.username
-        );
+        const pick = (allPicks || []).find(p => p.user_email === member.user_email);
         const score = pick && hasResults ? calcPickScore(pick.picks_json, riderResults, teamResults) : 0;
         return {
           email: member.user_email,

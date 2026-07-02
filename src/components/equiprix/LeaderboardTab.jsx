@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useEquiPrix } from '@/lib/EquiPrixContext';
+import { useEquiPrix, GENERAL_ROOM_ID } from '@/lib/EquiPrixContext';
 import { useAuth } from '@/lib/AuthContext';
 import {
   sbFetch, ordinal, gclStagePts, gpPosPts, teamPosPts,
@@ -61,7 +61,14 @@ export default function LeaderboardTab() {
     if (!currentEvent) return;
     setLoading(true);
     try {
-      const picks = await sbFetch('picks?select=access_code,username,score,picks_json&event=eq.' + currentEvent.id) || [];
+      // CHANGED: added room_id filter for the General sentinel room, and
+      // select user_email instead of access_code. Without the room_id
+      // filter this was pulling picks from every private room too,
+      // showing the same user multiple times on the General leaderboard.
+      const picks = await sbFetch(
+        'picks?select=user_email,username,score,picks_json&event=eq.' + currentEvent.id +
+        '&room_id=eq.' + GENERAL_ROOM_ID
+      ) || [];
       let riderResults = {}, teamResults = {};
       if (['past', 'riders'].includes(currentEvent.status)) {
         const res = await sbFetch('results?event=eq.' + currentEvent.supabaseKey + '&limit=1') || [];
@@ -103,14 +110,27 @@ export default function LeaderboardTab() {
         const teamPts = resolvedTeams.reduce((s, t) => s + (t.pts || 0), 0);
         const riderPts = resolvedRiders.reduce((s, r) => s + (r.pts || 0), 0);
         const totalPts = hasResults ? teamPts + riderPts : null;
-        return { access_code: p.access_code, username: p.username || p.access_code, score: totalPts, teamPts, riders: resolvedRiders, teams: resolvedTeams, totalSpent, remainingAfterTeams, hasResults, hasTeamResults };
+        // NOTE: field kept as "access_code" downstream (used as React key,
+        // expanded-row state key, and PATCH lookup below) but now holds
+        // user_email — the actually unique, reliable identifier.
+        return { access_code: p.user_email, username: p.username || p.user_email, score: totalPts, teamPts, riders: resolvedRiders, teams: resolvedTeams, totalSpent, remainingAfterTeams, hasResults, hasTeamResults };
       }).sort((a, b) => (b.score || 0) - (a.score || 0));
 
       setEventRows(rows);
       if (hasResults && currentEvent.status === 'past') {
         rows.forEach(async (row) => {
           if (row.score == null) return;
-          try { await sbFetch('picks?access_code=eq.' + encodeURIComponent(row.access_code) + '&event=eq.' + currentEvent.id, { method: 'PATCH', body: JSON.stringify({ score: row.score }) }); } catch (e) {}
+          try {
+            // CHANGED: was filtering only on access_code+event, which could
+            // match/patch the wrong row (or none) now that access_code
+            // isn't the join key. Filter on user_email + room_id too.
+            await sbFetch(
+              'picks?user_email=eq.' + encodeURIComponent(row.access_code) +
+              '&event=eq.' + currentEvent.id +
+              '&room_id=eq.' + GENERAL_ROOM_ID,
+              { method: 'PATCH', body: JSON.stringify({ score: row.score }) }
+            );
+          } catch (e) {}
         });
       }
     } catch (e) { console.error(e); } finally { setLoading(false); }
@@ -123,7 +143,7 @@ export default function LeaderboardTab() {
       const userTotals = {};
       for (const ev of pastEvents) {
         const [evPicks, evResults] = await Promise.all([
-          sbFetch('picks?select=access_code,username,picks_json&event=eq.' + ev.id),
+          sbFetch('picks?select=user_email,username,picks_json&event=eq.' + ev.id + '&room_id=eq.' + GENERAL_ROOM_ID),
           sbFetch('results?event=eq.' + ev.supabaseKey + '&limit=1'),
         ]);
         const riderResults = evResults?.[0]?.rider_results || {};
@@ -132,8 +152,8 @@ export default function LeaderboardTab() {
         (evPicks || []).forEach(p => {
           if (!p.picks_json || p.picks_json.isPractice) return;
           const score = hasResults ? calcPickScore(p.picks_json, riderResults, teamResults) : 0;
-          const key = p.access_code;
-          if (!userTotals[key]) userTotals[key] = { name: p.username || p.access_code, total: 0, events: 0 };
+          const key = p.user_email;
+          if (!userTotals[key]) userTotals[key] = { name: p.username || p.user_email, total: 0, events: 0 };
           userTotals[key].total += score;
           userTotals[key].events++;
         });
@@ -183,8 +203,11 @@ export default function LeaderboardTab() {
       const ev = EVENTS_2026.find(e => e.id === room.event_id);
       if (!ev || !members.length) { setRoomRows([]); setLoading(false); return; }
 
+      // CHANGED: added room_id filter (was pulling every room's picks for
+      // this event, matching whichever row happened to line up first) and
+      // select user_email instead of access_code.
       const [allPicks, evResults] = await Promise.all([
-        sbFetch('picks?select=access_code,username,picks_json&event=eq.' + ev.id),
+        sbFetch('picks?select=user_email,username,picks_json&event=eq.' + ev.id + '&room_id=eq.' + room.id),
         sbFetch('results?event=eq.' + ev.supabaseKey + '&limit=1'),
       ]);
       const riderResults = evResults?.[0]?.rider_results || {};
@@ -192,7 +215,7 @@ export default function LeaderboardTab() {
       const hasResults = Object.keys(riderResults).length > 0 || Object.keys(teamResults).length > 0;
 
       const scored = members.map(member => {
-        const pick = (allPicks || []).find(p => p.access_code === member.user_email || p.username === member.username);
+        const pick = (allPicks || []).find(p => p.user_email === member.user_email);
         const score = pick && hasResults ? calcPickScore(pick.picks_json, riderResults, teamResults) : 0;
         return { email: member.user_email, username: member.username || member.user_email.split('@')[0], score, isYou: user?.email === member.user_email };
       }).sort((a, b) => b.score - a.score);
