@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { EVENTS_2026, sbFetch } from '@/lib/equiprix-data';
 import { supabase } from '@/lib/supabaseClient';
-import { Send, Users, CheckCircle, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Send, Users, CheckCircle, AlertCircle, ChevronDown, ChevronUp, BellRing } from 'lucide-react';
 
 const NOTIFICATION_TYPES = [
   { id: 'draft_open',     label: 'Draft Open',          description: 'Team picks are open',              icon: '🟢' },
@@ -10,6 +10,24 @@ const NOTIFICATION_TYPES = [
   { id: 'new_event',      label: 'New Event',            description: 'Announce upcoming event',           icon: '📣' },
   { id: 'custom',         label: 'Custom',               description: 'Write your own message',            icon: '✉️' },
 ];
+
+// Short push title/body per type — push notifications need to be terser
+// than email, so these are separate from the email preview copy below.
+function pushCopyForType(type, selectedEvent, customSubject, customMessage) {
+  switch (type) {
+    case 'draft_open':
+      return { title: '🟢 Draft Open', body: selectedEvent ? `Picks for ${selectedEvent.city} are open now.` : 'Picks are open now.' };
+    case 'team_results':
+      return { title: '🏆 Team Results Are In', body: selectedEvent ? `Team results for ${selectedEvent.city} are posted. GP draft is open.` : 'Team results are posted. GP draft is open.' };
+    case 'final_results':
+      return { title: '🎯 Final Results', body: selectedEvent ? `${selectedEvent.city} is complete — check the leaderboard.` : 'Event complete — check the leaderboard.' };
+    case 'new_event':
+      return { title: '📣 New Event', body: selectedEvent ? `${selectedEvent.city} ${selectedEvent.dates} is coming to EquiPrix.` : 'A new event is coming to EquiPrix.' };
+    case 'custom':
+    default:
+      return { title: customSubject || 'EquiPrix', body: customMessage || '' };
+  }
+}
 
 export default function NotificationsEditor() {
   const [selectedType, setSelectedType]       = useState('draft_open');
@@ -31,6 +49,12 @@ export default function NotificationsEditor() {
   const [sending, setSending]   = useState(false);
   const [result, setResult]     = useState(null);
   const [preview, setPreview]   = useState(false);
+
+  // NEW: push-notification send state, separate from the email send state
+  // above so the two can run/report independently.
+  const [sendingPush, setSendingPush] = useState(false);
+  const [pushResult, setPushResult]   = useState(null);
+  const [pushSubCount, setPushSubCount] = useState(null);
 
   useEffect(() => { loadAll(); }, []);
 
@@ -65,6 +89,12 @@ export default function NotificationsEditor() {
 
       const roomList = await sbFetch('rooms?order=name.asc&select=id,name,join_code,event_id') || [];
       setRooms(roomList);
+
+      // NEW: how many push subscriptions exist in total, just as a sanity
+      // indicator next to the push button (not per-recipient — that's
+      // resolved server-side when actually sending).
+      const pushSubs = await sbFetch('push_subscriptions?select=user_email');
+      setPushSubCount(pushSubs ? new Set(pushSubs.map(s => s.user_email)).size : 0);
     } catch (e) {
       console.error(e);
     } finally {
@@ -130,6 +160,31 @@ export default function NotificationsEditor() {
     }
   };
 
+  // NEW: sends a Web Push notification to the same recipient list as the
+  // email send above, via the send-push Netlify function. Uses a terser
+  // title/body pulled from pushCopyForType() rather than the full email copy.
+  const sendPush = async () => {
+    setSendingPush(true);
+    setPushResult(null);
+    try {
+      const to = await getRecipients();
+      if (!to.length) { setPushResult({ error: 'No recipients selected.' }); setSendingPush(false); return; }
+      const { title, body } = pushCopyForType(selectedType, selectedEvent, customSubject, customMessage);
+      if (!body) { setPushResult({ error: 'Nothing to send — message body is empty.' }); setSendingPush(false); return; }
+      const res = await fetch('/api/send-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipients: to, title, message: body, url: '/play' }),
+      });
+      const data = await res.json();
+      setPushResult(data);
+    } catch (e) {
+      setPushResult({ error: e.message });
+    } finally {
+      setSendingPush(false);
+    }
+  };
+
   const inputStyle = {
     background: 'rgba(255,255,255,0.04)',
     border: '1px solid rgba(180,149,48,0.2)',
@@ -148,7 +203,7 @@ export default function NotificationsEditor() {
     <div>
       <h2 className="font-cinzel text-sm tracking-widest mb-1" style={{ color: 'var(--gold)' }}>NOTIFICATIONS</h2>
       <p className="font-cormorant text-base italic mb-6" style={{ color: 'var(--mid)' }}>
-        Send event emails to users, rooms, or custom lists.
+        Send event emails or push notifications to users, rooms, or custom lists.
       </p>
 
       {/* Recipients */}
@@ -333,7 +388,7 @@ export default function NotificationsEditor() {
 
       {selectedType === 'custom' && (
         <div className="mb-4">
-          <label style={labelStyle}>EMAIL SUBJECT</label>
+          <label style={labelStyle}>EMAIL SUBJECT / PUSH TITLE</label>
           <input value={customSubject} onChange={e => setCustomSubject(e.target.value)}
             placeholder="e.g. Important update from EquiPrix"
             style={{ ...inputStyle, marginBottom: 8 }} />
@@ -394,12 +449,32 @@ export default function NotificationsEditor() {
         </div>
       )}
 
-      <button onClick={send} disabled={sending}
-        className="w-full py-3 rounded font-cinzel text-xs tracking-widest flex items-center justify-center gap-2 transition-all"
-        style={{ background: sending ? 'rgba(180,149,48,0.1)' : 'var(--gold)', color: sending ? 'var(--mid)' : 'var(--ink)', letterSpacing: '0.1em' }}>
-        <Send size={13} />
-        {sending ? 'SENDING…' : 'SEND NOTIFICATION'}
-      </button>
+      <div className="flex gap-2">
+        <button onClick={send} disabled={sending}
+          className="flex-1 py-3 rounded font-cinzel text-xs tracking-widest flex items-center justify-center gap-2 transition-all"
+          style={{ background: sending ? 'rgba(180,149,48,0.1)' : 'var(--gold)', color: sending ? 'var(--mid)' : 'var(--ink)', letterSpacing: '0.1em' }}>
+          <Send size={13} />
+          {sending ? 'SENDING…' : 'SEND EMAIL'}
+        </button>
+
+        {/* NEW: push send button, separate result state below */}
+        <button onClick={sendPush} disabled={sendingPush}
+          className="flex-1 py-3 rounded font-cinzel text-xs tracking-widest flex items-center justify-center gap-2 transition-all"
+          style={{
+            background: sendingPush ? 'rgba(76,175,125,0.1)' : 'rgba(76,175,125,0.15)',
+            color: sendingPush ? 'var(--mid)' : '#4caf7d',
+            border: '1px solid rgba(76,175,125,0.3)',
+            letterSpacing: '0.1em',
+          }}>
+          <BellRing size={13} />
+          {sendingPush ? 'SENDING…' : 'SEND PUSH'}
+        </button>
+      </div>
+      {pushSubCount !== null && (
+        <p className="font-cormorant italic text-xs mt-2 text-center" style={{ color: 'var(--mid)' }}>
+          {pushSubCount} user{pushSubCount !== 1 ? 's have' : ' has'} enabled push notifications
+        </p>
+      )}
 
       {result && (
         <div className="mt-4 px-4 py-3 rounded-lg flex items-start gap-3"
@@ -413,6 +488,24 @@ export default function NotificationsEditor() {
               : <>
                   <p className="font-cormorant text-sm font-semibold" style={{ color: '#4caf7d' }}>✓ {result.sent} emails sent</p>
                   {result.failed > 0 && <p className="font-cormorant text-sm" style={{ color: '#e07070' }}>{result.failed} failed</p>}
+                </>}
+          </div>
+        </div>
+      )}
+
+      {pushResult && (
+        <div className="mt-3 px-4 py-3 rounded-lg flex items-start gap-3"
+          style={{ background: pushResult.error || pushResult.failed > 0 ? 'rgba(224,112,112,0.08)' : 'rgba(76,175,125,0.08)', border: `1px solid ${pushResult.error || pushResult.failed > 0 ? 'rgba(224,112,112,0.3)' : 'rgba(76,175,125,0.3)'}` }}>
+          {pushResult.error || pushResult.failed > 0
+            ? <AlertCircle size={16} style={{ color: '#e07070', flexShrink: 0, marginTop: 1 }} />
+            : <CheckCircle size={16} style={{ color: '#4caf7d', flexShrink: 0, marginTop: 1 }} />}
+          <div>
+            {pushResult.error
+              ? <p className="font-cormorant text-sm" style={{ color: '#e07070' }}>{pushResult.error}</p>
+              : <>
+                  <p className="font-cormorant text-sm font-semibold" style={{ color: '#4caf7d' }}>✓ {pushResult.sent} push notifications sent</p>
+                  {pushResult.failed > 0 && <p className="font-cormorant text-sm" style={{ color: '#e07070' }}>{pushResult.failed} failed</p>}
+                  {pushResult.note && <p className="font-cormorant text-sm italic" style={{ color: 'var(--mid)' }}>{pushResult.note}</p>}
                 </>}
           </div>
         </div>

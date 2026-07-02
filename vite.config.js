@@ -45,6 +45,10 @@ export default defineConfig({
       workbox: {
         cacheId: 'equiprix-v3',
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // NEW: layers push-sw.js (public/push-sw.js) onto the generated
+        // service worker via importScripts, so Web Push notifications work
+        // without switching vite-plugin-pwa off generateSW mode.
+        importScripts: ['/push-sw.js'],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
