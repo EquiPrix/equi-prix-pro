@@ -102,11 +102,14 @@ export default function LeaderboardTab() {
         'picks?select=user_email,username,score,picks_json&event=eq.' + currentEvent.id +
         '&room_id=eq.' + GENERAL_ROOM_ID
       ) || [];
+      // CHANGED: was gated on currentEvent.status being 'past' or 'riders',
+      // which meant Round 1 team results sitting in the DB never showed
+      // until the event was marked complete (or GP locked). Now we always
+      // fetch results and let hasResults reflect whatever data actually
+      // exists — so team standings appear as soon as they're entered.
       let riderResults = {}, teamResults = {};
-      if (['past', 'riders'].includes(currentEvent.status)) {
-        const res = await sbFetch('results?event=eq.' + currentEvent.supabaseKey + '&limit=1') || [];
-        if (res.length) { riderResults = res[0].rider_results || {}; teamResults = res[0].team_results || {}; }
-      }
+      const res = await sbFetch('results?event=eq.' + currentEvent.supabaseKey + '&limit=1') || [];
+      if (res.length) { riderResults = res[0].rider_results || {}; teamResults = res[0].team_results || {}; }
       const hasResults = Object.keys(teamResults).length > 0 || Object.keys(riderResults).length > 0;
       const allRiders = [...(currentEvent.gpRiders || []), ...(currentEvent.riders || []), ...PREVIEW_RIDERS_2026];
       const seenIds = new Set();
@@ -150,7 +153,7 @@ export default function LeaderboardTab() {
       }).sort((a, b) => (b.score || 0) - (a.score || 0));
 
       setEventRows(rows);
-      if (hasResults && currentEvent.status === 'past') {
+      if (hasResults) {
         rows.forEach(async (row) => {
           if (row.score == null) return;
           try {
