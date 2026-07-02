@@ -31,7 +31,40 @@ function calcPickScore(picksJson, riderResults, teamResults) {
   return riderPts + teamPts;
 }
 
+// NEW: shared resolver so both the General ("This Event") leaderboard and
+// private room leaderboards render the same team/rider breakdown instead
+// of private rooms only showing a flat username+score row.
+function resolvePicksRow(picksJson, evRiders, riderResults, teamResults, hasResults) {
+  const pj = picksJson || {};
+  const resolvedRiders = (pj.riders || []).map(rp => {
+    const rider = evRiders.find(r => r.id === rp.id);
+    if (!rider) return null;
+    const salary = rp.isCpt ? rider.salary + CPT_PREMIUM : rider.salary;
+    const res = riderResults[String(rp.id)] || {};
+    const gpPts = res.gpPos ? gpPosPts(res.gpPos) : null;
+    const rawPts = gpPts !== null ? gpPts + (res.gpClear ? 20 : 0) : null;
+    const pts = rawPts !== null ? (rp.isCpt ? rawPts * CAPTAIN_MULT : rawPts) : null;
+    return { rider, isCpt: rp.isCpt, salary, pts };
+  }).filter(Boolean);
+  const resolvedTeams = (pj.teams || []).map(t => {
+    const team = GCL_TEAMS_2026.find(x => x.id === t.id);
+    if (!team) return null;
+    const tr = teamResults[t.id] || {};
+    const pos = tr.finalPos || null;
+    return { team, salary: team.salary, pts: pos ? teamPosPts(pos) : null };
+  }).filter(Boolean);
+  const totalSpent = resolvedRiders.reduce((s, r) => s + r.salary, 0) + resolvedTeams.reduce((s, t) => s + t.salary, 0);
+  const teamSalaryUsed = resolvedTeams.reduce((s, t) => s + t.salary, 0);
+  const remainingAfterTeams = CAP - teamSalaryUsed;
+  const hasTeamResults = Object.keys(teamResults).length > 0;
+  const teamPts = resolvedTeams.reduce((s, t) => s + (t.pts || 0), 0);
+  const riderPts = resolvedRiders.reduce((s, r) => s + (r.pts || 0), 0);
+  const totalPts = hasResults ? teamPts + riderPts : null;
+  return { riders: resolvedRiders, teams: resolvedTeams, totalSpent, remainingAfterTeams, teamPts, hasTeamResults, score: totalPts };
+}
+
 export default function LeaderboardTab() {
+
   const { currentEvent, events } = useEquiPrix();
   const { user } = useAuth();
   const [tab, setTab] = useState('event');
@@ -203,9 +236,6 @@ export default function LeaderboardTab() {
       const ev = EVENTS_2026.find(e => e.id === room.event_id);
       if (!ev || !members.length) { setRoomRows([]); setLoading(false); return; }
 
-      // CHANGED: added room_id filter (was pulling every room's picks for
-      // this event, matching whichever row happened to line up first) and
-      // select user_email instead of access_code.
       const [allPicks, evResults] = await Promise.all([
         sbFetch('picks?select=user_email,username,picks_json&event=eq.' + ev.id + '&room_id=eq.' + room.id),
         sbFetch('results?event=eq.' + ev.supabaseKey + '&limit=1'),
@@ -214,10 +244,30 @@ export default function LeaderboardTab() {
       const teamResults = evResults?.[0]?.team_results || {};
       const hasResults = Object.keys(riderResults).length > 0 || Object.keys(teamResults).length > 0;
 
+      const allRiders = [...(ev.gpRiders || []), ...(ev.riders || []), ...PREVIEW_RIDERS_2026];
+      const seenIds = new Set();
+      const evRiders = allRiders.filter(r => { if (seenIds.has(r.id)) return false; seenIds.add(r.id); return true; });
+
       const scored = members.map(member => {
         const pick = (allPicks || []).find(p => p.user_email === member.user_email);
-        const score = pick && hasResults ? calcPickScore(pick.picks_json, riderResults, teamResults) : 0;
-        return { email: member.user_email, username: member.username || member.user_email.split('@')[0], score, isYou: user?.email === member.user_email };
+        const resolved = pick?.picks_json
+          ? resolvePicksRow(pick.picks_json, evRiders, riderResults, teamResults, hasResults)
+          : { riders: [], teams: [], totalSpent: 0, remainingAfterTeams: CAP, teamPts: 0, hasTeamResults: false, score: null };
+        const score = hasResults ? (resolved.score || 0) : 0;
+        return {
+          email: member.user_email,
+          username: member.username || member.user_email.split('@')[0],
+          score,
+          hasResults,
+          isYou: user?.email === member.user_email,
+          teams: resolved.teams,
+          riders: resolved.riders,
+          totalSpent: resolved.totalSpent,
+          remainingAfterTeams: resolved.remainingAfterTeams,
+          teamPts: resolved.teamPts,
+          hasTeamResults: resolved.hasTeamResults,
+          hasPicks: !!pick?.picks_json,
+        };
       }).sort((a, b) => b.score - a.score);
 
       setRoomRows(scored);
@@ -283,6 +333,7 @@ export default function LeaderboardTab() {
 
 function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode, setJoinCode, joinWithCode, joining, joinMsg, user, currentEvent }) {
   const [showRequest, setShowRequest] = useState(false);
+  const [roomExpanded, setRoomExpanded] = useState({});
   const [showRecreate, setShowRecreate] = useState(false);
   const [recreateFromRoom, setRecreateFromRoom] = useState('');
   const [recreateEventId, setRecreateEventId] = useState('');
@@ -608,26 +659,105 @@ function MyRooms({ rooms, activeRoom, setActiveRoom, roomRows, loading, joinCode
             <div className="text-center py-8 font-cormorant italic" style={{ color: 'var(--mid)' }}>Loading…</div>
           ) : !roomRows.length ? (
             <div className="text-center py-8 font-cormorant italic" style={{ color: 'var(--mid)' }}>No scores yet.</div>
-          ) : roomRows.map((row, i) => (
-            <motion.div key={row.email}
-              initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.03 }}
-              className="flex items-center gap-3 px-4 py-3"
-              style={{ borderBottom: '1px solid rgba(42,40,32,0.4)' }}>
-              <div className="font-cinzel text-sm w-7 text-center flex-shrink-0"
-                style={{ color: i < 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>
-                {i < 3 ? ['🥇', '🥈', '🥉'][i] : ordinal(i + 1)}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-cormorant text-base truncate" style={{ color: row.isYou ? 'var(--gold-lt)' : 'var(--cream)' }}>
-                  {row.username}{row.isYou && ' ★'}
-                </div>
-              </div>
-              <div className="font-cormorant text-xl font-bold flex-shrink-0" style={{ color: 'var(--gold-lt)' }}>
-                {row.score % 1 === 0 ? row.score : row.score.toFixed(1)} pts
-              </div>
-            </motion.div>
-          ))}
+          ) : (() => {
+            const teamLocked = currentEvent && (currentEvent.status === 'past' || new Date() >= new Date(currentEvent.teamLockISO));
+            const gpLocked = currentEvent && (currentEvent.status === 'past' || new Date() >= new Date(currentEvent.gpLockISO));
+            return roomRows.map((row, i) => {
+              const open = roomExpanded[row.email];
+              const hasScore = row.hasResults && row.score != null && row.score > 0;
+              return (
+                <motion.div key={row.email}
+                  initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.03 }}
+                  style={{ borderBottom: '1px solid rgba(42,40,32,0.4)' }}>
+                  <div className="flex items-center gap-3 px-4 py-3 cursor-pointer"
+                    onClick={() => setRoomExpanded(p => ({ ...p, [row.email]: !p[row.email] }))}>
+                    <div className="font-cinzel text-sm w-7 text-center flex-shrink-0"
+                      style={{ color: i < 3 ? 'var(--gold)' : 'var(--gold-lt)' }}>
+                      {i < 3 ? ['🥇', '🥈', '🥉'][i] : ordinal(i + 1)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-cormorant text-base truncate" style={{ color: row.isYou ? 'var(--gold-lt)' : 'var(--cream)' }}>
+                        {row.username}{row.isYou && ' ★'}
+                      </div>
+                      {teamLocked && !gpLocked && <div className="text-xs" style={{ color: '#6aad8a' }}>{fmt(row.remainingAfterTeams)} remaining for GP</div>}
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {hasScore ? (
+                        <div className="font-cormorant text-xl font-bold" style={{ color: 'var(--gold-lt)' }}>
+                          {row.score % 1 === 0 ? row.score : row.score.toFixed(1)} pts
+                        </div>
+                      ) : (
+                        <div className="font-cinzel text-xs" style={{ color: 'var(--mid)' }}>{fmt(row.totalSpent)} spent</div>
+                      )}
+                      {open ? <ChevronUp size={13} style={{ color: 'var(--mid)' }} /> : <ChevronDown size={13} style={{ color: 'var(--mid)' }} />}
+                    </div>
+                  </div>
+                  {open && (
+                    <div className="px-4 pb-3 pt-0" style={{ background: '#0d0c09', borderTop: '1px solid rgba(42,40,32,0.4)' }}>
+                      {!row.hasPicks ? (
+                        <div className="mb-3 mt-2 text-xs font-cormorant italic" style={{ color: 'var(--mid)' }}>No picks saved yet</div>
+                      ) : (
+                        <>
+                          {row.teams.length > 0 ? (
+                            <div className="mb-3 mt-2">
+                              <div className="font-cinzel text-xs mb-1.5" style={{ color: '#6aad8a', fontSize: 9, letterSpacing: '0.1em' }}>GCL TEAMS</div>
+                              {row.teams.map(({ team, salary, pts }) => (
+                                <div key={team.id} className="flex items-center gap-2 py-1">
+                                  <div className="flex-1 font-cormorant text-sm" style={{ color: 'var(--cream)' }}>{team.name}</div>
+                                  <div className="text-xs" style={{ color: 'var(--mid)' }}>{fmt(salary)}</div>
+                                  {pts !== null ? <div className="font-cormorant text-sm font-bold w-16 text-right" style={{ color: 'var(--gold-lt)' }}>{pts} pts</div> : <div className="text-xs w-16 text-right" style={{ color: 'var(--mid)' }}>—</div>}
+                                </div>
+                              ))}
+                              {row.hasTeamResults && row.teamPts > 0 && (
+                                <div className="flex justify-end mt-1 pt-1" style={{ borderTop: '1px solid rgba(42,40,32,0.4)' }}>
+                                  <div className="font-cinzel text-xs" style={{ color: 'var(--gold)', fontSize: 9 }}>TEAM TOTAL: {row.teamPts} pts</div>
+                                </div>
+                              )}
+                            </div>
+                          ) : <div className="mb-3 mt-2 text-xs font-cormorant italic" style={{ color: 'var(--mid)' }}>No team picks saved</div>}
+                          {teamLocked && !gpLocked && (
+                            <div className="mb-3 px-2 py-1.5 rounded text-xs font-cormorant" style={{ background: 'rgba(61,90,76,0.1)', border: '1px solid rgba(61,90,76,0.25)', color: '#6aad8a' }}>
+                              {fmt(row.remainingAfterTeams)} available for GP rider picks
+                            </div>
+                          )}
+                          {!gpLocked ? (
+                            <div className="px-2 py-2 rounded text-xs font-cormorant italic text-center" style={{ background: 'rgba(180,149,48,0.05)', border: '1px solid rgba(180,149,48,0.15)', color: 'var(--mid)' }}>
+                              🔒 GP rider picks hidden until lock closes
+                            </div>
+                          ) : row.riders.length > 0 ? (
+                            <div>
+                              <div className="font-cinzel text-xs mb-1.5" style={{ color: 'var(--gold)', fontSize: 9, letterSpacing: '0.1em' }}>GP RIDERS</div>
+                              {row.riders.map(({ rider, isCpt, salary, pts }) => (
+                                <div key={rider.id} className="flex items-center gap-2 py-1">
+                                  {isCpt && <span className="font-cinzel text-xs px-1.5 py-0.5 rounded flex-shrink-0" style={{ background: 'rgba(180,149,48,0.15)', color: 'var(--gold)', fontSize: 8 }}>CPT</span>}
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-cormorant text-sm truncate" style={{ color: isCpt ? 'var(--gold-lt)' : 'var(--cream)' }}>{rider.name}</div>
+                                    <div className="text-xs" style={{ color: 'var(--mid)', fontSize: 9 }}>{rider.nat}</div>
+                                  </div>
+                                  <div className="text-xs flex-shrink-0" style={{ color: 'var(--mid)' }}>{fmt(salary)}</div>
+                                  {pts !== null ? (
+                                    <div className="font-cormorant text-sm font-bold w-16 text-right flex-shrink-0" style={{ color: isCpt ? 'var(--gold)' : 'var(--gold-lt)' }}>
+                                      {pts % 1 === 0 ? pts : pts.toFixed(1)} pts
+                                      {isCpt && <span className="text-xs ml-0.5" style={{ color: 'var(--mid)' }}>×1.5</span>}
+                                    </div>
+                                  ) : <div className="text-xs w-16 text-right flex-shrink-0" style={{ color: 'var(--mid)' }}>—</div>}
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                          <div className="flex items-center justify-between mt-3 pt-2" style={{ borderTop: '1px solid rgba(42,40,32,0.4)' }}>
+                            <div className="font-cinzel text-xs" style={{ color: 'var(--mid)', fontSize: 9 }}>TOTAL SPENT: {fmt(row.totalSpent)}</div>
+                            {hasScore && <div className="font-cormorant text-base font-bold" style={{ color: 'var(--gold)' }}>{row.score % 1 === 0 ? row.score : row.score.toFixed(1)} pts</div>}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </motion.div>
+              );
+            });
+          })()}
         </>
       )}
     </div>
