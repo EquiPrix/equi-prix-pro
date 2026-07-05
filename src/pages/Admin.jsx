@@ -10,6 +10,7 @@ import TeamStandingsEditor from '@/components/admin/TeamStandingsEditor';
 import RoomsEditor from '@/components/admin/RoomsEditor';
 import NotificationsEditor from '@/components/admin/NotificationsEditor';
 import HorseDBEditor from '@/components/admin/HorseDBEditor';
+import PicksEditor from '@/components/admin/PicksEditor';
 import MlsjEventStatusEditor from '@/components/admin/MlsjEventStatusEditor';
 import MlsjTeamStandingsEditor from '@/components/admin/MlsjTeamStandingsEditor';
 import MlsjStartListEditor from '@/components/admin/MlsjStartListEditor';
@@ -17,7 +18,7 @@ import { MlsjResultsEditor } from '@/components/admin/MlsjResultsEditor';
 import MlsjTeamsEditor from '@/components/admin/MlsjTeamsEditor';
 import {
   Lock, BarChart3, Users, ListOrdered, Trophy, ShieldHalf,
-  CalendarCog, TrendingUp, DoorOpen, Bell, Database,
+  CalendarCog, TrendingUp, DoorOpen, Bell, Database, ClipboardEdit,
 } from 'lucide-react';
 
 // ── Tab definitions ───────────────────────────────────────────────────────────
@@ -31,6 +32,8 @@ const GCL_TABS = [
   { id: 'startlist', label: 'Start List', icon: ListOrdered },
   { id: 'results',   label: 'Results',    icon: Trophy      },
   { id: 'rooms',     label: 'Rooms',      icon: DoorOpen    },
+  // NEW: view/correct any user's picks for an event, including after lock.
+  { id: 'picks',     label: 'Picks',      icon: ClipboardEdit },
 ];
 
 const MLSJ_TABS = [
@@ -196,6 +199,7 @@ export default function Admin() {
         {!activeSharedTab && league === 'gcl' && activeTab === 'startlist' && <StartListEditor />}
         {!activeSharedTab && league === 'gcl' && activeTab === 'results'   && <ResultsEditor />}
         {!activeSharedTab && league === 'gcl' && activeTab === 'rooms'     && <RoomsEditor league="gcl" />}
+        {!activeSharedTab && league === 'gcl' && activeTab === 'picks'     && <PicksEditor />}
 
         {/* ── League: MLSJ ── */}
         {!activeSharedTab && league === 'mlsj' && activeTab === 'status'    && <MlsjEventStatusEditor />}
