@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { GCL_TEAMS_2026, PREVIEW_RIDERS_2026, sbFetch } from '@/lib/equiprix-data';
 import { ChevronDown, ChevronUp, Save, X } from 'lucide-react';
 
@@ -9,101 +9,149 @@ import { ChevronDown, ChevronUp, Save, X } from 'lucide-react';
 
 const SUPABASE_KEY = 'gcl_rosters';
 
-// Full 6-rider rosters — same data that was in the old TeamsEditor export.
+// Full 6-rider rosters — ids re-synced to match PREVIEW_RIDERS_2026's current
+// unified id sequence (matched by name). The previous ids here were left over
+// from before the master rider list was renumbered, so they no longer pointed
+// at the right riders — that mismatch was blocking correct riders from
+// appearing in the "add rider" picker below.
 export const GCL_TEAM_ROSTERS = {
   't01': [
-    { id: 101, name: 'Henrik von Eckermann' }, { id: 121, name: 'Simon Delestre' },
-    { id: 131, name: 'Abdel Saïd' },           { id: 141, name: 'Oliver Fletcher' },
-    { id: 151, name: 'Hasan Şentürk' },        { id: 161, name: 'Efe Siyahi' },
+    { id: 101, name: "Henrik von Eckermann" },
+    { id: 109, name: "Simon Delestre" },
+    { id: 202, name: "Abdel Saïd" },
+    { id: 189, name: "Oliver Fletcher" },
+    { id: 190, name: "Hasan Şentürk" },
+    { id: 191, name: "Efe Siyahi" },
   ],
   't02': [
-    { id: 171, name: 'Zascha Nygaard' },       { id: 181, name: 'Andreas Schou' },
-    { id: 116, name: 'Nicola Philippaerts' },  { id: 191, name: 'Olivier Philippaerts' },
-    { id: 201, name: 'Géraldine Straumann' },  { id: 211, name: 'Marlon Modolo Zanotelli' },
+    { id: 136, name: "Zascha Nygaard" },
+    { id: 137, name: "Andreas Schou" },
+    { id: 116, name: "Nicola Philippaerts" },
+    { id: 117, name: "Olivier Philippaerts" },
+    { id: 188, name: "Géraldine Straumann" },
+    { id: 177, name: "Marlon Modolo Zanotelli" },
   ],
   't03': [
-    { id: 221, name: 'Thibeau Spits' },        { id: 231, name: 'Pieter Devos' },
-    { id: 241, name: 'Niels Bruynseels' },     { id: 251, name: 'Anna Kellnerová' },
-    { id: 261, name: 'Derin Demirsoy' },       { id: 271, name: 'Fernando Martinez Sommer' },
+    { id: 146, name: "Thibeau Spits" },
+    { id: 112, name: "Pieter Devos" },
+    { id: 127, name: "Niels Bruynseels" },
+    { id: 180, name: "Anna Kellnerová" },
+    { id: 195, name: "Derin Demirsoy" },
+    { id: 196, name: "Fernando Martinez Sommer" },
   ],
   't04': [
-    { id: 103, name: 'Gilles Thomas' },        { id: 281, name: 'Edwina Tops-Alexander' },
-    { id: 291, name: 'Thibault Philippaerts' },{ id: 301, name: 'Marcus Ehning' },
-    { id: 311, name: 'Hans-Dieter Dreher' },   { id: 321, name: 'Lorenzo De Luca' },
+    { id: 103, name: "Gilles Thomas" },
+    { id: 120, name: "Edwina Tops-Alexander" },
+    { id: 113, name: "Thibault Philippaerts" },
+    { id: 114, name: "Marcus Ehning" },
+    { id: 126, name: "Hans-Dieter Dreher" },
+    { id: 118, name: "Lorenzo De Luca" },
   ],
   't05': [
-    { id: 331, name: 'Jeanne Sadran' },        { id: 341, name: 'Antoine Ermann' },
-    { id: 351, name: 'Jérôme Guery' },         { id: 361, name: 'Piergiorgio Bucci' },
-    { id: 371, name: 'Nadja Peter Steiner' },  { id: 381, name: 'Kaitlin Campbell' },
+    { id: 148, name: "Jeanne Sadran" },
+    { id: 149, name: "Antoine Ermann" },
+    { id: 125, name: "Jérôme Guery" },
+    { id: 176, name: "Piergiorgio Bucci" },
+    { id: 175, name: "Nadja Peter Steiner" },
+    { id: 168, name: "Kaitlin Campbell" },
   ],
   't06': [
-    { id: 391, name: 'Peder Fredricson' },     { id: 401, name: 'Yuri Mansur' },
-    { id: 411, name: 'Duarte Seabra' },        { id: 421, name: 'Gregory Cottard' },
-    { id: 431, name: 'Iñigo Lopez de La Osa' },{ id: 441, name: 'Mariano Martinez Bastida' },
+    { id: 106, name: "Peder Fredricson" },
+    { id: 151, name: "Yuri Mansur" },
+    { id: 138, name: "Duarte Seabra" },
+    { id: 135, name: "Gregory Cottard" },
+    { id: 179, name: "Iñigo Lopez de La Osa" },
+    { id: 200, name: "Mariano Martinez Bastida" },
   ],
   't07': [
-    { id: 124, name: 'Nayel Nassar' },         { id: 451, name: 'Dalma Malhas' },
-    { id: 461, name: 'Inès Joly' },            { id: 471, name: 'Ismail El Borai' },
-    { id: 481, name: 'Annelies Vorsselmans' }, { id: 491, name: 'Pim Mulder' },
+    { id: 124, name: "Nayel Nassar" },
+    { id: 158, name: "Dalma Malhas" },
+    { id: 160, name: "Inès Joly" },
+    { id: 201, name: "Ismail El Borai" },
+    { id: 178, name: "Annelies Vorsselmans" },
+    { id: 144, name: "Pim Mulder" },
   ],
   't08': [
-    { id: 501, name: 'Philipp Weishaupt' },    { id: 105, name: 'Christian Kukuk' },
-    { id: 511, name: 'Max Weishaupt' },        { id: 521, name: 'Emanuele Camilli' },
-    { id: 531, name: 'Ciaran Nallon' },        { id: 541, name: 'Marco Kutscher' },
+    { id: 108, name: "Philipp Weishaupt" },
+    { id: 105, name: "Christian Kukuk" },
+    { id: 132, name: "Max Weishaupt" },
+    { id: 123, name: "Emanuele Camilli" },
+    { id: 130, name: "Ciaran Nallon" },
+    { id: 129, name: "Marco Kutscher" },
   ],
   't09': [
-    { id: 551, name: 'Maikel van der Vleuten' },{ id: 561, name: 'Kim Emmen' },
-    { id: 571, name: 'Eduardo Alvarez Aznar' }, { id: 581, name: 'Sergio Alvarez Moya' },
-    { id: 591, name: 'Victor Bettendorf' },     { id: 601, name: 'Jack Whitaker' },
+    { id: 107, name: "Maikel van der Vleuten" },
+    { id: 140, name: "Kim Emmen" },
+    { id: 119, name: "Eduardo Alvarez Aznar" },
+    { id: 143, name: "Sergio Alvarez Moya" },
+    { id: 147, name: "Victor Bettendorf" },
+    { id: 153, name: "Jack Whitaker" },
   ],
   't10': [
-    { id: 611, name: 'Katrin Eckermann' },     { id: 621, name: 'Sophie Hinners' },
-    { id: 631, name: 'Janne Meyer-Zimmermann' },{ id: 641, name: 'Jörne Sprehe' },
-    { id: 651, name: 'Anastasia Nielsen' },    { id: 661, name: 'Angelica Augustsson Zanotelli' },
+    { id: 121, name: "Katrin Eckermann" },
+    { id: 185, name: "Sophie Hinners" },
+    { id: 122, name: "Janne Meyer-Zimmermann" },
+    { id: 134, name: "Jörne Sprehe" },
+    { id: 133, name: "Anastasia Nielsen" },
+    { id: 139, name: "Angelica Augustsson Zanotelli" },
   ],
   't11': [
-    { id: 102, name: 'Scott Brash' },          { id: 671, name: 'Bertram Allen' },
-    { id: 681, name: 'Denis Lynch' },          { id: 691, name: 'Michael Pender' },
-    { id: 701, name: 'Max Wachman' },          { id: 711, name: 'Georgina Bloomberg' },
+    { id: 102, name: "Scott Brash" },
+    { id: 111, name: "Bertram Allen" },
+    { id: 166, name: "Denis Lynch" },
+    { id: 164, name: "Michael Pender" },
+    { id: 162, name: "Max Wachman" },
+    { id: 192, name: "Georgina Bloomberg" },
   ],
   't12': [
-    { id: 721, name: 'Jessica Mendoza' },      { id: 731, name: 'Sanne Thijssen' },
-    { id: 741, name: 'Nathan Budd' },          { id: 751, name: 'Caroline Rehoff Pedersen' },
-    { id: 761, name: 'Oliver Lazarus' },       { id: 771, name: 'Sheikh Ali Bin Khalid' },
+    { id: 141, name: "Jessica Mendoza" },
+    { id: 142, name: "Sanne Thijssen" },
+    { id: 159, name: "Nathan Budd" },
+    { id: 173, name: "Caroline Rehoff Pedersen" },
+    { id: 193, name: "Oliver Lazarus" },
+    { id: 194, name: "Sheikh Ali Bin Khalid" },
   ],
   't13': [
-    { id: 781, name: 'Daniel Deusser' },       { id: 104, name: 'Ben Maher' },
-    { id: 791, name: 'Christian Ahlmann' },    { id: 801, name: 'Max Kühner' },
-    { id: 811, name: 'Giacomo Casadei' },      { id: 821, name: 'Jane Richard' },
+    { id: 110, name: "Daniel Deusser" },
+    { id: 104, name: "Ben Maher" },
+    { id: 115, name: "Christian Ahlmann" },
+    { id: 128, name: "Max Kühner" },
+    { id: 150, name: "Giacomo Casadei" },
+    { id: 145, name: "Jane Richard" },
   ],
   't14': [
-    { id: 831, name: 'Jur Vrieling' },         { id: 841, name: 'Sara Vingralkova' },
-    { id: 851, name: 'Jorge Matte Capdevila' },{ id: 861, name: 'Lara Tryba' },
-    { id: 871, name: 'Deirdre Reilly' },       { id: 881, name: 'Susan Fitzpatrick' },
+    { id: 131, name: "Jur Vrieling" },
+    { id: 154, name: "Sara Vingralkova" },
+    { id: 167, name: "Jorge Matte Capdevila" },
+    { id: 174, name: "Lara Tryba" },
+    { id: 186, name: "Deirdre Reilly" },
+    { id: 187, name: "Susan Fitzpatrick" },
   ],
   't15': [
-    { id: 891, name: 'Carlos Hank Guerreiro' },{ id: 901, name: 'Zoe Hank Conter' },
-    { id: 911, name: 'Eduardo Menezes' },      { id: 921, name: 'Niamh McEvoy' },
-    { id: 931, name: 'Kendra Claricia Brinkop' },{ id: 941, name: 'Koen Vereecke' },
+    { id: 152, name: "Carlos Hank Guerreiro" },
+    { id: 163, name: "Zoe Hank Conter" },
+    { id: 165, name: "Eduardo Menezes" },
+    { id: 183, name: "Niamh McEvoy" },
+    { id: 184, name: "Kendra Claricia Brinkop" },
+    { id: 161, name: "Koen Vereecke" },
   ],
   't16': [
-    { id: 951, name: "Cian O'Connor" },        { id: 961, name: 'Emanuele Gaudiano' },
-    { id: 971, name: 'Tom Wachman' },          { id: 981, name: 'Rodrigo Gesteira Almeida' },
-    { id: 991, name: 'Olivier Perreau' },      { id: 992, name: 'Mathijs Van Asten' },
+    { id: 155, name: "Cian O'Connor" },
+    { id: 156, name: "Emanuele Gaudiano" },
+    { id: 157, name: "Tom Wachman" },
+    { id: 172, name: "Rodrigo Gesteira Almeida" },
+    { id: 181, name: "Olivier Perreau" },
+    { id: 182, name: "Mathijs Van Asten" },
   ],
   't17': [
-    { id: 993, name: 'Guido Grimaldi' },       { id: 994, name: 'Jennifer Hochstaedter' },
-    { id: 995, name: 'Yali Kass' },            { id: 996, name: 'Clara Pezzoli' },
-    { id: 997, name: 'Ioli Mytilineou' },      { id: 998, name: 'Luiz Felipe Neto' },
+    { id: 170, name: "Guido Grimaldi" },
+    { id: 169, name: "Jennifer Hochstaedter" },
+    { id: 197, name: "Yali Kass" },
+    { id: 198, name: "Clara Pezzoli" },
+    { id: 199, name: "Ioli Mytilineou" },
+    { id: 171, name: "Luiz Felipe Neto" },
   ],
 };
-
-// All riders available to pick from — PREVIEW_RIDERS_2026 is the shared pool
-const ALL_RIDERS = [...PREVIEW_RIDERS_2026].sort((a, b) => {
-  const ra = a.rank >= 999 ? 9999 : a.rank;
-  const rb = b.rank >= 999 ? 9999 : b.rank;
-  return ra - rb;
-});
 
 export default function TeamsEditor() {
   // rosters: { [teamId]: [{ id, name }] } — up to 6 per team
@@ -117,6 +165,35 @@ export default function TeamsEditor() {
   const [saving, setSaving]     = useState(false);
   const [saved, setSaved]       = useState(false);
   const [search, setSearch]     = useState({}); // { [teamId]: string }
+
+  // All riders available to pick from — pulled live from the Supabase
+  // `riders` table (same table RankingsImport upserts into on every FEI
+  // rankings CSV upload), not the static PREVIEW_RIDERS_2026 array, which
+  // is just a ~170-rider fallback seed and never grows when new riders are
+  // imported. PREVIEW_RIDERS_2026 is used only as an initial placeholder so
+  // the picker isn't empty for the instant before the live fetch resolves.
+  const [allRiders, setAllRiders]     = useState(() => [...PREVIEW_RIDERS_2026]);
+  const [ridersLoading, setRidersLoading] = useState(true);
+
+  useEffect(() => {
+    sbFetch('riders?order=rank.asc').then(rows => {
+      if (rows && rows.length) {
+        setAllRiders(rows.map(r => ({
+          ...r,
+          id:     Number(r.id),
+          rank:   Number(r.rank)   || 999,
+          salary: Number(r.salary) || 1000,
+        })));
+      }
+      setRidersLoading(false);
+    }).catch(() => setRidersLoading(false));
+  }, []);
+
+  const ALL_RIDERS = useMemo(() => [...allRiders].sort((a, b) => {
+    const ra = a.rank >= 999 ? 9999 : a.rank;
+    const rb = b.rank >= 999 ? 9999 : b.rank;
+    return ra - rb;
+  }), [allRiders]);
 
   // Load saved overrides from Supabase
   useEffect(() => {
@@ -182,7 +259,7 @@ export default function TeamsEditor() {
     }
   };
 
-  if (loading) return (
+  if (loading || ridersLoading) return (
     <div className="text-center py-8 font-cormorant italic" style={{ color: 'var(--mid)' }}>
       Loading rosters…
     </div>
