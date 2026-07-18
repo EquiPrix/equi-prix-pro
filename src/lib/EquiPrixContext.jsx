@@ -150,7 +150,7 @@ export function EquiPrixProvider({ children }) {
       // rank could be fixed in the riders table (e.g. via RankingsImport)
       // and still show 999 everywhere the Draft tab reads gpRiders/
       // previewRiders.
-      const riderRowsForOverlay = await sbFetch('riders?select=id,rank,salary&limit=1000');
+      const riderRowsForOverlay = await sbFetch('riders?select=id,rank,salary&limit=5000');
       const liveRankMap = {};
       if (riderRowsForOverlay && riderRowsForOverlay.length) {
         riderRowsForOverlay.forEach(r => {

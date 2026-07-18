@@ -65,7 +65,7 @@ export function MlsjProvider({ children }) {
     try {
       // CHANGED: read live FEI rankings from riders table instead of
       // results sentinel row 'fei_rankings' — same source as GCL.
-      const riderRows = await sbFetch('riders?select=id,rank,salary&limit=1000');
+      const riderRows = await sbFetch('riders?select=id,rank,salary&limit=5000');
       let updatedRankings = PREVIEW_RIDERS_2026.map(r => ({ ...r }));
       if (riderRows && riderRows.length) {
         const rankMap = {};

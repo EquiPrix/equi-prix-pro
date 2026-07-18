@@ -274,7 +274,7 @@ export default function MlsjStartListEditor() {
     // CHANGED: read live ranks from the riders table directly instead of
     // the fei_rankings sentinel row in results. Every rider's rank and
     // salary are now updated there by RankingsImport on each monthly upload.
-    sbFetch('riders?select=id,rank,salary&limit=1000').then(rows => {
+    sbFetch('riders?select=id,rank,salary&limit=5000').then(rows => {
       if (rows && rows.length) {
         const rankMap = {};
         rows.forEach(r => { rankMap[String(r.id)] = { rank: r.rank, salary: r.salary }; });

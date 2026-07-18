@@ -176,7 +176,7 @@ export default function TeamsEditor() {
   const [ridersLoading, setRidersLoading] = useState(true);
 
   useEffect(() => {
-    sbFetch('riders?order=rank.asc').then(rows => {
+    sbFetch('riders?order=rank.asc&limit=5000').then(rows => {
       if (rows && rows.length) {
         setAllRiders(rows.map(r => ({
           ...r,

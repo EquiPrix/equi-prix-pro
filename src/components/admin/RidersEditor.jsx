@@ -108,7 +108,7 @@ export default function RidersEditor() {
   const [loading, setLoading] = useState(false);
 
   const loadRiders = async () => {
-    const data = await sbFetch('riders?order=rank.asc');
+    const data = await sbFetch('riders?order=rank.asc&limit=5000');
     setAllRiders(data || []);
     setRidersLoaded(true);
   };
