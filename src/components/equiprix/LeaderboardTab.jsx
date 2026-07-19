@@ -38,7 +38,7 @@ function calcPickScore(picksJson, riderResults, teamResults) {
 function resolvePicksRow(picksJson, evRiders, riderResults, teamResults, hasResults) {
   const pj = picksJson || {};
   const resolvedRiders = (pj.riders || []).map(rp => {
-    const rider = evRiders.find(r => r.id === rp.id);
+    const rider = evRiders.find(r => String(r.id) === String(rp.id));
     if (!rider) return null;
     const salary = rp.isCpt ? rider.salary + CPT_PREMIUM : rider.salary;
     const res = riderResults[String(rp.id)] || {};
@@ -124,7 +124,7 @@ export default function LeaderboardTab() {
     }).map(p => {
         const pj = p.picks_json;
         const resolvedRiders = (pj.riders || []).map(rp => {
-          const rider = evRiders.find(r => r.id === rp.id);
+          const rider = evRiders.find(r => String(r.id) === String(rp.id));
           if (!rider) return null;
           const salary = rp.isCpt ? rider.salary + CPT_PREMIUM : rider.salary;
           const res = riderResults[String(rp.id)] || {};

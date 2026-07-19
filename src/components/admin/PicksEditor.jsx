@@ -1,14 +1,26 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  EVENTS_2026, GCL_TEAMS_2026, PREVIEW_RIDERS_2026,
+  GCL_TEAMS_2026, PREVIEW_RIDERS_2026,
   sbFetch, calcEventRiderSalaries, CAP, CPT_PREMIUM, fmt,
 } from '@/lib/equiprix-data';
+import { useEquiPrix } from '@/lib/EquiPrixContext';
 import { ChevronDown, ChevronUp, Save, X, Search, AlertTriangle } from 'lucide-react';
 
 const GENERAL_ROOM_ID = '00000000-0000-0000-0000-000000000000';
 const SLOT_IDS = ['cpt', 'r1', 'r2', 'r3', 'r4'];
 
 export default function PicksEditor() {
+  // CHANGED: was reading the plain static EVENTS_2026 import, which never
+  // has gpRiders/previewRiders/teams populated (those only exist on the
+  // live, Supabase-enriched `events` list from context). That meant
+  // evRiders here silently fell back to PREVIEW_RIDERS_2026 for every
+  // event, and any rider whose picked id didn't type-match against that
+  // static array (e.g. string ids from a live gpRiders snapshot vs the
+  // numeric ids in PREVIEW_RIDERS_2026) would vanish from the edit view
+  // — while the header count (read straight from picks_json, no lookup
+  // needed) still showed the correct rider/team count. Using the same
+  // live `events` list every other tab uses fixes both.
+  const { events } = useEquiPrix();
   const [selectedEventId, setSelectedEventId] = useState('');
   const [rooms, setRooms] = useState([]);
   const [picks, setPicks] = useState([]);
@@ -23,7 +35,7 @@ export default function PicksEditor() {
   const [search, setSearch] = useState('');
   const [view, setView] = useState('riders');
 
-  const selectedEvent = EVENTS_2026.find(e => e.id === selectedEventId);
+  const selectedEvent = events.find(e => e.id === selectedEventId);
 
   useEffect(() => {
     if (selectedEventId) loadPicks();
@@ -61,8 +73,12 @@ export default function PicksEditor() {
       ...(selectedEvent.riders || []),
       ...PREVIEW_RIDERS_2026,
     ];
+    // CHANGED: dedupe/compare by String(id) — gpRiders/previewRiders come
+    // back from Supabase with text ids, while PREVIEW_RIDERS_2026 has
+    // numeric ids; comparing raw values let "102" and 102 both survive as
+    // separate entries, or (worse) let a lookup by strict === silently miss.
     const seen = new Set();
-    const deduped = all.filter(r => { if (seen.has(r.id)) return false; seen.add(r.id); return true; });
+    const deduped = all.filter(r => { const key = String(r.id); if (seen.has(key)) return false; seen.add(key); return true; });
     return calcEventRiderSalaries(deduped);
   }, [selectedEvent]);
 
@@ -85,12 +101,12 @@ export default function PicksEditor() {
     const pj = row.picks_json || {};
     const newTeam = [];
     (pj.riders || []).forEach(s => {
-      const rider = evRiders.find(r => r.id === s.id);
+      const rider = evRiders.find(r => String(r.id) === String(s.id));
       if (rider) newTeam.push({ rider, slotId: SLOT_IDS[newTeam.length], isCpt: !!s.isCpt });
     });
     const newTeamPicks = [];
     (pj.teams || []).forEach((s, i) => {
-      const t = evTeams.find(t => t.id === s.id);
+      const t = evTeams.find(t => String(t.id) === String(s.id));
       if (t) newTeamPicks.push({ ...t, slotId: 't' + (i + 1) });
     });
     setEditTeam(newTeam);
@@ -180,7 +196,7 @@ export default function PicksEditor() {
         <select value={selectedEventId} onChange={e => setSelectedEventId(e.target.value)}
           style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(180,149,48,0.2)', color: selectedEventId ? 'var(--cream)' : 'var(--mid)', borderRadius: 4, padding: '8px 12px', fontSize: 13, outline: 'none' }}>
           <option value="">— Select Event —</option>
-          {EVENTS_2026.map(ev => <option key={ev.id} value={ev.id}>{ev.flag} {ev.city} · {ev.dates}</option>)}
+          {events.map(ev => <option key={ev.id} value={ev.id}>{ev.flag} {ev.city} · {ev.dates}</option>)}
         </select>
       </div>
 
