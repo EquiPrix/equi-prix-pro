@@ -16,10 +16,22 @@ const TABS = [
   { id: 'gcl', label: 'GCL Standings' },
 ];
 
+// CHANGED: when a rider ties on a clear round and goes to a jump-off,
+// gpPos is left blank/tied and the real finishing position only lives in
+// joPos (same pattern ResultsTab.jsx already uses to order/display the
+// class correctly). Scoring was only ever reading gpPos, so every rider
+// decided by a jump-off — exactly the top few clear rounds, the ones that
+// matter most — scored as unplaced ("—") even though ResultsTab showed
+// their correct position. effectivePos mirrors ResultsTab's fallback.
+function effectivePos(res) {
+  return (res.gpJO && res.joPos != null) ? res.joPos : res.gpPos;
+}
+
 function calcPickScore(picksJson, riderResults, teamResults) {
   const riderPts = (picksJson.riders || []).reduce((sum, rp) => {
     const res = riderResults[String(rp.id)] || {};
-    const gpPts = res.gpPos ? gpPosPts(res.gpPos) : null;
+    const pos = effectivePos(res);
+    const gpPts = pos ? gpPosPts(pos) : null;
     if (gpPts === null) return sum;
     const raw = gpPts + (res.gpClear ? 20 : 0);
     return sum + (rp.isCpt ? raw * CAPTAIN_MULT : raw);
@@ -42,7 +54,8 @@ function resolvePicksRow(picksJson, evRiders, riderResults, teamResults, hasResu
     if (!rider) return null;
     const salary = rp.isCpt ? rider.salary + CPT_PREMIUM : rider.salary;
     const res = riderResults[String(rp.id)] || {};
-    const gpPts = res.gpPos ? gpPosPts(res.gpPos) : null;
+    const pos = effectivePos(res);
+    const gpPts = pos ? gpPosPts(pos) : null;
     const rawPts = gpPts !== null ? gpPts + (res.gpClear ? 20 : 0) : null;
     const pts = rawPts !== null ? (rp.isCpt ? rawPts * CAPTAIN_MULT : rawPts) : null;
     return { rider, isCpt: rp.isCpt, salary, pts };
@@ -128,7 +141,8 @@ export default function LeaderboardTab() {
           if (!rider) return null;
           const salary = rp.isCpt ? rider.salary + CPT_PREMIUM : rider.salary;
           const res = riderResults[String(rp.id)] || {};
-          const gpPts = res.gpPos ? gpPosPts(res.gpPos) : null;
+          const pos = effectivePos(res);
+          const gpPts = pos ? gpPosPts(pos) : null;
           const rawPts = gpPts !== null ? gpPts + (res.gpClear ? 20 : 0) : null;
           const pts = rawPts !== null ? (rp.isCpt ? rawPts * CAPTAIN_MULT : rawPts) : null;
           return { rider, isCpt: rp.isCpt, salary, pts };
