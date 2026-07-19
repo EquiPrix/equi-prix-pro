@@ -34,6 +34,12 @@ export default function PicksEditor() {
   const [editTeamPicks, setEditTeamPicks] = useState([]); // [{ ...gclTeam, slotId }]
   const [search, setSearch] = useState('');
   const [view, setView] = useState('riders');
+  // Guards against saving a silent data-loss: if the saved picks_json has
+  // more riders/teams than we could actually resolve against evRiders/
+  // evTeams (e.g. the live event data hadn't finished loading yet), saving
+  // would overwrite the DB with the incomplete in-memory state and
+  // permanently erase the unresolved picks. Block save until this clears.
+  const [unresolvedCount, setUnresolvedCount] = useState(0);
 
   const selectedEvent = events.find(e => e.id === selectedEventId);
 
@@ -109,6 +115,9 @@ export default function PicksEditor() {
       const t = evTeams.find(t => String(t.id) === String(s.id));
       if (t) newTeamPicks.push({ ...t, slotId: 't' + (i + 1) });
     });
+    const expectedRiders = (pj.riders || []).length;
+    const expectedTeams = (pj.teams || []).length;
+    setUnresolvedCount((expectedRiders - newTeam.length) + (expectedTeams - newTeamPicks.length));
     setEditTeam(newTeam);
     setEditTeamPicks(newTeamPicks);
     setExpandedId(row.id);
@@ -232,6 +241,16 @@ export default function PicksEditor() {
 
                 {open && (
                   <div className="p-3" style={{ background: '#0d0c09', borderTop: '1px solid rgba(42,40,32,0.4)' }}>
+                    {unresolvedCount > 0 && (
+                      <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded"
+                        style={{ background: 'rgba(139,26,26,0.15)', border: '1px solid rgba(224,112,112,0.4)' }}>
+                        <AlertTriangle size={14} style={{ color: '#e07070', flexShrink: 0 }} />
+                        <span className="font-cormorant text-xs" style={{ color: '#e07070' }}>
+                          {unresolvedCount} saved pick{unresolvedCount !== 1 ? 's' : ''} couldn't be matched to current event data
+                          (possibly still loading). <strong>Do not save</strong> — it would permanently erase {unresolvedCount === 1 ? 'that pick' : 'those picks'}. Close this row and reopen it in a moment.
+                        </span>
+                      </div>
+                    )}
                     <div className="mb-3">
                       <div className="font-cinzel text-xs mb-1.5" style={{ color: 'var(--gold)', fontSize: 9, letterSpacing: '0.1em' }}>GP RIDERS</div>
                       {editTeam.length === 0 && <p className="font-cormorant italic text-xs" style={{ color: 'var(--mid)' }}>None selected</p>}
@@ -307,11 +326,15 @@ export default function PicksEditor() {
                         {saveMsg.success ? '✓ Saved' : saveMsg.msg || 'Save failed'}
                       </p>
                     )}
-                    <button onClick={() => saveEdit(row)} disabled={saving}
+                    <button onClick={() => saveEdit(row)} disabled={saving || unresolvedCount > 0}
                       className="w-full py-2.5 rounded font-cinzel text-xs tracking-widest flex items-center justify-center gap-2"
-                      style={{ background: saving ? 'rgba(180,149,48,0.1)' : 'var(--gold)', color: saving ? 'var(--mid)' : 'var(--ink)' }}>
+                      style={{
+                        background: unresolvedCount > 0 ? 'rgba(224,112,112,0.15)' : saving ? 'rgba(180,149,48,0.1)' : 'var(--gold)',
+                        color: unresolvedCount > 0 ? '#e07070' : saving ? 'var(--mid)' : 'var(--ink)',
+                        cursor: unresolvedCount > 0 ? 'not-allowed' : 'pointer',
+                      }}>
                       <Save size={12} />
-                      {saving ? 'SAVING…' : 'SAVE CORRECTED PICKS'}
+                      {unresolvedCount > 0 ? 'BLOCKED — UNRESOLVED PICKS' : saving ? 'SAVING…' : 'SAVE CORRECTED PICKS'}
                     </button>
                   </div>
                 )}
