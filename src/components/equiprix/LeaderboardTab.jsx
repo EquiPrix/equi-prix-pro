@@ -315,24 +315,47 @@ export default function LeaderboardTab() {
   // `results` (rider/team results entered, including partial Round 1 data),
   // and `gcl_team_standings` (official GCL standings), and refreshes
   // whichever leaderboard tab is currently visible.
+  //
+  // CHANGED: debounced (300ms, matching EquiPrixContext's own results/
+  // standings subscription). A single admin "save" in ResultsEditor or
+  // TeamStandingsEditor can touch more than one row/table, and each one
+  // fired its own IMMEDIATE reload here with no batching — so one save
+  // could visibly reload this tab several times in a row before settling.
+  // Debouncing collapses any burst of changes into a single reload once
+  // things go quiet, instead of one flicker per underlying write.
   useEffect(() => {
+    let debounceTimer = null;
+    const scheduleReload = (fn) => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(fn, 300);
+    };
+
     const channel = supabase
       .channel('equiprix-leaderboard-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'picks' }, () => {
-        if (tab === 'event' && currentEvent) loadEventLB();
-        if (tab === 'rooms' && activeRoom) loadRoomLB(activeRoom);
+        scheduleReload(() => {
+          if (tab === 'event' && currentEvent) loadEventLB();
+          if (tab === 'rooms' && activeRoom) loadRoomLB(activeRoom);
+        });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'results' }, () => {
-        if (tab === 'event' && currentEvent) loadEventLB();
-        if (tab === 'rooms' && activeRoom) loadRoomLB(activeRoom);
-        if (tab === 'season') loadSeasonLB();
+        scheduleReload(() => {
+          if (tab === 'event' && currentEvent) loadEventLB();
+          if (tab === 'rooms' && activeRoom) loadRoomLB(activeRoom);
+          if (tab === 'season') loadSeasonLB();
+        });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'gcl_team_standings' }, () => {
-        if (tab === 'gcl') loadGCLStandings();
+        scheduleReload(() => {
+          if (tab === 'gcl') loadGCLStandings();
+        });
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      clearTimeout(debounceTimer);
+      supabase.removeChannel(channel);
+    };
   }, [tab, currentEvent?.id, activeRoom?.id]);
 
   return (
