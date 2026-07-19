@@ -104,9 +104,21 @@ export default function LeaderboardTab() {
     if (activeRoom) loadRoomLB(activeRoom);
   }, [activeRoom]);
 
-  const loadEventLB = async () => {
+  // CHANGED: every load function now takes a `silent` flag. Realtime-
+  // triggered refreshes pass silent=true so they update the underlying
+  // rows in place without touching `loading` — previously EVERY load call
+  // (including background ones fired by another user's save, or your own
+  // edits elsewhere) flipped `loading`, and the render below fully
+  // unmounts the tab body and replaces it with a bare "Loading…" text
+  // while loading is true. That's what made a live refresh look and
+  // behave like the whole page reloading and going unclickable — the
+  // rows really were gone from the DOM for a moment, repeatedly, once per
+  // underlying change. Tab switches / initial loads still pass silent
+  // false (the default) and keep the spinner, since there's nothing to
+  // show yet anyway.
+  const loadEventLB = async (silent = false) => {
     if (!currentEvent) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       // CHANGED: added room_id filter for the General sentinel room, and
       // select user_email instead of access_code. Without the room_id
@@ -164,13 +176,21 @@ export default function LeaderboardTab() {
         // NOTE: field kept as "access_code" downstream (used as React key,
         // expanded-row state key, and PATCH lookup below) but now holds
         // user_email — the actually unique, reliable identifier.
-        return { access_code: p.user_email, username: p.username || p.user_email, score: totalPts, teamPts, riders: resolvedRiders, teams: resolvedTeams, totalSpent, remainingAfterTeams, hasResults, hasTeamResults };
+        return { access_code: p.user_email, username: p.username || p.user_email, score: totalPts, origScore: p.score, teamPts, riders: resolvedRiders, teams: resolvedTeams, totalSpent, remainingAfterTeams, hasResults, hasTeamResults };
       }).sort((a, b) => (b.score || 0) - (a.score || 0));
 
       setEventRows(rows);
       if (hasResults) {
+        // CHANGED: only write the recomputed score back to `picks` when it
+        // actually differs from what's already stored. This PATCH targets
+        // the same `picks` table the realtime subscription listens on, so
+        // writing on every single load (even when the score hadn't
+        // changed) caused a self-triggering loop: load → write → realtime
+        // fires → load → write → ... This is very likely why the
+        // Standings page kept reloading — comparing before writing breaks
+        // the cycle once scores settle.
         rows.forEach(async (row) => {
-          if (row.score == null) return;
+          if (row.score == null || row.score === row.origScore) return;
           try {
             // CHANGED: was filtering only on access_code+event, which could
             // match/patch the wrong row (or none) now that access_code
@@ -184,19 +204,27 @@ export default function LeaderboardTab() {
           } catch (e) {}
         });
       }
-    } catch (e) { console.error(e); } finally { setLoading(false); }
+    } catch (e) { console.error(e); } finally { if (!silent) setLoading(false); }
   };
 
-  const loadSeasonLB = async () => {
-    setLoading(true);
+  // CHANGED: fetch all past events' picks/results in parallel instead of
+  // one event at a time in a sequential for-loop. With 6 past events this
+  // meant waiting on 6 round-trips back to back before the Season tab
+  // ever showed anything — noticeable every time on login. Running them
+  // together cuts the wait to roughly the slowest single event's fetch
+  // instead of the sum of all of them.
+  const loadSeasonLB = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const pastEvents = events.filter(e => e.status === 'past');
       const userTotals = {};
-      for (const ev of pastEvents) {
-        const [evPicks, evResults] = await Promise.all([
+      const perEvent = await Promise.all(pastEvents.map(ev =>
+        Promise.all([
           sbFetch('picks?select=user_email,username,picks_json&event=eq.' + ev.id + '&room_id=eq.' + GENERAL_ROOM_ID),
           sbFetch('results?event=eq.' + ev.supabaseKey + '&limit=1'),
-        ]);
+        ])
+      ));
+      perEvent.forEach(([evPicks, evResults]) => {
         const riderResults = evResults?.[0]?.rider_results || {};
         const teamResults = evResults?.[0]?.team_results || {};
         const hasResults = Object.keys(riderResults).length > 0 || Object.keys(teamResults).length > 0;
@@ -208,17 +236,17 @@ export default function LeaderboardTab() {
           userTotals[key].total += score;
           userTotals[key].events++;
         });
-      }
+      });
       setSeasonRows(Object.values(userTotals).sort((a, b) => b.total - a.total));
-    } catch (e) { console.error(e); } finally { setLoading(false); }
+    } catch (e) { console.error(e); } finally { if (!silent) setLoading(false); }
   };
 
   // CHANGED: reads directly from gcl_team_standings (the manually-entered
   // official standings) instead of recalculating from entered results.
   // The recalculation was drifting from the official GCL site — this is
   // now the single source of truth, same as the admin Standings page.
-  const loadGCLStandings = async () => {
-    setLoading(true);
+  const loadGCLStandings = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const rows = await sbFetch('gcl_team_standings?id=eq.1&limit=1');
       const data = (rows && rows.length && rows[0].data) || [];
@@ -229,30 +257,30 @@ export default function LeaderboardTab() {
           return { t, pts: s.pts || 0, salary: s.salary, rank: s.rank };
         });
       setGclRows(ranked);
-    } catch (e) { console.error(e); } finally { setLoading(false); }
+    } catch (e) { console.error(e); } finally { if (!silent) setLoading(false); }
   };
 
-  const loadMyRooms = async () => {
+  const loadMyRooms = async (silent = false) => {
     if (!user?.email || !currentEvent) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const memberships = await sbFetch('room_members?user_email=eq.' + encodeURIComponent(user.email)) || [];
-      if (!memberships.length) { setMyRooms([]); setLoading(false); return; }
+      if (!memberships.length) { setMyRooms([]); if (!silent) setLoading(false); return; }
       const roomIds = memberships.map(m => m.room_id);
       const roomList = await sbFetch('rooms?id=in.(' + roomIds.join(',') + ')') || [];
       const filtered = roomList.filter(r => r.event_id === currentEvent.id);
       setMyRooms(filtered);
       if (filtered.length && !activeRoom) setActiveRoom(filtered[0]);
       else if (!filtered.length) setActiveRoom(null);
-    } catch (e) { console.error(e); } finally { setLoading(false); }
+    } catch (e) { console.error(e); } finally { if (!silent) setLoading(false); }
   };
 
-  const loadRoomLB = async (room) => {
-    setLoading(true);
+  const loadRoomLB = async (room, silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const members = await sbFetch('room_members?room_id=eq.' + room.id) || [];
       const ev = EVENTS_2026.find(e => e.id === room.event_id);
-      if (!ev || !members.length) { setRoomRows([]); setLoading(false); return; }
+      if (!ev || !members.length) { setRoomRows([]); if (!silent) setLoading(false); return; }
 
       const [allPicks, evResults] = await Promise.all([
         sbFetch('picks?select=user_email,username,picks_json&event=eq.' + ev.id + '&room_id=eq.' + room.id),
@@ -289,7 +317,7 @@ export default function LeaderboardTab() {
       }).sort((a, b) => b.score - a.score);
 
       setRoomRows(scored);
-    } catch (e) { console.error(e); } finally { setLoading(false); }
+    } catch (e) { console.error(e); } finally { if (!silent) setLoading(false); }
   };
 
   const joinWithCode = async () => {
@@ -334,20 +362,20 @@ export default function LeaderboardTab() {
       .channel('equiprix-leaderboard-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'picks' }, () => {
         scheduleReload(() => {
-          if (tab === 'event' && currentEvent) loadEventLB();
-          if (tab === 'rooms' && activeRoom) loadRoomLB(activeRoom);
+          if (tab === 'event' && currentEvent) loadEventLB(true);
+          if (tab === 'rooms' && activeRoom) loadRoomLB(activeRoom, true);
         });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'results' }, () => {
         scheduleReload(() => {
-          if (tab === 'event' && currentEvent) loadEventLB();
-          if (tab === 'rooms' && activeRoom) loadRoomLB(activeRoom);
-          if (tab === 'season') loadSeasonLB();
+          if (tab === 'event' && currentEvent) loadEventLB(true);
+          if (tab === 'rooms' && activeRoom) loadRoomLB(activeRoom, true);
+          if (tab === 'season') loadSeasonLB(true);
         });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'gcl_team_standings' }, () => {
         scheduleReload(() => {
-          if (tab === 'gcl') loadGCLStandings();
+          if (tab === 'gcl') loadGCLStandings(true);
         });
       })
       .subscribe();
