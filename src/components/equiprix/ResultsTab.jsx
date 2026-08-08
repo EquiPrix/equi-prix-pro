@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useEquiPrix } from '@/lib/EquiPrixContext';
-import { sbFetch, fmt, GCL_TEAMS_2026, PREVIEW_RIDERS_2026 } from '@/lib/equiprix-data';
+import { sbFetch, fmt, GCL_TEAMS_2026, PREVIEW_RIDERS_2026, usesNewTeamScoring } from '@/lib/equiprix-data';
 import { motion } from 'framer-motion';
 
 const SUB_TABS = [
@@ -79,6 +79,7 @@ export default function ResultsTab() {
     );
   }
 
+  const useNewScoring = usesNewTeamScoring(currentEvent?.id);
   const riderResults = data?.rider_results || {};
   const teamResults = data?.team_results || {};
   const hasTeamResults = Object.keys(teamResults).length > 0;
@@ -157,7 +158,7 @@ export default function ResultsTab() {
         ) : subTab === 'r2' ? (
           <TeamRoundResults teamResults={teamResults} displayTeams={displayTeams} round="r2" />
         ) : (
-          <TeamFinalResults teamResults={teamResults} displayTeams={displayTeams} />
+          <TeamFinalResults teamResults={teamResults} displayTeams={displayTeams} useNewScoring={useNewScoring} />
         )}
       </div>
     </div>
@@ -337,7 +338,13 @@ function TeamRoundResults({ teamResults, displayTeams, round }) {
 // teams that didn't. This keeps this public view in sync with the admin
 // Final tab and with calcFinalPositions, which is the actual source of
 // truth for `pos`.
-function TeamFinalResults({ teamResults, displayTeams }) {
+//
+// NEW (London onward, useNewScoring): r2Faults is no longer a cumulative
+// scoreboard reading — it's the round-2-only total (auto-summed from both
+// riders in the admin editor). So the displayed combined total becomes
+// r1Faults + r2Faults instead of r2Faults alone. Legacy (pre-London)
+// events keep reading r2Faults as the cumulative total, untouched.
+function TeamFinalResults({ teamResults, displayTeams, useNewScoring }) {
   const entries = Object.entries(teamResults).map(([id, raw]) => {
     const t = displayTeams.find(x => x.id === id) || { id, name: 'Team ' + id };
     const pos = typeof raw === 'object' ? (raw.finalPos || null) : raw;
@@ -355,10 +362,14 @@ function TeamFinalResults({ teamResults, displayTeams }) {
     const hasR2Faults = r2FaultsRaw !== '' && r2FaultsRaw !== undefined && r2FaultsRaw !== null;
     const madeR2 = hasR2Faults;
 
-    // r2Faults is already the cumulative R1+R2 total (that's how it's
-    // read off the PDF scoreboards). For R1-only teams, fall back to
-    // their R1 faults/time so the row isn't left blank.
-    const combined = madeR2 ? Number(r2FaultsRaw) : (r1FaultsRaw !== '' && r1FaultsRaw != null ? Number(r1FaultsRaw) : null);
+    // Legacy: r2Faults is already the cumulative R1+R2 total (that's how
+    // it's read off the PDF scoreboards). New scoring: r1/r2 are each
+    // round-only, so combined = r1 + r2. For R1-only teams either way,
+    // fall back to their R1 faults/time so the row isn't left blank.
+    const r1FaultsNum = r1FaultsRaw !== '' && r1FaultsRaw != null ? Number(r1FaultsRaw) : 0;
+    const combined = madeR2
+      ? (useNewScoring ? r1FaultsNum + Number(r2FaultsRaw) : Number(r2FaultsRaw))
+      : (r1FaultsRaw !== '' && r1FaultsRaw != null ? Number(r1FaultsRaw) : null);
     const displayTime = madeR2 ? r2TimeRaw : r1TimeRaw;
 
     return { t, pos, ret, el, madeR2, combined, displayTime };

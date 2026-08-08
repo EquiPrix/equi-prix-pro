@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { EVENTS_2026, GCL_TEAMS_2026, PREVIEW_RIDERS_2026, sbFetch } from '@/lib/equiprix-data';
+import { EVENTS_2026, GCL_TEAMS_2026, PREVIEW_RIDERS_2026, sbFetch, usesNewTeamScoring } from '@/lib/equiprix-data';
 import { loadStartListRemote } from '@/lib/startListStore';
 import { Save } from 'lucide-react';
 
@@ -42,7 +42,19 @@ function getPreFilledPair(startList, teamId, round) {
   ];
 }
 
-function TeamRoundEditor({ teams, round, data, onChange, startList }) {
+// Sums whichever rider values have actually been entered for a round.
+// Blank/undefined riders don't count as 0 — they just don't contribute yet,
+// so the team total shows '' (not 0) until at least one rider has a value,
+// and updates live as each rider's number comes in.
+function sumRiderField(riders, field) {
+  const vals = (riders || [])
+    .map(r => r?.[field])
+    .filter(v => v !== '' && v !== undefined && v !== null);
+  if (!vals.length) return '';
+  return vals.reduce((a, b) => a + Number(b), 0);
+}
+
+function TeamRoundEditor({ teams, round, data, onChange, startList, useNewScoring }) {
   const faultsKey = round === 'r1' ? 'r1Faults' : 'r2Faults';
   const timeKey = round === 'r1' ? 'r1Time' : 'r2Time';
   const ridersKey = round === 'r1' ? 'r1Riders' : 'r2Riders';
@@ -57,16 +69,30 @@ function TeamRoundEditor({ teams, round, data, onChange, startList }) {
     onChange({ ...data, [teamId]: { ...cur, [ridersKey]: riders, [field]: value } });
   };
 
+  // NEW (London onward): the team's round faults/time are no longer typed
+  // in directly — they're auto-summed from the two riders' individual
+  // faults/time every time either one changes. Legacy events (pre-London)
+  // keep the old manual entry via set() above, untouched.
   const setRiderFault = (teamId, idx, field, value) => {
     const cur = get(teamId);
     const riders = [...(cur[ridersKey] || getInitRiders(teamId))];
     if (!riders[idx]) riders[idx] = { name: '', horse: '', faults: '', time: '' };
     riders[idx] = { ...riders[idx], [field]: value };
-    onChange({ ...data, [teamId]: { ...cur, [ridersKey]: riders } });
+    const updated = { ...cur, [ridersKey]: riders };
+    if (useNewScoring) {
+      updated[faultsKey] = sumRiderField(riders, 'faults');
+      updated[timeKey] = sumRiderField(riders, 'time');
+    }
+    onChange({ ...data, [teamId]: updated });
   };
 
   return (
     <div className="space-y-2">
+      {useNewScoring && (
+        <p className="font-cormorant italic text-xs mb-1" style={{ color: 'var(--mid)' }}>
+          Team faults/time below are auto-calculated from the two riders' entries — just enter each rider's faults and time.
+        </p>
+      )}
       {teams.map(team => {
         const d = get(team.id);
         // Render-time fallback only — under normal flow this is already
@@ -80,10 +106,28 @@ function TeamRoundEditor({ teams, round, data, onChange, startList }) {
               <span className="flex-1 font-cormorant text-sm font-semibold" style={{ color: 'var(--cream)' }}>{team.name}</span>
               <div className="flex items-center gap-1.5">
                 <div style={{ width: 72 }}>
-                  <NumCell value={d[faultsKey]} onChange={v => set(team.id, faultsKey, v === '' ? '' : Number(v))} placeholder="Faults" />
+                  {useNewScoring ? (
+                    <div className="rounded px-2 py-1 text-xs text-center"
+                      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--ep-border)', color: 'var(--cream)' }}>
+                      {d[faultsKey] === '' || d[faultsKey] === undefined
+                        ? <span style={{ color: 'var(--mid)' }}>—</span>
+                        : d[faultsKey]}
+                    </div>
+                  ) : (
+                    <NumCell value={d[faultsKey]} onChange={v => set(team.id, faultsKey, v === '' ? '' : Number(v))} placeholder="Faults" />
+                  )}
                 </div>
                 <div style={{ width: 72 }}>
-                  <NumCell value={d[timeKey]} onChange={v => set(team.id, timeKey, v === '' ? '' : Number(v))} placeholder="Time" />
+                  {useNewScoring ? (
+                    <div className="rounded px-2 py-1 text-xs text-center"
+                      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--ep-border)', color: 'var(--cream)' }}>
+                      {d[timeKey] === '' || d[timeKey] === undefined
+                        ? <span style={{ color: 'var(--mid)' }}>—</span>
+                        : d[timeKey]}
+                    </div>
+                  ) : (
+                    <NumCell value={d[timeKey]} onChange={v => set(team.id, timeKey, v === '' ? '' : Number(v))} placeholder="Time" />
+                  )}
                 </div>
                 <Toggle label="RET" value={!!d.ret} onChange={v => set(team.id, 'ret', v)} />
                 <Toggle label="EL" value={!!d.el} onChange={v => set(team.id, 'el', v)} />
@@ -145,7 +189,13 @@ function TeamRoundEditor({ teams, round, data, onChange, startList }) {
 // tier0 already did this correctly for R2 finishers; tier2 just never
 // got the equivalent r1Time field threaded through. Now both tiers sort
 // by faults then time, consistently.
-function calcFinalPositions(teams, teamResults) {
+//
+// NEW (London onward, useNewScoring): r1Faults/r2Faults are each a
+// round-ONLY number now (auto-summed from riders in TeamRoundEditor), not
+// a cumulative scoreboard reading — so the team's total is r1Faults +
+// r2Faults, computed here. Legacy events keep the old "r2Faults IS the
+// total" reading untouched. R2 time remains the sole tiebreaker either way.
+function calcFinalPositions(teams, teamResults, useNewScoring = false) {
   const withData = teams
     .filter(team => {
       const d = teamResults[team.id];
@@ -200,7 +250,9 @@ function calcFinalPositions(teams, teamResults) {
       // ranked as if it were a clean finisher, just sorted by its low
       // fault count — which is exactly how it ended up ranked #2.
       const isR2Failed = didR2 && (!!d.ret || !!d.el);
-      const totalFaults = r2Faults !== null ? r2Faults : (didR2 ? 9999 : r1Faults);
+      const totalFaults = r2Faults !== null
+        ? (useNewScoring ? r1Faults + r2Faults : r2Faults)
+        : (didR2 ? 9999 : r1Faults);
       return { id: team.id, didR2, isR2Failed, totalFaults, r2Time: r2Time ?? 9999, r1Faults, r1Time };
     });
 
@@ -221,9 +273,9 @@ function calcFinalPositions(teams, teamResults) {
   return posMap;
 }
 
-function FinalEditor({ teams, data }) {
+function FinalEditor({ teams, data, useNewScoring }) {
   const get = (teamId) => data[teamId] || {};
-  const posMap = calcFinalPositions(teams, data);
+  const posMap = calcFinalPositions(teams, data, useNewScoring);
   // Only show teams that actually competed (have an entry in posMap) —
   // teams with no data for this event (didn't compete) are excluded
   // entirely rather than shown with a blank position.
@@ -234,7 +286,9 @@ function FinalEditor({ teams, data }) {
   return (
     <div className="space-y-1">
       <p className="font-cormorant italic text-xs mb-2" style={{ color: 'var(--mid)' }}>
-        Auto-calculated from cumulative R2 faults (R1+R2 combined, as read off the scoreboard), R2 time as tiebreaker. R1-only teams ranked by R1 faults, then R1 time. Enter results in Team R1 and Team R2 tabs.
+        {useNewScoring
+          ? "Total = R1 + R2 team faults, each auto-summed from the two riders' entries. R2 team time (also auto-summed) is the tiebreaker. R1-only teams ranked by R1 faults, then R1 time. Enter results in Team R1 and Team R2 tabs."
+          : 'Auto-calculated from cumulative R2 faults (R1+R2 combined, as read off the scoreboard), R2 time as tiebreaker. R1-only teams ranked by R1 faults, then R1 time. Enter results in Team R1 and Team R2 tabs.'}
       </p>
       <div className="grid grid-cols-12 gap-2 px-3 py-1 text-xs font-cinzel" style={{ color: 'var(--mid)', fontSize: 9 }}>
         <div className="col-span-1 text-center">POS</div>
@@ -248,9 +302,12 @@ function FinalEditor({ teams, data }) {
         const pos = posMap[team.id];
         const r1F = d.r1Faults !== '' && d.r1Faults !== undefined ? Number(d.r1Faults) : null;
         const r2F = d.r2Faults !== '' && d.r2Faults !== undefined ? Number(d.r2Faults) : null;
-        // r2F is already the cumulative total — display it directly as the
-        // team's overall total once they've reached R2.
-        const totalF = r2F !== null ? r2F : r1F;
+        // Legacy events: r2F is already the cumulative total, display as-is.
+        // New scoring (London+): r1F and r2F are each round-only, so the
+        // team's overall total is their sum.
+        const totalF = r2F !== null
+          ? (useNewScoring ? (r1F ?? 0) + r2F : r2F)
+          : r1F;
         const hasR2 = r2F !== null || !!d.ret || !!d.el;
         const flag = d.ret ? ' RET' : d.el ? ' EL' : '';
         const displayTime = r2F !== null ? d.r2Time : d.r1Time;
@@ -354,6 +411,7 @@ export default function ResultsEditor() {
 
   const event = EVENTS_2026.find(e => e.id === selectedEventId);
   const teams = event?.teams?.length ? event.teams : GCL_TEAMS_2026;
+  const useNewScoring = usesNewTeamScoring(selectedEventId);
 
   useEffect(() => {
     if (!selectedEventId) return;
@@ -446,7 +504,7 @@ export default function ResultsEditor() {
   const save = async () => {
     if (!event) return;
     setSaving(true);
-    const posMap = calcFinalPositions(teams, teamResults);
+    const posMap = calcFinalPositions(teams, teamResults, useNewScoring);
     const teamResultsWithPos = { ...teamResults };
     // Assign the freshly-computed position to every team that has one.
     Object.entries(posMap).forEach(([teamId, pos]) => {
@@ -534,9 +592,9 @@ export default function ResultsEditor() {
             ))}
           </div>
           <div className="mb-4">
-            {activeRound === 'r1' && <TeamRoundEditor teams={teams} round="r1" data={teamResults} onChange={setTeamResults} startList={startList} />}
-            {activeRound === 'r2' && <TeamRoundEditor teams={teams} round="r2" data={teamResults} onChange={setTeamResults} startList={startList} />}
-            {activeRound === 'final' && <FinalEditor teams={teams} data={teamResults} />}
+            {activeRound === 'r1' && <TeamRoundEditor teams={teams} round="r1" data={teamResults} onChange={setTeamResults} startList={startList} useNewScoring={useNewScoring} />}
+            {activeRound === 'r2' && <TeamRoundEditor teams={teams} round="r2" data={teamResults} onChange={setTeamResults} startList={startList} useNewScoring={useNewScoring} />}
+            {activeRound === 'final' && <FinalEditor teams={teams} data={teamResults} useNewScoring={useNewScoring} />}
             {activeRound === 'gp' && <GPEditor riders={gpRiders} data={riderResults} onChange={setRiderResults} />}
           </div>
           <button onClick={save} disabled={saving}

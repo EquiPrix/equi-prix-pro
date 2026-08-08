@@ -437,3 +437,27 @@ export const EVENTS_2026 = [
   { id: 'rabat_2026', city: 'Rabat', flag: '🇲🇦', dates: '30 Oct–1 Nov', dateLabel: '30 Oct–1 Nov 2026', status: 'future', supabaseKey: 'rabat_2026_r1', teamLockISO: '2026-10-30T14:00:00Z', gpLockISO: '2026-11-01T14:00:00Z', gpRiders: [], teams: [] },
   { id: 'riyadh_2026', city: 'Riyadh Playoffs', flag: '🇸🇦', dates: '18–21 Nov', dateLabel: '18–21 November 2026', status: 'future', supabaseKey: 'riyadh_2026_r1', teamLockISO: '2026-11-18T12:00:00Z', gpLockISO: '2026-11-21T12:00:00Z', gpRiders: [], teams: [] },
 ];
+
+// ── Team scoring convention cutoff ──────────────────────────────────────────
+// Through Riesenbeck, admins read R1+R2 CUMULATIVE totals off the printed
+// scoreboard and typed that single cumulative number into r2Faults directly
+// (r2Faults WAS the team's running total, not a round-2-only number).
+//
+// Starting at London, this flips: r1Faults/r2Faults are now each a
+// round-ONLY number, auto-summed from the two riders' individually-entered
+// faults/time for that round (see TeamRoundEditor in ResultsEditor.jsx), and
+// the team's final total is r1Faults + r2Faults computed by the app. R2 team
+// time (also auto-summed from both riders) remains the sole tiebreaker,
+// unchanged from before.
+//
+// Past events are already locked in and keep the old cumulative reading —
+// don't reinterpret their saved data under the new convention. This helper
+// is the single source of truth for which convention an event uses; both
+// the admin ResultsEditor and the public ResultsTab read it so the two never
+// drift apart.
+export const NEW_TEAM_SCORING_START = 'london_2026';
+export function usesNewTeamScoring(eventId) {
+  const cutoffIdx = EVENTS_2026.findIndex(e => e.id === NEW_TEAM_SCORING_START);
+  const idx = EVENTS_2026.findIndex(e => e.id === eventId);
+  return cutoffIdx !== -1 && idx !== -1 && idx >= cutoffIdx;
+}
