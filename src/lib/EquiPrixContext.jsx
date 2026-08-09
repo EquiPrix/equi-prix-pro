@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { EVENTS_2026, GCL_TEAMS_2026, PREVIEW_RIDERS_2026, sbFetch, NAMES, VALID_CODES, calcEventRiderSalaries } from './equiprix-data';
+import { EVENTS_2026, GCL_TEAMS_2026, PREVIEW_RIDERS_2026, sbFetch, NAMES, VALID_CODES, calcEventRiderSalaries, resolveGpRiderPool } from './equiprix-data';
 
 export const GENERAL_ROOM_ID = '00000000-0000-0000-0000-000000000000';
 
@@ -95,16 +95,11 @@ export function EquiPrixProvider({ children }) {
     }
   }, []);
 
-  const getRiderList = (ev) => {
-    const st = ev.status;
-    if (st === 'past') return ev.riders || [];
-    let rawRiders = null;
-    if (ev.gpRiders?.length) rawRiders = ev.gpRiders;
-    else if (ev.previewRiders?.length) rawRiders = ev.previewRiders;
-    else rawRiders = ev.riders || [];
-    if (rawRiders.length) return calcEventRiderSalaries(rawRiders);
-    return [];
-  };
+  // resolveGpRiderPool (equiprix-data.js) is now the single source of truth
+  // for "this event's field, correctly priced" — shared with loadSavedPicks
+  // below and with PicksEditor.jsx, so a rider's salary is always priced
+  // against the same pool everywhere it's shown.
+  const getRiderList = (ev) => resolveGpRiderPool(ev);
 
   const doSelectEvent = useCallback((ev) => {
     setCurrentEventState(ev);
@@ -277,29 +272,37 @@ export function EquiPrixProvider({ children }) {
       const rows = await sbFetch('picks?user_email=eq.' + encodeURIComponent(identity) + '&event=eq.' + ev.id + '&room_id=eq.' + (roomId || GENERAL_ROOM_ID) + '&limit=1');
       if (rows && rows.length > 0) {
         const p = rows[0].picks_json;
-        const allAvailableRiders = [
-          ...(ev.gpRiders || []),
-          ...(ev.previewRiders || []),
-          ...(ev.riders || []),
-          ...PREVIEW_RIDERS_2026,
-        ];
-        const seenIds = new Set();
-        const evRiders = allAvailableRiders.filter(r => {
-          if (seenIds.has(r.id)) return false;
-          seenIds.add(r.id);
-          return true;
-        });
-        const evRidersWithSalaries = calcEventRiderSalaries(evRiders);
+        // FIXED: this used to build ITS OWN merged pool (gpRiders +
+        // previewRiders + riders + all 169 PREVIEW_RIDERS_2026 — 200+
+        // riders) and run calcEventRiderSalaries over that combined list.
+        // But calcEventRiderSalaries prices the top 30 FIELD-RELATIVE —
+        // salary depends on a rider's rank POSITION within whatever list
+        // you hand it. A ~30-rider GP field and a 200+-rider merged pool
+        // produce completely different field-rank positions (and so
+        // different salaries) for the same rider. That's why a saved pick
+        // could show a different price here than the live Draft tab's
+        // rider list, and why the captain premium looked "missing" — it
+        // WAS being added, just on top of that wrong base salary. Now this
+        // uses getRiderList(ev), the exact same pool/pricing the Draft tab
+        // itself renders, so a restored pick always matches what's shown
+        // live. PREVIEW_RIDERS_2026 (priced independently, not blended in)
+        // is only a fallback for a saved rider who's no longer in the
+        // event's current field at all.
+        const evRidersWithSalaries = getRiderList(ev);
+        const fallbackRiders = calcEventRiderSalaries(PREVIEW_RIDERS_2026);
+        const findRider = (id) =>
+          evRidersWithSalaries.find(r => String(r.id) === String(id)) ||
+          fallbackRiders.find(r => String(r.id) === String(id));
         const evTeams = ev.teams && ev.teams.length ? ev.teams : GCL_TEAMS_2026;
         const SLOT_IDS = ['cpt', 'r1', 'r2', 'r3', 'r4'];
         const newTeam = [];
         (p.riders || []).forEach(s => {
-          const rider = evRidersWithSalaries.find(r => r.id === s.id);
+          const rider = findRider(s.id);
           if (rider) newTeam.push({ rider, slotId: SLOT_IDS[newTeam.length], isCpt: s.isCpt });
         });
         const newTeamPicks = [];
         (p.teams || []).forEach((s, i) => {
-          const t = evTeams.find(t => t.id === s.id);
+          const t = evTeams.find(t => String(t.id) === String(s.id));
           if (t) newTeamPicks.push({ ...t, slotId: 't' + (i + 1) });
         });
         setTeam(newTeam);

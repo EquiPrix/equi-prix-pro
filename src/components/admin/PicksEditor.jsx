@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   GCL_TEAMS_2026, PREVIEW_RIDERS_2026,
-  sbFetch, calcEventRiderSalaries, CAP, CPT_PREMIUM, fmt,
+  sbFetch, calcEventRiderSalaries, resolveGpRiderPool, CAP, CPT_PREMIUM, fmt,
 } from '@/lib/equiprix-data';
 import { useEquiPrix } from '@/lib/EquiPrixContext';
 import { ChevronDown, ChevronUp, Save, X, Search, AlertTriangle } from 'lucide-react';
@@ -69,23 +69,26 @@ export default function PicksEditor() {
     return rooms.find(r => r.id === roomId)?.name || roomId?.slice(0, 8) || 'Unknown room';
   };
 
-  // Same rider pool logic used by DraftTab / EquiPrixContext, so admin
-  // edits use the identical salary/rank data players see.
+  // FIXED: this used to merge ALL sources (gpRiders + previewRiders +
+  // riders + all 169 PREVIEW_RIDERS_2026 — 200+ riders) into one list and
+  // price that whole blob via calcEventRiderSalaries. But salary depends on
+  // a rider's RANK POSITION within whatever list you hand it — pricing a
+  // 200+ rider blob gives every top rider a different (wrong) salary than
+  // pricing the actual ~30-rider GP field alone, which is what the Draft
+  // tab / EquiPrixContext do. That mismatch meant a pick edited/viewed here
+  // could show a different price than what players actually see.
+  // Now: price the real field first via resolveGpRiderPool (same function
+  // EquiPrixContext uses for the live Draft tab), then separately price the
+  // full PREVIEW_RIDERS_2026 roster on its own — purely as a fallback for
+  // admin's "any rider" browse list / resolving picks for riders no longer
+  // in the current field. The two are concatenated AFTER pricing, never
+  // blended before it, so field riders always keep their correct price.
   const evRiders = useMemo(() => {
     if (!selectedEvent) return [];
-    const all = [
-      ...(selectedEvent.gpRiders || []),
-      ...(selectedEvent.previewRiders || []),
-      ...(selectedEvent.riders || []),
-      ...PREVIEW_RIDERS_2026,
-    ];
-    // CHANGED: dedupe/compare by String(id) — gpRiders/previewRiders come
-    // back from Supabase with text ids, while PREVIEW_RIDERS_2026 has
-    // numeric ids; comparing raw values let "102" and 102 both survive as
-    // separate entries, or (worse) let a lookup by strict === silently miss.
-    const seen = new Set();
-    const deduped = all.filter(r => { const key = String(r.id); if (seen.has(key)) return false; seen.add(key); return true; });
-    return calcEventRiderSalaries(deduped);
+    const fieldRiders = resolveGpRiderPool(selectedEvent);
+    const fallbackRiders = calcEventRiderSalaries(PREVIEW_RIDERS_2026);
+    const seen = new Set(fieldRiders.map(r => String(r.id)));
+    return [...fieldRiders, ...fallbackRiders.filter(r => !seen.has(String(r.id)))];
   }, [selectedEvent]);
 
   const evTeams = selectedEvent?.teams?.length ? selectedEvent.teams : GCL_TEAMS_2026;

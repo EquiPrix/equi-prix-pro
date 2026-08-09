@@ -116,6 +116,27 @@ export function calcEventRiderSalaries(gpRiders) {
   });
 }
 
+// Single source of truth for "what riders/salaries does this event's GP
+// field actually show right now" — gpRiders takes priority, then
+// previewRiders, then riders, each priced via calcEventRiderSalaries.
+// IMPORTANT: only ever call calcEventRiderSalaries on ONE pool at a time.
+// Merging pools before pricing (e.g. gpRiders + PREVIEW_RIDERS_2026
+// together) changes every rider's field-rank POSITION and therefore their
+// salary — that mismatch was the cause of a saved pick showing a different
+// price than the live Draft tab for the same rider. Every place that needs
+// "this event's current field, correctly priced" should call this instead
+// of rebuilding its own merged pool.
+export function resolveGpRiderPool(ev) {
+  if (!ev) return [];
+  if (ev.status === 'past') return ev.riders || [];
+  let rawRiders = null;
+  if (ev.gpRiders?.length) rawRiders = ev.gpRiders;
+  else if (ev.previewRiders?.length) rawRiders = ev.previewRiders;
+  else rawRiders = ev.riders || [];
+  if (rawRiders.length) return calcEventRiderSalaries(rawRiders);
+  return [];
+}
+
 export function getBand(rank) {
   if (rank <= 10) return { label: 'Top 10', cls: 'band-1' };
   if (rank <= 25) return { label: '11–25', cls: 'band-2' };
