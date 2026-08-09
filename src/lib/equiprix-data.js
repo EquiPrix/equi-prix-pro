@@ -71,20 +71,26 @@ export function rankToSalary(rank) {
 }
 
 // ── calcEventRiderSalaries ──────────────────────────────────────────────────
-// Hybrid pricing model.
+// Pure strength-of-field pricing across the ENTIRE GP-qualified class.
 //
-// Top of the field (field-rank 1-30) stays field-relative — this is where
-// draft strategy matters most: who's the best rider AVAILABLE IN THIS
-// FIELD, priced against their direct competition for the event.
+// Field-rank 1-30 keeps the original curve, unchanged: who's the best rider
+// AVAILABLE IN THIS FIELD, priced against their direct competition for the
+// event, from $11,000 down to a $5,000 floor at field-rank 30.
 //
-// Below field-rank 30, pricing switches to the rider's actual global FEI
-// rank via rankToSalary() instead of bucketing everyone into one flat
-// floor band. This means a globally-ranked-150 rider and a genuinely
-// unranked (999) rider are no longer priced identically just because a
-// field happens to be large — the bottom of the roster now has real
-// price spread, which rewards drafters who do the homework to find an
-// undervalued rider who outperforms their price tag, rather than every
-// "deep bench" pick being functionally interchangeable.
+// UPDATED: field-rank 31+ used to switch to the rider's global FEI rank via
+// rankToSalary() — but that buckets on a flat global scale, and any field
+// with a lot of globally-unranked or low-ranked entries (wildcards, home
+// riders, etc.) ended up dumping a whole cluster of riders on the exact
+// same $1,000 floor regardless of how they actually compared to their
+// direct competition this week. Now the WHOLE field is priced relative to
+// itself: field-rank 31 through the last qualified rider tapers smoothly
+// from the $5,000 rank-30 floor down to a $1,000 floor at the back of the
+// field, scaled to however deep this particular field actually is — so a
+// 40-rider field spreads that taper over 10 riders, a 100-rider field
+// spreads it over 70, and nobody gets flatly bucketed just because their
+// global ranking is thin. rankToSalary() is untouched and still used
+// elsewhere (importing FEI rankings, default rider pricing outside an
+// actual field) — this function just no longer falls back to it.
 export function calcEventRiderSalaries(gpRiders) {
   if (!gpRiders || !gpRiders.length) return gpRiders;
 
@@ -94,24 +100,25 @@ export function calcEventRiderSalaries(gpRiders) {
     return ra - rb;
   });
 
+  const fieldSize = sorted.length;
+
   return sorted.map((rider, i) => {
     const fieldRank = i + 1;
+    let raw;
 
-    if (fieldRank <= 30) {
-      let raw;
-      if (fieldRank <= 5) {
-        raw = 11000 - (fieldRank - 1) * 500;
-      } else if (fieldRank <= 15) {
-        raw = 9000 - (fieldRank - 6) * 200;
-      } else {
-        raw = 7500 - (fieldRank - 16) * 167;
-      }
-      const salary = Math.max(5000, Math.round(raw / 500) * 500);
-      return { ...rider, salary, fieldRank };
+    if (fieldRank <= 5) {
+      raw = 11000 - (fieldRank - 1) * 500;
+    } else if (fieldRank <= 15) {
+      raw = 9000 - (fieldRank - 6) * 200;
+    } else if (fieldRank <= 30) {
+      raw = 7500 - (fieldRank - 16) * 167;
+    } else {
+      const tailSize = Math.max(1, fieldSize - 30);
+      const posInTail = fieldRank - 30; // 1..tailSize
+      raw = 5000 - (posInTail / tailSize) * 4000;
     }
 
-    const globalRank = (!rider.rank || rider.rank >= 999) ? 999 : rider.rank;
-    const salary = rankToSalary(globalRank);
+    const salary = Math.max(1000, Math.round(raw / 500) * 500);
     return { ...rider, salary, fieldRank };
   });
 }
