@@ -181,6 +181,29 @@ export default function DraftTab() {
   };
 
   const saveToDestination = async (destId, t, tp) => {
+    // SAFETY: once team picks are locked, removeTeam()/clearAll() both
+    // refuse to empty local teamPicks — so if it's empty here anyway,
+    // that's never a real user action, it's local state that was never
+    // (re)restored after some navigation/reload (e.g. the app briefly
+    // resetting picks on event re-select before this feature existed).
+    // Saving that empty array would silently overwrite whatever's already
+    // saved in the DB for this destination. Instead, if teams are locked
+    // and we have nothing locally, fetch what's actually saved and keep it
+    // — never let an empty local array destroy a real saved pick.
+    let teamsPayload = tp.map(pk => ({ id: pk.id }));
+    if (isTeamLocked() && tp.length === 0) {
+      try {
+        const existing = await sbFetch(
+          'picks?user_email=eq.' + encodeURIComponent(identity) +
+          '&event=eq.' + ev.id + '&room_id=eq.' + destId + '&limit=1'
+        );
+        const savedTeams = existing && existing.length ? existing[0].picks_json?.teams : null;
+        if (savedTeams && savedTeams.length) teamsPayload = savedTeams;
+      } catch (e) {
+        console.warn('Could not verify existing team picks before save:', e);
+      }
+    }
+
     const spent = t.reduce((s, r) => s + (r.isCpt ? r.rider.salary + CPT_PREMIUM : r.rider.salary), 0) +
       tp.reduce((s, pk) => s + pk.salary, 0);
     await sbFetch('picks?on_conflict=user_email,event,room_id', {
@@ -192,7 +215,7 @@ export default function DraftTab() {
         username: userName || identity,
         picks_json: {
           riders: t.map(r => ({ id: r.rider.id, isCpt: r.isCpt })),
-          teams: tp.map(pk => ({ id: pk.id })),
+          teams: teamsPayload,
           totalSpent: spent,
           isPractice: false,
           savedAt: new Date().toISOString()
