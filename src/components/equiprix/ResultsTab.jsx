@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useEquiPrix } from '@/lib/EquiPrixContext';
-import { sbFetch, fmt, GCL_TEAMS_2026, PREVIEW_RIDERS_2026, usesNewTeamScoring } from '@/lib/equiprix-data';
+import { sbFetch, fmt, GCL_TEAMS_2026, PREVIEW_RIDERS_2026, usesNewTeamScoring, deriveRoundNumbers } from '@/lib/equiprix-data';
 import { motion } from 'framer-motion';
 
 const SUB_TABS = [
@@ -154,9 +154,9 @@ export default function ResultsTab() {
         ) : subTab === 'gp' ? (
           <GPResults riderResults={riderResults} displayRiders={displayRiders} />
         ) : subTab === 'r1' ? (
-          <TeamRoundResults teamResults={teamResults} displayTeams={displayTeams} round="r1" />
+          <TeamRoundResults teamResults={teamResults} displayTeams={displayTeams} round="r1" useNewScoring={useNewScoring} />
         ) : subTab === 'r2' ? (
-          <TeamRoundResults teamResults={teamResults} displayTeams={displayTeams} round="r2" />
+          <TeamRoundResults teamResults={teamResults} displayTeams={displayTeams} round="r2" useNewScoring={useNewScoring} />
         ) : (
           <TeamFinalResults teamResults={teamResults} displayTeams={displayTeams} useNewScoring={useNewScoring} />
         )}
@@ -255,7 +255,7 @@ function GPResults({ riderResults, displayRiders }) {
   );
 }
 
-function TeamRoundResults({ teamResults, displayTeams, round }) {
+function TeamRoundResults({ teamResults, displayTeams, round, useNewScoring }) {
   const ridersKey = round === 'r1' ? 'r1Riders' : 'r2Riders';
   const faultsKey = round === 'r1' ? 'r1Faults' : 'r2Faults';
   const timeKey = round === 'r1' ? 'r1Time' : 'r2Time';
@@ -263,8 +263,11 @@ function TeamRoundResults({ teamResults, displayTeams, round }) {
   const entries = Object.entries(teamResults).map(([id, raw]) => {
     const t = displayTeams.find(x => x.id === id) || { id, name: 'Team ' + id };
     const roundRiders = typeof raw === 'object' ? (raw[ridersKey] || []) : [];
-    const teamFaults = typeof raw === 'object' ? raw[faultsKey] : null;
-    const teamTime = typeof raw === 'object' ? raw[timeKey] : null;
+    // New scoring: derive live from the riders (self-heals data entered
+    // before this feature shipped); legacy: read the stored field as-is.
+    const derived = useNewScoring ? deriveRoundNumbers(raw, round) : null;
+    const teamFaults = useNewScoring ? derived.faults : (typeof raw === 'object' ? raw[faultsKey] : null);
+    const teamTime = useNewScoring ? derived.time : (typeof raw === 'object' ? raw[timeKey] : null);
     const ret = typeof raw === 'object' ? raw.ret : false;
     const el = typeof raw === 'object' ? raw.el : false;
     return { t, roundRiders, teamFaults, teamTime, ret, el };
@@ -351,10 +354,17 @@ function TeamFinalResults({ teamResults, displayTeams, useNewScoring }) {
     const ret = typeof raw === 'object' ? (raw.ret || false) : false;
     const el = typeof raw === 'object' ? (raw.el || false) : false;
 
-    const r2FaultsRaw = typeof raw === 'object' ? raw.r2Faults : null;
-    const r2TimeRaw = typeof raw === 'object' ? raw.r2Time : null;
-    const r1FaultsRaw = typeof raw === 'object' ? raw.r1Faults : null;
-    const r1TimeRaw = typeof raw === 'object' ? raw.r1Time : null;
+    // New scoring: derive live from the two riders' entries per round
+    // (falls back to a stored value if no rider data exists yet) — this is
+    // what makes rider-level data entered before this feature shipped
+    // display correctly here immediately, without an admin resave.
+    const r1D = useNewScoring ? deriveRoundNumbers(raw, 'r1') : null;
+    const r2D = useNewScoring ? deriveRoundNumbers(raw, 'r2') : null;
+
+    const r2FaultsRaw = useNewScoring ? r2D.faults : (typeof raw === 'object' ? raw.r2Faults : null);
+    const r2TimeRaw = useNewScoring ? r2D.time : (typeof raw === 'object' ? raw.r2Time : null);
+    const r1FaultsRaw = useNewScoring ? r1D.faults : (typeof raw === 'object' ? raw.r1Faults : null);
+    const r1TimeRaw = useNewScoring ? r1D.time : (typeof raw === 'object' ? raw.r1Time : null);
 
     // A field only counts as "entered" if it's a real value — not
     // undefined, not null, and not an empty string left over from a

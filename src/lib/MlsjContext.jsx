@@ -53,13 +53,19 @@ export function MlsjProvider({ children }) {
     setTeamPicks([]);
   }, [mlsjRiderRankings]);
 
+  // FIXED (mirrors the same fix in EquiPrixContext.jsx): re-clicking the
+  // already-selected event used to unconditionally wipe gpTeam/teamPicks
+  // via doSelectEvent, with nothing to re-trigger loadSavedPicks and
+  // restore them since the event id/status hadn't actually changed. Now a
+  // re-click on the current event is a no-op.
   const selectEvent = useCallback((id) => {
+    if (currentEvent?.id === id) return;
     setEvents(prev => {
       const ev = prev.find(e => e.id === id);
       if (ev) doSelectEvent(ev);
       return prev;
     });
-  }, [doSelectEvent]);
+  }, [doSelectEvent, currentEvent]);
 
   const loadEventData = useCallback(async () => {
     try {

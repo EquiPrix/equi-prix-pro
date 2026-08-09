@@ -114,13 +114,29 @@ export function EquiPrixProvider({ children }) {
     setTeamPicks([]);
   }, []);
 
+  // FIXED: re-clicking the already-selected event (e.g. navigating back to
+  // Events and tapping the same event card) used to unconditionally call
+  // doSelectEvent, which blanks team/teamPicks to []. That's fine the FIRST
+  // time an event is selected — the picks-loading effect in EquiPrix.jsx
+  // (keyed on currentEvent.id/status) re-fires right after and restores
+  // saved picks. But on a re-click of the SAME event, id and status are
+  // unchanged, so that effect never re-fires — team/teamPicks stayed wiped
+  // permanently. This is what caused the salary cap to show the full
+  // amount (instead of 50000 minus Team Draft spend) the moment a player
+  // navigated back into an event after GP Draft opened: the event's status
+  // had already flipped via the live subscription, so clicking it again
+  // wiped picks with nothing to restore them. Now a re-click on the
+  // already-current event is a no-op — riders/teams/status still update
+  // live elsewhere (loadEventData), so nothing is lost by skipping the
+  // reset here.
   const selectEvent = useCallback((id) => {
+    if (currentEvent?.id === id) return;
     setEvents(prev => {
       const ev = prev.find(e => e.id === id);
       if (ev) doSelectEvent(ev);
       return prev;
     });
-  }, [doSelectEvent]);
+  }, [doSelectEvent, currentEvent]);
 
   const loadEventData = useCallback(async () => {
     try {

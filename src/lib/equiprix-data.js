@@ -461,3 +461,40 @@ export function usesNewTeamScoring(eventId) {
   const idx = EVENTS_2026.findIndex(e => e.id === eventId);
   return cutoffIdx !== -1 && idx !== -1 && idx >= cutoffIdx;
 }
+
+// Sums whichever rider values have actually been entered for a round.
+// Blank/undefined riders don't count as 0 — they just don't contribute yet,
+// so the team total is '' (not 0) until at least one rider has a value.
+export function sumRiderField(riders, field) {
+  const vals = (riders || [])
+    .map(r => r?.[field])
+    .filter(v => v !== '' && v !== undefined && v !== null);
+  if (!vals.length) return '';
+  return vals.reduce((a, b) => a + Number(b), 0);
+}
+
+// Single source of truth for a team's round faults/time under the new
+// (London+) scoring convention. Prefers the live sum of the two riders'
+// entries (r1Riders/r2Riders) — this is what makes already-saved rider-level
+// data "just work" retroactively, without anyone having to retype it once
+// this convention ships. Falls back to whatever's already stored in
+// r1Faults/r1Time/r2Faults/r2Time if no rider-level data exists yet (e.g. an
+// event where only the team total was typed in under the old workflow).
+// Legacy (pre-London) events never call this — they always read the stored
+// field directly, untouched.
+export function deriveRoundNumbers(d, round) {
+  const faultsKey = round === 'r1' ? 'r1Faults' : 'r2Faults';
+  const timeKey = round === 'r1' ? 'r1Time' : 'r2Time';
+  const ridersKey = round === 'r1' ? 'r1Riders' : 'r2Riders';
+
+  const summedFaults = sumRiderField(d?.[ridersKey], 'faults');
+  const summedTime = sumRiderField(d?.[ridersKey], 'time');
+
+  const rawFaults = summedFaults !== '' ? summedFaults : d?.[faultsKey];
+  const rawTime = summedTime !== '' ? summedTime : d?.[timeKey];
+
+  return {
+    faults: rawFaults !== '' && rawFaults !== undefined && rawFaults !== null ? Number(rawFaults) : null,
+    time: rawTime !== '' && rawTime !== undefined && rawTime !== null ? Number(rawTime) : null,
+  };
+}

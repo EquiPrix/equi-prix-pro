@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { EVENTS_2026, GCL_TEAMS_2026, PREVIEW_RIDERS_2026, sbFetch, usesNewTeamScoring } from '@/lib/equiprix-data';
+import { EVENTS_2026, GCL_TEAMS_2026, PREVIEW_RIDERS_2026, sbFetch, usesNewTeamScoring, sumRiderField, deriveRoundNumbers } from '@/lib/equiprix-data';
 import { loadStartListRemote } from '@/lib/startListStore';
 import { Save } from 'lucide-react';
 
@@ -40,18 +40,6 @@ function getPreFilledPair(startList, teamId, round) {
     { ...(pair?.[0] || { name: '', horse: '' }), faults: '', time: '' },
     { ...(pair?.[1] || { name: '', horse: '' }), faults: '', time: '' },
   ];
-}
-
-// Sums whichever rider values have actually been entered for a round.
-// Blank/undefined riders don't count as 0 — they just don't contribute yet,
-// so the team total shows '' (not 0) until at least one rider has a value,
-// and updates live as each rider's number comes in.
-function sumRiderField(riders, field) {
-  const vals = (riders || [])
-    .map(r => r?.[field])
-    .filter(v => v !== '' && v !== undefined && v !== null);
-  if (!vals.length) return '';
-  return vals.reduce((a, b) => a + Number(b), 0);
 }
 
 function TeamRoundEditor({ teams, round, data, onChange, startList, useNewScoring }) {
@@ -99,6 +87,11 @@ function TeamRoundEditor({ teams, round, data, onChange, startList, useNewScorin
         // populated by the eager pre-fill effect in ResultsEditor, so this
         // branch exists purely as a safety net rather than the primary path.
         const riders = d[ridersKey] || getInitRiders(team.id);
+        // Derived live from the riders below (falls back to whatever's
+        // already stored if no rider data exists yet) — so any faults/time
+        // entered before this feature shipped display correctly immediately,
+        // with no need to retype anything.
+        const derived = useNewScoring ? deriveRoundNumbers(d, round) : null;
 
         return (
           <div key={team.id} className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--ep-border)' }}>
@@ -109,9 +102,9 @@ function TeamRoundEditor({ teams, round, data, onChange, startList, useNewScorin
                   {useNewScoring ? (
                     <div className="rounded px-2 py-1 text-xs text-center"
                       style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--ep-border)', color: 'var(--cream)' }}>
-                      {d[faultsKey] === '' || d[faultsKey] === undefined
+                      {derived.faults === null
                         ? <span style={{ color: 'var(--mid)' }}>—</span>
-                        : d[faultsKey]}
+                        : derived.faults}
                     </div>
                   ) : (
                     <NumCell value={d[faultsKey]} onChange={v => set(team.id, faultsKey, v === '' ? '' : Number(v))} placeholder="Faults" />
@@ -121,9 +114,9 @@ function TeamRoundEditor({ teams, round, data, onChange, startList, useNewScorin
                   {useNewScoring ? (
                     <div className="rounded px-2 py-1 text-xs text-center"
                       style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--ep-border)', color: 'var(--cream)' }}>
-                      {d[timeKey] === '' || d[timeKey] === undefined
+                      {derived.time === null
                         ? <span style={{ color: 'var(--mid)' }}>—</span>
-                        : d[timeKey]}
+                        : derived.time}
                     </div>
                   ) : (
                     <NumCell value={d[timeKey]} onChange={v => set(team.id, timeKey, v === '' ? '' : Number(v))} placeholder="Time" />
@@ -215,10 +208,19 @@ function calcFinalPositions(teams, teamResults, useNewScoring = false) {
     })
     .map(team => {
       const d = teamResults[team.id];
-      const r1Faults = d.r1Faults !== '' && d.r1Faults !== undefined ? Number(d.r1Faults) : 0;
-      const r1Time = d.r1Time !== '' && d.r1Time !== undefined ? Number(d.r1Time) : 9999;
-      const r2Faults = d.r2Faults !== '' && d.r2Faults !== undefined ? Number(d.r2Faults) : null;
-      const r2Time = d.r2Time !== '' && d.r2Time !== undefined ? Number(d.r2Time) : null;
+      // NEW scoring: derive live from the two riders' entries (falling back
+      // to a stored value if no rider data exists) so this always reflects
+      // reality, including data entered before this feature existed.
+      const r1Derived = useNewScoring ? deriveRoundNumbers(d, 'r1') : null;
+      const r2Derived = useNewScoring ? deriveRoundNumbers(d, 'r2') : null;
+      const r1Faults = useNewScoring
+        ? (r1Derived.faults ?? 0)
+        : (d.r1Faults !== '' && d.r1Faults !== undefined ? Number(d.r1Faults) : 0);
+      const r1Time = useNewScoring
+        ? (r1Derived.time ?? 9999)
+        : (d.r1Time !== '' && d.r1Time !== undefined ? Number(d.r1Time) : 9999);
+      const r2Faults = useNewScoring ? r2Derived.faults : (d.r2Faults !== '' && d.r2Faults !== undefined ? Number(d.r2Faults) : null);
+      const r2Time = useNewScoring ? r2Derived.time : (d.r2Time !== '' && d.r2Time !== undefined ? Number(d.r2Time) : null);
       // FIXED: r2Riders is now eagerly pre-populated for EVERY team as
       // soon as the start list loads (see the useEffect in
       // ResultsEditor's main component), even teams that never reached
@@ -300,8 +302,14 @@ function FinalEditor({ teams, data, useNewScoring }) {
       {sortedTeams.map(team => {
         const d = get(team.id);
         const pos = posMap[team.id];
-        const r1F = d.r1Faults !== '' && d.r1Faults !== undefined ? Number(d.r1Faults) : null;
-        const r2F = d.r2Faults !== '' && d.r2Faults !== undefined ? Number(d.r2Faults) : null;
+        // New scoring: derive from riders (self-heals already-entered data);
+        // legacy: read the stored fields directly, exactly as before.
+        const r1D = useNewScoring ? deriveRoundNumbers(d, 'r1') : null;
+        const r2D = useNewScoring ? deriveRoundNumbers(d, 'r2') : null;
+        const r1F = useNewScoring ? r1D.faults : (d.r1Faults !== '' && d.r1Faults !== undefined ? Number(d.r1Faults) : null);
+        const r2F = useNewScoring ? r2D.faults : (d.r2Faults !== '' && d.r2Faults !== undefined ? Number(d.r2Faults) : null);
+        const r1T = useNewScoring ? r1D.time : d.r1Time;
+        const r2T = useNewScoring ? r2D.time : d.r2Time;
         // Legacy events: r2F is already the cumulative total, display as-is.
         // New scoring (London+): r1F and r2F are each round-only, so the
         // team's overall total is their sum.
@@ -310,7 +318,7 @@ function FinalEditor({ teams, data, useNewScoring }) {
           : r1F;
         const hasR2 = r2F !== null || !!d.ret || !!d.el;
         const flag = d.ret ? ' RET' : d.el ? ' EL' : '';
-        const displayTime = r2F !== null ? d.r2Time : d.r1Time;
+        const displayTime = r2F !== null ? r2T : r1T;
 
         return (
           <div key={team.id} className="grid grid-cols-12 items-center gap-2 px-3 py-2.5 rounded"
@@ -523,6 +531,27 @@ export default function ResultsEditor() {
         teamResultsWithPos[team.id] = rest;
       }
     });
+
+    // NEW scoring: write the derived r1/r2 faults+time back into the
+    // stored fields so the saved record is self-consistent (not just
+    // correct at render time) — this is what makes data entered under the
+    // old workflow (before this feature shipped) permanently correct the
+    // moment it's re-saved, without retyping anything.
+    if (useNewScoring) {
+      teams.forEach(team => {
+        const d = teamResultsWithPos[team.id];
+        if (!d) return;
+        const r1D = deriveRoundNumbers(d, 'r1');
+        const r2D = deriveRoundNumbers(d, 'r2');
+        teamResultsWithPos[team.id] = {
+          ...d,
+          ...(r1D.faults !== null ? { r1Faults: r1D.faults } : {}),
+          ...(r1D.time !== null ? { r1Time: r1D.time } : {}),
+          ...(r2D.faults !== null ? { r2Faults: r2D.faults } : {}),
+          ...(r2D.time !== null ? { r2Time: r2D.time } : {}),
+        };
+      });
+    }
 
     const payload = {
       rider_results: riderResults,
