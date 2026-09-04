@@ -379,11 +379,11 @@ export function MlsjDraftTab() {
                     <div className="flex-1 min-w-0">
                       <div className="font-cormorant text-sm font-semibold truncate" style={{ color: 'var(--cream)' }}>{t.name}</div>
                       <div className="text-xs" style={{ color: 'var(--mid)' }}>{fmt(t.salary)}</div>
-                      {t.declaredTrio?.length > 0 && (
-                        <div className="text-xs italic truncate" style={{ color: 'var(--gold-lt)' }}>
-                          {t.declaredTrio.map(r => r.horse ? `${r.name} (${r.horse})` : r.name).join(' · ')}
+                      {t.declaredTrio?.filter(r => r?.name).map((r, i) => (
+                        <div key={i} className="font-cormorant text-xs truncate mt-0.5" style={{ color: 'var(--gold-lt)', fontStyle: 'italic' }}>
+                          {r.name}{r.horse ? <span style={{ color: 'var(--mid)' }}> / {r.horse}</span> : ''}
                         </div>
-                      )}
+                      ))}
                     </div>
                     {picked && <div className="text-xs flex-shrink-0" style={{ color: '#4caf7d' }}>✓</div>}
                     {locked && <div className="text-xs flex-shrink-0" style={{ color: 'var(--mid)' }}>🔒</div>}
