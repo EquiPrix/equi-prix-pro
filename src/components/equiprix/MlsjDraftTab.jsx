@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useMlsj } from '@/lib/MlsjContext';
+import { useAuth } from '@/lib/AuthContext';
 import { GENERAL_ROOM_ID } from '@/lib/EquiPrixContext';
 import { fmt, getBand } from '@/lib/equiprix-data';
 import { MLSJ_CAP, MLSJ_CPT_PREMIUM } from '@/lib/mlsj-data';
@@ -99,12 +100,22 @@ export function MlsjDraftTab() {
   const {
     currentEvent, riders, mlsjTeams,
     gpTeam, setGpTeam, teamPicks, setTeamPicks,
-    userCode, savePicks: contextSavePicks, showToast,
+    savePicks: contextSavePicks, showToast,
   } = useMlsj();
+
+  // FIXED: this used to destructure `userCode` from useMlsj(), but
+  // MlsjContext's provider value never actually exposes a userCode field —
+  // it was always undefined, so handleConfirmSave's `if (!userCode...)
+  // return;` guard silently bailed on every Confirm & Save click. GCL's
+  // DraftTab avoids this by falling back to the Supabase Auth session
+  // email via useAuth(); MlsjContext has no legacy userCode fallback at
+  // all, so here that's the only source of identity.
+  const { user } = useAuth();
+  const identity = user?.email;
 
   // userName and destinations are not yet in MlsjContext — derive locally.
   // Rooms support for MLSJ can be added in a future update.
-  const userName = userCode;
+  const userName = identity;
 
   const [view, setView] = useState('riders');
   const [search, setSearch] = useState('');
@@ -191,11 +202,11 @@ export function MlsjDraftTab() {
 
   // Save picks to a specific destination using the context's savePicks
   const saveToDestination = async (destId, gt, tp) => {
-    await contextSavePicks(userCode, ev, gt, tp, destId);
+    await contextSavePicks(identity, ev, gt, tp, destId);
   };
 
   const handleConfirmSave = async (selectedIds) => {
-    if (!userCode || !ev || !selectedIds.length) return;
+    if (!identity || !ev || !selectedIds.length) return;
     setSaving(true);
     try {
       await Promise.all(selectedIds.map(id => saveToDestination(id, gpTeam, teamPicks)));
