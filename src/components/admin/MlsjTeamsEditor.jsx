@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { MLSJ_TEAMS_2026, sbFetch } from '@/lib/mlsj-data';
 import { PREVIEW_RIDERS_2026 } from '@/lib/equiprix-data';
 import { ChevronDown, ChevronUp, Save, X } from 'lucide-react';
@@ -11,14 +11,6 @@ import { ChevronDown, ChevronUp, Save, X } from 'lucide-react';
 
 const SUPABASE_KEY = 'mlsj_rosters';
 
-// All riders eligible for MLSJ — PREVIEW_RIDERS_2026 covers the shared
-// GCL+MLSJ pool. Sort by rank for easy browsing.
-const ALL_RIDERS = [...PREVIEW_RIDERS_2026].sort((a, b) => {
-  const ra = a.rank >= 999 ? 9999 : a.rank;
-  const rb = b.rank >= 999 ? 9999 : b.rank;
-  return ra - rb;
-});
-
 export default function MlsjTeamsEditor() {
   // rosters: { [teamId]: [riderId, riderId, ...] } — 6 per team
   const [rosters, setRosters]   = useState(() => {
@@ -30,6 +22,35 @@ export default function MlsjTeamsEditor() {
   const [loading, setLoading]   = useState(true);
   const [saving, setSaving]     = useState(false);
   const [saved, setSaved]       = useState(false);
+  const [search, setSearch]     = useState({}); // { [teamId]: string }
+
+  // FIXED: the rider picker only ever pulled from PREVIEW_RIDERS_2026 (the
+  // ~169-rider static seed) instead of the live `riders` table, which has
+  // grown to 3,000+ via monthly FEI ranking imports — so most riders simply
+  // weren't selectable here. Same fix as GCL's TeamsEditor: fetch the live
+  // table, fall back to the static seed only until that resolves.
+  const [allRiders, setAllRiders]         = useState(() => [...PREVIEW_RIDERS_2026]);
+  const [ridersLoading, setRidersLoading] = useState(true);
+
+  useEffect(() => {
+    sbFetch('riders?order=rank.asc&limit=5000').then(rows => {
+      if (rows && rows.length) {
+        setAllRiders(rows.map(r => ({
+          ...r,
+          id:     Number(r.id),
+          rank:   Number(r.rank)   || 999,
+          salary: Number(r.salary) || 1000,
+        })));
+      }
+      setRidersLoading(false);
+    }).catch(() => setRidersLoading(false));
+  }, []);
+
+  const ALL_RIDERS = useMemo(() => [...allRiders].sort((a, b) => {
+    const ra = a.rank >= 999 ? 9999 : a.rank;
+    const rb = b.rank >= 999 ? 9999 : b.rank;
+    return ra - rb;
+  }), [allRiders]);
 
   // Load saved overrides from Supabase
   useEffect(() => {
@@ -97,7 +118,7 @@ export default function MlsjTeamsEditor() {
     }
   };
 
-  if (loading) return (
+  if (loading || ridersLoading) return (
     <div className="text-center py-8 font-cormorant italic" style={{ color: 'var(--mid)' }}>
       Loading rosters…
     </div>
@@ -117,6 +138,7 @@ export default function MlsjTeamsEditor() {
           const open        = expanded[team.id];
           const rosterIds   = rosters[team.id] || [];
           const rosterCount = rosterIds.length;
+          const teamSearch  = search[team.id] || '';
 
           return (
             <div key={team.id} className="rounded-lg overflow-hidden"
@@ -186,10 +208,18 @@ export default function MlsjTeamsEditor() {
                         style={{ color: 'var(--mid)', fontSize: 9, letterSpacing: '0.1em' }}>
                         ADD RIDER ({6 - rosterCount} slot{6 - rosterCount !== 1 ? 's' : ''} remaining)
                       </div>
+                      <input
+                        value={teamSearch}
+                        onChange={e => setSearch(p => ({ ...p, [team.id]: e.target.value }))}
+                        placeholder="Search rider…"
+                        className="w-full rounded px-2 py-1.5 text-xs outline-none mb-1.5"
+                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--ep-border)', color: 'var(--ep-text)' }}
+                      />
                       <div className="rounded-lg overflow-hidden"
                         style={{ border: '1px solid var(--ep-border)', maxHeight: 200, overflowY: 'auto' }}>
                         {ALL_RIDERS
                           .filter(r => !rosterIds.includes(r.id))
+                          .filter(r => !teamSearch || r.name.toLowerCase().includes(teamSearch.toLowerCase()))
                           // Don't show riders already on another team
                           .filter(r => !Object.entries(rosters).some(([tid, ids]) => tid !== team.id && ids.includes(r.id)))
                           .map((r, i, arr) => (

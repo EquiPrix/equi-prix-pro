@@ -211,7 +211,7 @@ export default function Admin() {
 
         {/* ── Shared ── */}
         {activeSharedTab === 'rankings'      && <RankingsImport />}
-        {activeSharedTab === 'riders'        && <RidersEditor />}
+        {activeSharedTab === 'riders'        && <RidersEditor league={league} />}
         {activeSharedTab === 'horses'        && <HorseDBEditor />}
         {activeSharedTab === 'notifications' && <NotificationsEditor />}
       </div>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { EVENTS_2026, sbFetch } from '@/lib/equiprix-data';
+import { MLSJ_EVENTS_2026_27 } from '@/lib/mlsj-data';
 import { loadStartListRemote, saveStartListRemote } from '@/lib/startListStore';
 import { feiCodeToFlag, FEI_COUNTRIES, parseNatDisplay } from '@/lib/countryFlags';
 import { Search, UserPlus, X } from 'lucide-react';
@@ -96,7 +97,14 @@ function AddRiderForm({ onAdded, nextId }) {
   );
 }
 
-export default function RidersEditor() {
+export default function RidersEditor({ league = 'gcl' }) {
+  // FIXED: this tab is shared between GCL and MLSJ admin panels (one rider
+  // DB, one "build the GP start list" tool for both), but the event
+  // dropdown was hardcoded to EVENTS_2026 (GCL only) — so building an MLSJ
+  // start list showed GCL event names and, worse, would have saved against
+  // a GCL event's id/supabaseKey if selected. Now it reads whichever
+  // league's event list matches the active Admin Panel tab.
+  const EVENTS = league === 'mlsj' ? MLSJ_EVENTS_2026_27 : EVENTS_2026;
   const [allRiders, setAllRiders] = useState([]);
   const [ridersLoaded, setRidersLoaded] = useState(false);
   const [search, setSearch] = useState('');
@@ -112,6 +120,12 @@ export default function RidersEditor() {
     setAllRiders(data || []);
     setRidersLoaded(true);
   };
+
+  // Switching leagues while this tab is open must not leave a GCL event id
+  // selected while EVENTS now points at MLSJ's list (or vice versa).
+  useEffect(() => {
+    setSelectedEventId('');
+  }, [league]);
 
   useEffect(() => {
     loadRiders();
@@ -144,7 +158,7 @@ export default function RidersEditor() {
 
   const saveGP = async () => {
     if (!selectedEventId) return;
-    const event = EVENTS_2026.find(e => e.id === selectedEventId);
+    const event = EVENTS.find(e => e.id === selectedEventId);
     if (!event) return;
     setSaving(true);
 
@@ -196,7 +210,7 @@ export default function RidersEditor() {
           className="flex-1 rounded px-3 py-2 text-xs outline-none"
           style={{ background: 'var(--ep-card)', border: '1px solid var(--ep-border)', color: 'var(--ep-text)' }}>
           <option value="">— Select event for GP start list —</option>
-          {EVENTS_2026.map(ev => (
+          {EVENTS.map(ev => (
             <option key={ev.id} value={ev.id}>{ev.flag} {ev.city} · {ev.dates}</option>
           ))}
         </select>
