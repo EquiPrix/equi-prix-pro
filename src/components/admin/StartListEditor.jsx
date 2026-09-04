@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { EVENTS_2026, GCL_TEAMS_2026, sbFetch } from '@/lib/equiprix-data';
-import { GCL_TEAM_ROSTERS } from '@/components/admin/TeamsEditor';
+import { loadGCLRostersRemote } from '@/components/admin/TeamsEditor';
 import { loadStartListRemote, saveStartListRemote, loadHorseDBRemote, saveHorseDBRemote } from '@/lib/startListStore';
 import { Plus, X, Save, RefreshCw } from 'lucide-react';
 
@@ -95,7 +95,7 @@ function GPStartList({ riders, setRiders, horseDB, onAddHorse, onRefresh, refres
   );
 }
 
-function TeamRoundStartList({ round, teamPairs, setTeamPairs, teams, horseDB, onAddHorse }) {
+function TeamRoundStartList({ round, teamPairs, setTeamPairs, teams, teamRosters, horseDB, onAddHorse }) {
   const color = round === 'r1' ? 'var(--gold)' : '#6aad8a';
   const bg = round === 'r1' ? 'rgba(180,149,48,0.03)' : 'rgba(61,90,76,0.04)';
   const border = round === 'r1' ? 'rgba(180,149,48,0.15)' : 'rgba(61,90,76,0.2)';
@@ -118,7 +118,7 @@ function TeamRoundStartList({ round, teamPairs, setTeamPairs, teams, horseDB, on
       <div className="space-y-1.5">
         {teams.map(team => {
           const pair = getPair(team.id);
-          const roster = GCL_TEAM_ROSTERS[team.id] || [];
+          const roster = teamRosters[team.id] || [];
           return (
             <div key={team.id} className="rounded-lg px-3 py-2" style={{ background: bg, border: `1px solid ${border}` }}>
               <div className="font-cormorant text-sm font-semibold mb-1.5" style={{ color: 'var(--cream)' }}>{team.name}</div>
@@ -150,6 +150,7 @@ export default function StartListEditor() {
   const [gpRiders, setGpRiders] = useState([]);
   const [teamPairs, setTeamPairs] = useState({});
   const [horseDB, setHorseDB] = useState({});
+  const [teamRosters, setTeamRosters] = useState({});
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
   const [refreshingGP, setRefreshingGP] = useState(false);
@@ -159,6 +160,14 @@ export default function StartListEditor() {
 
   useEffect(() => {
     loadHorseDBRemote().then(db => setHorseDB(db));
+    // FIXED: previously read the GCL_TEAM_ROSTERS constant directly, which
+    // only reflects roster edits saved earlier in the SAME browser session
+    // (TeamsEditor's save() patches it in memory as a side effect). A
+    // fresh load — e.g. setting up a later event's start list without
+    // having Teams open first — showed the stale hardcoded rosters instead
+    // of what was actually saved. Now this fetches the real saved rosters
+    // directly, same as TeamsEditor itself does.
+    loadGCLRostersRemote().then(r => setTeamRosters(r));
   }, []);
 
   // CHANGED: takes the saved gp[] snapshot (riders + horses) and overlays
@@ -279,7 +288,7 @@ export default function StartListEditor() {
               <GPStartList riders={gpRiders} setRiders={setGpRiders} horseDB={horseDB} onAddHorse={addHorse} onRefresh={refreshGP} refreshing={refreshingGP} />
             )}
             {(activeSection === 'r1' || activeSection === 'r2') && (
-              <TeamRoundStartList round={activeSection} teamPairs={teamPairs} setTeamPairs={setTeamPairs} teams={teams} horseDB={horseDB} onAddHorse={addHorse} />
+              <TeamRoundStartList round={activeSection} teamPairs={teamPairs} setTeamPairs={setTeamPairs} teams={teams} teamRosters={teamRosters} horseDB={horseDB} onAddHorse={addHorse} />
             )}
           </div>
 

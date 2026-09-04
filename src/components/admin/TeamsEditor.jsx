@@ -153,6 +153,35 @@ export const GCL_TEAM_ROSTERS = {
   ],
 };
 
+// FIXED: this is now the single source of truth for "what are this team's
+// current riders right now" — GCL_TEAM_ROSTERS defaults merged with any
+// saved Supabase overrides. Previously StartListEditor imported the raw
+// GCL_TEAM_ROSTERS constant directly. That constant only reflects saved
+// overrides if THIS component's save() already ran earlier in the SAME
+// browser session (save() patches the constant in memory as a side
+// effect) — a fresh page load, a different device, or just opening Start
+// Lists without visiting Teams first in that session never pulled the
+// saved overrides back in, so an edited roster silently reverted to the
+// hardcoded defaults when setting up a later event's start list (e.g.
+// Valkenswaard) — exactly the "rosters aren't loading to the next event"
+// symptom. Both this editor and StartListEditor now call this function
+// instead of trusting the static import.
+export async function loadGCLRostersRemote() {
+  const merged = {};
+  GCL_TEAMS_2026.forEach(t => { merged[t.id] = [...(GCL_TEAM_ROSTERS[t.id] || [])]; });
+  try {
+    const rows = await sbFetch('results?event=eq.' + SUPABASE_KEY + '&limit=1');
+    if (rows && rows.length && rows[0].team_results) {
+      Object.entries(rows[0].team_results).forEach(([teamId, riders]) => {
+        if (riders && riders.length) merged[teamId] = riders;
+      });
+    }
+  } catch (e) {
+    console.warn('Could not load saved GCL rosters:', e);
+  }
+  return merged;
+}
+
 export default function TeamsEditor() {
   // rosters: { [teamId]: [{ id, name }] } — up to 6 per team
   const [rosters, setRosters] = useState(() => {
@@ -195,21 +224,12 @@ export default function TeamsEditor() {
     return ra - rb;
   }), [allRiders]);
 
-  // Load saved overrides from Supabase
+  // Load saved overrides from Supabase (merged with defaults by the same
+  // function StartListEditor now uses, so the two never drift apart).
   useEffect(() => {
-    sbFetch('results?event=eq.' + SUPABASE_KEY + '&limit=1').then(rows => {
-      if (rows && rows.length && rows[0].team_results) {
-        const savedRosters = rows[0].team_results; // { [teamId]: [{ id, name }] }
-        setRosters(prev => {
-          const merged = { ...prev };
-          Object.entries(savedRosters).forEach(([teamId, riders]) => {
-            if (riders && riders.length) merged[teamId] = riders;
-          });
-          return merged;
-        });
-      }
-      setLoading(false);
-    }).catch(() => setLoading(false));
+    loadGCLRostersRemote()
+      .then(merged => setRosters(merged))
+      .finally(() => setLoading(false));
   }, []);
 
   const toggleRider = (teamId, rider) => {
