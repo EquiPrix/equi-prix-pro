@@ -11,6 +11,7 @@ import RoomsEditor from '@/components/admin/RoomsEditor';
 import NotificationsEditor from '@/components/admin/NotificationsEditor';
 import HorseDBEditor from '@/components/admin/HorseDBEditor';
 import PicksEditor from '@/components/admin/PicksEditor';
+import MlsjPicksEditor from '@/components/admin/MlsjPicksEditor';
 import MlsjEventStatusEditor from '@/components/admin/MlsjEventStatusEditor';
 import MlsjTeamStandingsEditor from '@/components/admin/MlsjTeamStandingsEditor';
 import MlsjStartListEditor from '@/components/admin/MlsjStartListEditor';
@@ -43,6 +44,8 @@ const MLSJ_TABS = [
   { id: 'startlist', label: 'Start List', icon: ListOrdered },
   { id: 'results',   label: 'Results',    icon: Trophy      },
   { id: 'rooms',     label: 'Rooms',      icon: DoorOpen    },
+  // NEW: was missing entirely — no way to view/correct MLSJ picks from admin.
+  { id: 'picks',     label: 'Picks',      icon: ClipboardEdit },
 ];
 
 // Shared tabs apply to both leagues — shown in a separate row.
@@ -208,6 +211,7 @@ export default function Admin() {
         {!activeSharedTab && league === 'mlsj' && activeTab === 'startlist' && <MlsjStartListEditor />}
         {!activeSharedTab && league === 'mlsj' && activeTab === 'results'   && <MlsjResultsEditor />}
         {!activeSharedTab && league === 'mlsj' && activeTab === 'rooms'     && <RoomsEditor league="mlsj" />}
+        {!activeSharedTab && league === 'mlsj' && activeTab === 'picks'     && <MlsjPicksEditor />}
 
         {/* ── Shared ── */}
         {activeSharedTab === 'rankings'      && <RankingsImport />}

@@ -239,6 +239,10 @@ export function MlsjProvider({ children }) {
       toast, showToast,
       loadSavedPicks, savePicks,
       loadEventData,
+      // Exposed so MlsjPicksEditor.jsx can price teams for ANY event (not
+      // just the currently-selected one) the same way the live Draft tab
+      // does, instead of re-deriving team pricing logic separately.
+      getPricedTeams, getRiderList,
     }}>
       {children}
     </MlsjContext.Provider>
