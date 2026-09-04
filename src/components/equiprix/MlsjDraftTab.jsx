@@ -381,7 +381,7 @@ export function MlsjDraftTab() {
                       <div className="text-xs" style={{ color: 'var(--mid)' }}>{fmt(t.salary)}</div>
                       {t.declaredTrio?.length > 0 && (
                         <div className="text-xs italic truncate" style={{ color: 'var(--gold-lt)' }}>
-                          {t.declaredTrio.map(r => r.name).join(' · ')}
+                          {t.declaredTrio.map(r => r.horse ? `${r.name} (${r.horse})` : r.name).join(' · ')}
                         </div>
                       )}
                     </div>

@@ -30,9 +30,14 @@ export function MlsjProvider({ children }) {
 
   const getPricedTeams = (ev, riderList = mlsjRiderRankings) => {
     const declaredByTeam = ev.declaredTrioIds || {};
+    const horsesByTeam = ev.trioHorses || {};
     const withTrio = MLSJ_TEAMS_2026.map(team => {
       const ids = declaredByTeam[team.id] || [];
-      const declaredTrio = ids.map(id => riderList.find(r => r.id === id)).filter(Boolean);
+      const teamHorses = horsesByTeam[team.id] || {};
+      const declaredTrio = ids
+        .map(id => riderList.find(r => r.id === id))
+        .filter(Boolean)
+        .map(r => ({ ...r, horse: teamHorses[r.id] || '' }));
       return { ...team, declaredTrio };
     });
     return calcMlsjTeamSalaries(withTrio);
@@ -91,7 +96,7 @@ export function MlsjProvider({ children }) {
       setMlsjRiderRankings(updatedRankings);
 
       const rows = await sbFetch(
-        'results?select=event,event_status,gp_riders,declared_trio_ids,team_results,gp_lock_iso,team_lock_iso'
+        'results?select=event,event_status,gp_riders,declared_trio_ids,trio_horses,team_results,gp_lock_iso,team_lock_iso'
       );
 
       let updatedEvents = MLSJ_EVENTS_2026_27.map(e => ({ ...e }));
@@ -106,6 +111,7 @@ export function MlsjProvider({ children }) {
             ...(row.team_lock_iso     ? { teamLockISO:      row.team_lock_iso     } : {}),
             ...(row.gp_riders?.length ? { gpRiders:         row.gp_riders         } : {}),
             ...(row.declared_trio_ids ? { declaredTrioIds:  row.declared_trio_ids } : {}),
+            ...(row.trio_horses       ? { trioHorses:       row.trio_horses       } : {}),
             ...(row.team_results      ? { teamResults:      row.team_results      } : {}),
           };
         });
