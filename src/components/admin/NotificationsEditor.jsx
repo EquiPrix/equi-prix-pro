@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { EVENTS_2026, sbFetch } from '@/lib/equiprix-data';
+import { MLSJ_EVENTS_2026_27 } from '@/lib/mlsj-data';
 import { supabase } from '@/lib/supabaseClient';
 import { Send, Users, CheckCircle, AlertCircle, ChevronDown, ChevronUp, BellRing } from 'lucide-react';
 
@@ -29,7 +30,13 @@ function pushCopyForType(type, selectedEvent, customSubject, customMessage) {
   }
 }
 
-export default function NotificationsEditor() {
+export default function NotificationsEditor({ league = 'gcl' }) {
+  // FIXED: this whole component was hardcoded to EVENTS_2026 (GCL only) —
+  // the event dropdown, the room->event lookup, and the preview all only
+  // ever showed GCL events, so there was no way to notify for an MLSJ
+  // event. Same league-awareness fix already applied to RidersEditor.jsx.
+  const EVENTS = league === 'mlsj' ? MLSJ_EVENTS_2026_27 : EVENTS_2026;
+
   const [selectedType, setSelectedType]       = useState('draft_open');
   const [selectedEventId, setSelectedEventId] = useState('');
   const [eventStartTime, setEventStartTime]   = useState('');
@@ -57,6 +64,7 @@ export default function NotificationsEditor() {
   const [pushSubCount, setPushSubCount] = useState(null);
 
   useEffect(() => { loadAll(); }, []);
+  useEffect(() => { setSelectedEventId(''); }, [league]);
 
   const loadAll = async () => {
     setLoadingRecipients(true);
@@ -125,7 +133,7 @@ export default function NotificationsEditor() {
     return [...new Set([...subscribedUsers.map(u => u.email), ...extras])];
   };
 
-  const selectedEvent = EVENTS_2026.find(e => e.id === selectedEventId);
+  const selectedEvent = EVENTS.find(e => e.id === selectedEventId);
   const lockTimeStr   = eventStartTime
     ? `${eventStartTime} (picks lock 5 minutes before start)`
     : null;
@@ -302,7 +310,7 @@ export default function NotificationsEditor() {
               {rooms.length === 0 ? (
                 <p className="font-cormorant italic text-sm text-center py-2" style={{ color: 'var(--mid)' }}>No rooms yet.</p>
               ) : rooms.map(room => {
-                const ev  = EVENTS_2026.find(e => e.id === room.event_id);
+                const ev  = EVENTS.find(e => e.id === room.event_id);
                 const sel = selectedRoomIds.includes(room.id);
                 return (
                   <button key={room.id}
@@ -360,7 +368,7 @@ export default function NotificationsEditor() {
           <label style={labelStyle}>EVENT</label>
           <select value={selectedEventId} onChange={e => setSelectedEventId(e.target.value)} style={inputStyle}>
             <option value="">— Select Event —</option>
-            {EVENTS_2026.map(ev => (
+            {EVENTS.map(ev => (
               <option key={ev.id} value={ev.id}>{ev.flag} {ev.city} · {ev.dates}</option>
             ))}
           </select>
