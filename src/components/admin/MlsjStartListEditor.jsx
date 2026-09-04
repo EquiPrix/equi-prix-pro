@@ -282,18 +282,24 @@ export default function MlsjStartListEditor() {
     // roster instead. Now this fetches the real saved rosters directly.
     loadMlsjRostersRemote().then(r => setTeamRosters(r));
 
-    // CHANGED: read live ranks from the riders table directly instead of
-    // the fei_rankings sentinel row in results. Every rider's rank and
-    // salary are now updated there by RankingsImport on each monthly upload.
-    sbFetch('riders?select=id,rank,salary&limit=5000').then(rows => {
+    // FIXED: this used to only overlay live rank/salary onto the static
+    // 169-rider PREVIEW_RIDERS_2026 array (via select=id,rank,salary),
+    // never actually including riders beyond that static set. The Teams
+    // tab now lets admin pick from the FULL live rider database (3,000+
+    // riders, imported monthly via FEI rankings), so any roster pick
+    // outside the original 169 would resolve to nothing here —
+    // getMlsjTeamRoster's lookup finds no match and silently drops that
+    // rider from the Team Trios / GP picker lists. Now this fetches full
+    // rider records so every live rider is resolvable here too, matching
+    // what the Teams tab already shows.
+    sbFetch('riders?order=rank.asc&limit=5000').then(rows => {
       if (rows && rows.length) {
-        const rankMap = {};
-        rows.forEach(r => { rankMap[String(r.id)] = { rank: r.rank, salary: r.salary }; });
-        const updated = PREVIEW_RIDERS_2026.map(r => {
-          const live = rankMap[String(r.id)];
-          return live ? { ...r, rank: live.rank, salary: live.salary } : { ...r };
-        });
-        setRiderList(updated);
+        setRiderList(rows.map(r => ({
+          ...r,
+          id:     Number(r.id),
+          rank:   Number(r.rank)   || 999,
+          salary: Number(r.salary) || 1000,
+        })));
       }
     });
   }, []);
