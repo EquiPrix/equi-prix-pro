@@ -404,7 +404,8 @@ export function MlsjDraftTab() {
               {fmt(capRemaining)}
             </span>
           </div>
-          <div className="mt-1.5">
+          {/* Status line + Save button — matches GCL DraftTab placement */}
+          <div className="mt-1.5 flex items-center justify-between">
             <span className="text-xs" style={{ color: dirty ? '#e88a3a' : 'var(--mid)' }}>
               {gpTeam.length + teamPicks.length === 0
                 ? 'Empty'
@@ -413,11 +414,25 @@ export function MlsjDraftTab() {
                   : `${gpTeam.length} rider${gpTeam.length !== 1 ? 's' : ''} · ${teamPicks.length} team${teamPicks.length !== 1 ? 's' : ''} · saved`
               }
             </span>
+            <button
+              onClick={() => setShowSaveModal(true)}
+              disabled={saving || !dirty}
+              className="flex items-center gap-1.5 px-3 py-1 rounded font-cinzel text-xs tracking-widest transition-all"
+              style={{
+                background: dirty ? 'var(--gold)' : 'rgba(180,149,48,0.1)',
+                color: dirty ? 'var(--ink)' : 'var(--mid)',
+                border: dirty ? 'none' : '1px solid rgba(180,149,48,0.2)',
+                opacity: saving ? 0.4 : dirty ? 1 : 0.4,
+                fontSize: 9,
+              }}>
+              <Save size={10} />
+              {saving ? 'SAVING…' : dirty ? 'SAVE' : 'SAVED'}
+            </button>
           </div>
         </div>
 
         {/* Roster slots */}
-        <div className="flex-1 overflow-y-auto px-2 py-2 pb-24">
+        <div className="flex-1 overflow-y-auto px-2 py-2 pb-4">
 
           {/* Captain */}
           <div className="mb-2">
@@ -485,27 +500,6 @@ export function MlsjDraftTab() {
           </div>
 
           <MlsjScoringPanel />
-        </div>
-
-        {/* Sticky Save button */}
-        <div className="flex-shrink-0 px-3 py-3" style={{ borderTop: '1px solid var(--ep-border)', background: '#0d0c09' }}>
-          <button
-            onClick={() => setShowSaveModal(true)}
-            disabled={saving || gpTeam.length + teamPicks.length === 0}
-            className="w-full py-3 rounded font-cinzel text-xs tracking-widest flex items-center justify-center gap-2 transition-all"
-            style={{
-              background: dirty
-                ? 'var(--gold)'
-                : gpTeam.length + teamPicks.length > 0
-                  ? 'rgba(180,149,48,0.15)'
-                  : 'rgba(255,255,255,0.04)',
-              color: dirty ? 'var(--ink)' : gpTeam.length + teamPicks.length > 0 ? 'var(--gold)' : 'var(--mid)',
-              border: dirty ? 'none' : `1px solid ${gpTeam.length + teamPicks.length > 0 ? 'rgba(180,149,48,0.3)' : 'var(--ep-border)'}`,
-              opacity: saving || gpTeam.length + teamPicks.length === 0 ? 0.5 : 1,
-            }}>
-            <Save size={13} />
-            {saving ? 'SAVING…' : dirty ? 'SAVE PICKS' : 'PICKS SAVED'}
-          </button>
         </div>
       </div>
     </div>

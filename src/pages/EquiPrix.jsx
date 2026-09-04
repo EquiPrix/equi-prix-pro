@@ -225,7 +225,7 @@ function EquiPrixInner() {
       <PWABanner eventId={displayEvent?.id} />
 
       {/* Main content */}
-      <main className="flex-1 overflow-hidden flex flex-col">
+      <main className="flex-1 min-h-0 overflow-hidden flex flex-col">
         {series === 'gcl' && activeTab === 'events' && <EventsTab onSelectEvent={handleSelectEvent} />}
         {series === 'gcl' && activeTab === 'draft' && <DraftTab />}
         {series === 'gcl' && activeTab === 'results' && <ResultsTab />}
