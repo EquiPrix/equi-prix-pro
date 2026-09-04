@@ -69,19 +69,24 @@ export function MlsjProvider({ children }) {
 
   const loadEventData = useCallback(async () => {
     try {
-      // CHANGED: read live FEI rankings from riders table instead of
-      // results sentinel row 'fei_rankings' — same source as GCL.
-      const riderRows = await sbFetch('riders?select=id,rank,salary&limit=5000');
+      // FIXED: this used to map over PREVIEW_RIDERS_2026 (the static
+      // ~169-rider seed) and only overlay rank/salary from the live table —
+      // any rider beyond that static 169 (declared into a team trio via
+      // MlsjTeamsEditor, which now pulls from the full 3,000+ live table)
+      // would silently resolve to undefined in getPricedTeams' riderList
+      // .find(), then get dropped by .filter(Boolean). That's why the
+      // player-facing Draft tab showed teams with fewer than 3 declared
+      // riders. Same fix as MlsjTeamsEditor/MlsjStartListEditor: fetch full
+      // live rider records instead of capping at the static seed.
+      const riderRows = await sbFetch('riders?order=rank.asc&limit=5000');
       let updatedRankings = PREVIEW_RIDERS_2026.map(r => ({ ...r }));
       if (riderRows && riderRows.length) {
-        const rankMap = {};
-        riderRows.forEach(r => { rankMap[String(r.id)] = { rank: r.rank, salary: r.salary }; });
-        updatedRankings = updatedRankings.map(r => {
-          const live = rankMap[String(r.id)];
-          return live && live.rank && live.rank !== 999
-            ? { ...r, rank: live.rank, salary: live.salary }
-            : { ...r };
-        });
+        updatedRankings = riderRows.map(r => ({
+          ...r,
+          id:     Number(r.id),
+          rank:   Number(r.rank)   || 999,
+          salary: Number(r.salary) || 1000,
+        }));
       }
       setMlsjRiderRankings(updatedRankings);
 
