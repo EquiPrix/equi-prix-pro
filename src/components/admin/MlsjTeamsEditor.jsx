@@ -11,6 +11,28 @@ import { ChevronDown, ChevronUp, Save, X } from 'lucide-react';
 
 const SUPABASE_KEY = 'mlsj_rosters';
 
+// Single source of truth for "what are this team's current riders right
+// now" — MLSJ_TEAMS_2026 defaults merged with any saved Supabase overrides.
+// MlsjStartListEditor uses this too (via getMlsjTeamRoster's rosterOverrides
+// param) instead of reading team.rosterIds directly, which only reflects a
+// saved edit if this component's save() already ran in the SAME browser
+// session (it patches rosterIds in memory as a side effect).
+export async function loadMlsjRostersRemote() {
+  const merged = {};
+  MLSJ_TEAMS_2026.forEach(t => { merged[t.id] = [...t.rosterIds]; });
+  try {
+    const rows = await sbFetch('results?event=eq.' + SUPABASE_KEY + '&limit=1');
+    if (rows && rows.length && rows[0].team_results) {
+      Object.entries(rows[0].team_results).forEach(([teamId, ids]) => {
+        if (ids && ids.length) merged[teamId] = ids;
+      });
+    }
+  } catch (e) {
+    console.warn('Could not load saved MLSJ rosters:', e);
+  }
+  return merged;
+}
+
 export default function MlsjTeamsEditor() {
   // rosters: { [teamId]: [riderId, riderId, ...] } — 6 per team
   const [rosters, setRosters]   = useState(() => {
@@ -52,21 +74,12 @@ export default function MlsjTeamsEditor() {
     return ra - rb;
   }), [allRiders]);
 
-  // Load saved overrides from Supabase
+  // Load saved overrides from Supabase (merged with defaults by the same
+  // function MlsjStartListEditor now uses, so the two never drift apart).
   useEffect(() => {
-    sbFetch('results?event=eq.' + SUPABASE_KEY + '&limit=1').then(rows => {
-      if (rows && rows.length && rows[0].team_results) {
-        const saved = rows[0].team_results; // { [teamId]: [id, id, ...] }
-        setRosters(prev => {
-          const merged = { ...prev };
-          Object.entries(saved).forEach(([teamId, ids]) => {
-            if (ids && ids.length) merged[teamId] = ids;
-          });
-          return merged;
-        });
-      }
-      setLoading(false);
-    }).catch(() => setLoading(false));
+    loadMlsjRostersRemote()
+      .then(merged => setRosters(merged))
+      .finally(() => setLoading(false));
   }, []);
 
   const toggleRider = (teamId, riderId) => {

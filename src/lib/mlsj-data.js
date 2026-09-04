@@ -118,10 +118,18 @@ export const MLSJ_TEAMS_2026 = [
 // Helper: get a team's full roster as rider objects, joining against the
 // shared rider list (defaults to PREVIEW_RIDERS_2026, pass a fresher list —
 // e.g. with updated ranks from Rankings import — if you have one in hand).
-export function getMlsjTeamRoster(teamId, riderList = PREVIEW_RIDERS_2026) {
+// rosterOverrides — optional { [teamId]: [riderId,...] } from
+// loadMlsjRostersRemote() (MlsjTeamsEditor.jsx). Without it this reads
+// team.rosterIds straight off the static MLSJ_TEAMS_2026 constant, which
+// only reflects a saved roster edit if MlsjTeamsEditor's save() already
+// patched it in memory earlier in the SAME browser session — a fresh page
+// load elsewhere (e.g. Start Lists) would otherwise silently show the
+// original hardcoded roster instead of what's actually saved.
+export function getMlsjTeamRoster(teamId, riderList = PREVIEW_RIDERS_2026, rosterOverrides = null) {
   const team = MLSJ_TEAMS_2026.find(t => t.id === teamId);
   if (!team) return [];
-  return team.rosterIds
+  const ids = (rosterOverrides && rosterOverrides[teamId]) || team.rosterIds;
+  return ids
     .map(id => riderList.find(r => r.id === id))
     .filter(Boolean);
 }

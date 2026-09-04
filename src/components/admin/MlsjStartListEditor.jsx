@@ -4,6 +4,7 @@ import {
   getMlsjTeamRoster, sbFetch,
 } from '@/lib/mlsj-data';
 import { PREVIEW_RIDERS_2026 } from '@/lib/equiprix-data';
+import { loadMlsjRostersRemote } from '@/components/admin/MlsjTeamsEditor';
 // ── CHANGED: use the shared GCL horse DB so horses entered on the GCL
 // side are immediately available here, and vice-versa. Previously this
 // file loaded/saved from a separate mlsj_horse_db Supabase table, which
@@ -54,7 +55,7 @@ function HorseInput({ riderName, value, onChange, horseDB, onAddHorse }) {
 }
 
 // trioHorses shape: { [teamId]: { [riderId]: horseName } }
-function TeamTrioDeclarer({ teams, declaredTrioIds, setDeclaredTrioIds, trioHorses, setTrioHorses, riderList, horseDB, onAddHorse }) {
+function TeamTrioDeclarer({ teams, declaredTrioIds, setDeclaredTrioIds, trioHorses, setTrioHorses, riderList, teamRosters, horseDB, onAddHorse }) {
   const getTrio = (teamId) => declaredTrioIds[teamId] || [];
 
   const toggleRider = (teamId, riderId) => {
@@ -92,7 +93,7 @@ function TeamTrioDeclarer({ teams, declaredTrioIds, setDeclaredTrioIds, trioHors
       </div>
       <div className="space-y-2">
         {teams.map(team => {
-          const roster = getMlsjTeamRoster(team.id, riderList);
+          const roster = getMlsjTeamRoster(team.id, riderList, teamRosters);
           const trio   = getTrio(team.id);
           const horses = trioHorses[team.id] || {};
 
@@ -261,6 +262,7 @@ export default function MlsjStartListEditor() {
   const [loading, setLoading] = useState(false);
 
   const [riderList, setRiderList] = useState(PREVIEW_RIDERS_2026);
+  const [teamRosters, setTeamRosters] = useState({});
 
   const event = MLSJ_EVENTS_2026_27.find(e => e.id === selectedEventId);
 
@@ -270,6 +272,15 @@ export default function MlsjStartListEditor() {
     // table. All horses entered on either the GCL or MLSJ start list
     // pages are now stored and read from the same place.
     loadHorseDBRemote().then(db => setHorseDB(db || {}));
+
+    // FIXED: previously getMlsjTeamRoster read team.rosterIds straight off
+    // the static MLSJ_TEAMS_2026 constant, which only reflects a roster
+    // saved in the Teams tab if that tab's save() already ran earlier in
+    // the SAME browser session (it patches rosterIds in memory as a side
+    // effect). A fresh load here — the normal case when coming straight to
+    // Start Lists after saving a roster — showed the original hardcoded
+    // roster instead. Now this fetches the real saved rosters directly.
+    loadMlsjRostersRemote().then(r => setTeamRosters(r));
 
     // CHANGED: read live ranks from the riders table directly instead of
     // the fei_rankings sentinel row in results. Every rider's rank and
@@ -391,6 +402,7 @@ export default function MlsjStartListEditor() {
                 trioHorses={trioHorses}
                 setTrioHorses={setTrioHorses}
                 riderList={riderList}
+                teamRosters={teamRosters}
                 horseDB={horseDB}
                 onAddHorse={addHorse}
               />
