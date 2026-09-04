@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { useEquiPrix } from '@/lib/EquiPrixContext';
-import { MlsjProvider, useMlsj } from '@/lib/MlsjContext';
+import { useMlsj } from '@/lib/MlsjContext';
 import GateScreen from '@/components/equiprix/GateScreen';
 import BottomNav from '@/components/equiprix/BottomNav';
 import EventsTab from '@/components/equiprix/EventsTab';
@@ -256,10 +256,13 @@ function EquiPrixInner() {
   );
 }
 
+// FIXED: MlsjProvider used to only wrap this page's own tree, so useMlsj()
+// worked on /play but threw ("useMlsj must be used within MlsjProvider")
+// anywhere outside it — including /admin, where MlsjPicksEditor.jsx now
+// needs it. No error boundary catches that throw, so it crashed straight
+// to a blank screen. MlsjProvider is now mounted once in App.jsx alongside
+// EquiPrixProvider so every route has it, same as EquiPrixContext already
+// does — this component no longer needs to provide it itself.
 export default function EquiPrix() {
-  return (
-    <MlsjProvider>
-      <EquiPrixInner />
-    </MlsjProvider>
-  );
+  return <EquiPrixInner />;
 }

@@ -6,6 +6,7 @@ import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from './lib/AuthContext';
 import { EquiPrixProvider } from '@/lib/EquiPrixContext';
+import { MlsjProvider } from '@/lib/MlsjContext';
 import EquiPrix from './pages/EquiPrix';
 import Admin from './pages/Admin';
 import Splash from './pages/Splash';
@@ -31,16 +32,18 @@ const AuthenticatedApp = () => {
 
   return (
     <EquiPrixProvider>
-      <Routes>
-        <Route path="/" element={<Splash />} />
-        <Route path="/auth/callback" element={<AuthCallback />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/terms" element={<Terms />} />
-        <Route path="/room/:code" element={<RoomPage />} />
-        <Route path="/play" element={<EquiPrix />} />
-        <Route path="/admin" element={<Admin />} />
-        <Route path="*" element={<PageNotFound />} />
-      </Routes>
+      <MlsjProvider>
+        <Routes>
+          <Route path="/" element={<Splash />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/room/:code" element={<RoomPage />} />
+          <Route path="/play" element={<EquiPrix />} />
+          <Route path="/admin" element={<Admin />} />
+          <Route path="*" element={<PageNotFound />} />
+        </Routes>
+      </MlsjProvider>
     </EquiPrixProvider>
   );
 };
