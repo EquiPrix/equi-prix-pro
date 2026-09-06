@@ -96,7 +96,7 @@ export function MlsjProvider({ children }) {
       setMlsjRiderRankings(updatedRankings);
 
       const rows = await sbFetch(
-        'results?select=event,event_status,gp_riders,declared_trio_ids,trio_horses,team_results,gp_lock_iso,team_lock_iso'
+        'results?select=event,event_status,gp_riders,declared_trio_ids,trio_horses,team_results,gp_rider_results,gp_lock_iso,team_lock_iso'
       );
 
       let updatedEvents = MLSJ_EVENTS_2026_27.map(e => ({ ...e }));
@@ -113,6 +113,13 @@ export function MlsjProvider({ children }) {
             ...(row.declared_trio_ids ? { declaredTrioIds:  row.declared_trio_ids } : {}),
             ...(row.trio_horses       ? { trioHorses:       row.trio_horses       } : {}),
             ...(row.team_results      ? { teamResults:      row.team_results      } : {}),
+            // FIXED: this was never selected or mapped onto the event at
+            // all, so MlsjResultsTab.jsx's `currentEvent.gpResults` was
+            // always undefined regardless of what admin saved — GP results
+            // always showed "not yet entered". gp_rider_results is keyed by
+            // riderId ({gpPos, gpClear, gpJO, joPos, gpRet, gpEl, ...}); the
+            // player-facing tab resolves names/sorts using this + gpRiders.
+            ...(row.gp_rider_results  ? { gpRiderResults:   row.gp_rider_results  } : {}),
           };
         });
       }
