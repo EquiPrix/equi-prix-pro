@@ -3,14 +3,15 @@ import { useMlsj } from '@/lib/MlsjContext';
 import { MLSJ_TEAMS_2026, mlsjGpPosPts, MLSJ_GP_CLEAR_BONUS, scoreMlsjTeam } from '@/lib/mlsj-data';
 import { ordinal } from '@/lib/equiprix-data';
 
+// Matches GCL's tab order (team rounds first, GP last).
 const SUB_TABS = [
-  { id: 'gp', label: 'Grand Prix' },
   { id: 'team', label: 'Team Competition' },
+  { id: 'gp', label: 'Grand Prix' },
 ];
 
 export function MlsjResultsTab() {
   const { currentEvent } = useMlsj();
-  const [subTab, setSubTab] = useState('gp'); // 'gp' | 'team'
+  const [subTab, setSubTab] = useState('team'); // 'team' | 'gp'
 
   if (!currentEvent) {
     return <div className="flex-1 flex items-center justify-center opacity-60">Select an event first.</div>;
@@ -100,7 +101,9 @@ export function MlsjResultsTab() {
             <Empty msg="Team Competition results not yet entered" />
           ) : (
             <div>
-              {Object.entries(teamResults).map(([teamId, result]) => (
+              {Object.entries(teamResults)
+                .sort(([, a], [, b]) => scoreMlsjTeam(b) - scoreMlsjTeam(a))
+                .map(([teamId, result]) => (
                 <div key={teamId} className="border-b" style={{ borderColor: 'rgba(180,149,48,0.1)' }}>
                   <div className="flex items-center gap-2 px-3 py-2" style={{ background: 'rgba(180,149,48,0.04)' }}>
                     <div className="flex-1 font-cormorant text-base font-semibold" style={{ color: 'var(--cream)' }}>{teamName(teamId)}</div>
