@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import {
   MLSJ_EVENTS_2026_27, MLSJ_TEAMS_2026, sbFetch, calcMlsjTeamSalaries,
 } from './mlsj-data';
-import { PREVIEW_RIDERS_2026 } from './equiprix-data';
+import { PREVIEW_RIDERS_2026, resolveGpRiderPool } from './equiprix-data';
 
 // Shared sentinel — picks with no room assigned land in the General
 // Leaderboard. Must match the value in EquiPrixContext.
@@ -43,12 +43,14 @@ export function MlsjProvider({ children }) {
     return calcMlsjTeamSalaries(withTrio);
   };
 
-  const getRiderList = (ev) => {
-    if (ev.status === 'past') return ev.riders || [];
-    if (ev.gpRiders?.length) return ev.gpRiders;
-    if (ev.previewRiders?.length) return ev.previewRiders;
-    return ev.riders || [];
-  };
+  // FIXED: this used to return the raw, unpriced pool — each rider just
+  // kept whatever flat rankToSalary()-bucketed value came from the shared
+  // `riders` table (e.g. every rank-11-to-22 rider flatly priced at
+  // $7,500), instead of being priced relative to THIS event's actual GP
+  // field the way GCL's Draft tab does. resolveGpRiderPool is fully
+  // league-agnostic (only reads ev.status/gpRiders/previewRiders/riders),
+  // so reusing it here gives MLSJ the same field-relative pricing curve.
+  const getRiderList = (ev) => resolveGpRiderPool(ev);
 
   const doSelectEvent = useCallback((ev) => {
     setCurrentEventState(ev);
