@@ -266,6 +266,26 @@ export function MlsjDraftTab() {
     </div>
   ) : null;
 
+  // FIXED: matches GCL's DraftTab — during the 'teams' status window (team
+  // draft open, GP field not finalized yet), the rider pool shown here is
+  // still the expected/preview field, not the confirmed start list. GCL
+  // shows a banner making that explicit; MLSJ had no equivalent at all, so
+  // riders just appeared with no indication the GP list wasn't final yet.
+  const isPreviewRiderPool = ev.status === 'teams' && !ev.gpRiders?.length;
+  const previewPoolBanner = isPreviewRiderPool ? (
+    view === 'teams' ? (
+      <div className="flex items-start gap-2 px-3 py-2 text-xs font-cormorant italic flex-shrink-0"
+        style={{ background: 'rgba(61,90,76,0.15)', borderBottom: '1px solid rgba(61,90,76,0.3)', color: '#6aad8a' }}>
+        <span>✓ <strong>Team Draft picks are live</strong> — First Round Rider/Horse combos will be announced the night before.</span>
+      </div>
+    ) : (
+      <div className="flex items-start gap-2 px-3 py-2 text-xs font-cormorant italic flex-shrink-0"
+        style={{ background: 'rgba(180,149,48,0.1)', borderBottom: '1px solid rgba(180,149,48,0.25)', color: 'var(--gold-lt)' }}>
+        <span>📋 <strong>Expected riders</strong> — the official GP start list is announced the night before. Draft now against the expected field; your picks carry over automatically once the real list is confirmed.</span>
+      </div>
+    )
+  ) : null;
+
   return (
     <div className="flex-1 flex min-h-0 overflow-hidden" style={{ background: 'var(--ink)' }}>
 
@@ -282,6 +302,7 @@ export function MlsjDraftTab() {
       <div className="flex flex-col min-h-0 overflow-hidden" style={{ width: '55%', borderRight: '1px solid var(--ep-border)' }}>
 
         {practiceBanner}
+        {previewPoolBanner}
 
         {/* View toggle */}
         <div className="flex gap-1.5 px-2 py-2 flex-shrink-0" style={{ borderBottom: '1px solid var(--ep-border)', background: '#0d0c09' }}>
