@@ -117,6 +117,23 @@ export function MlsjResultsEditor() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  // FIXED: trioNames() below used to resolve rider names only against
+  // PREVIEW_RIDERS_2026 (the static ~169-rider seed) — the same "capped at
+  // 169" bug already fixed in MlsjTeamsEditor, MlsjStartListEditor and the
+  // player Draft tab, just never touched here. Any declared trio rider
+  // outside that static seed (now common, since the roster/trio pickers
+  // pull from the full 3,000+ live riders table) silently disappeared from
+  // this display — exactly the "Maccabi United / Team KPF only show 2 of 3
+  // riders" symptom. Fetch the live table here too.
+  const [allRiders, setAllRiders] = useState([]);
+  useEffect(() => {
+    sbFetch('riders?order=rank.asc&limit=5000').then(rows => {
+      if (rows && rows.length) {
+        setAllRiders(rows.map(r => ({ ...r, id: Number(r.id) })));
+      }
+    });
+  }, []);
+
   useEffect(() => {
     if (!event) return;
     (async () => {
@@ -139,7 +156,7 @@ export function MlsjResultsEditor() {
   }, [eventId]);
 
   const trioNames = (teamId) => (declaredTrioIds[teamId] || [])
-    .map(id => PREVIEW_RIDERS_2026.find(r => r.id === id)?.name)
+    .map(id => (allRiders.find(r => r.id === Number(id)) || PREVIEW_RIDERS_2026.find(r => r.id === id))?.name)
     .filter(Boolean)
     .join(' · ');
 
